@@ -12,6 +12,8 @@ GOSUNGROW_MQTT_HOST="$(bashio::config 'mqtt_host')"
 GOSUNGROW_MQTT_PORT="$(bashio::config 'mqtt_port')"
 GOSUNGROW_MQTT_USER="$(bashio::config 'mqtt_user')"
 GOSUNGROW_MQTT_PASSWORD="$(bashio::config 'mqtt_password')"
+GOSUNGROW_DASHBOARD_URL_PATH="$(bashio::config 'dashboard_url_path')"
+GOSUNGROW_DASHBOARD_TITLE="$(bashio::config 'dashboard_title')"
 
 if bashio::config.true 'use_homeassistant_mqtt'; then
   service_host="$(bashio::services mqtt 'host' 2>/dev/null || true)"
@@ -47,6 +49,7 @@ export GOSUNGROW_MQTT_PORT="${GOSUNGROW_MQTT_PORT:-1883}"
 export GOSUNGROW_MQTT_USER
 export GOSUNGROW_MQTT_PASSWORD
 export GOSUNGROW_DEBUG="$(bashio::config 'debug')"
+export GOSUNGROW_ASSET_DIR="${GOSUNGROW_ASSET_DIR:-/opt/gosungrow/assets}"
 
 mkdir -p "$(dirname "$GOSUNGROW_CONFIG")"
 
@@ -55,6 +58,24 @@ GoSungrow config write \
   --appkey="$GOSUNGROW_APPKEY" \
   --user="$GOSUNGROW_USER" \
   --password="$GOSUNGROW_PASSWORD" >/dev/null
+
+if bashio::config.true 'install_dashboard'; then
+  bashio::log.info "Installing managed Home Assistant dashboard at ${GOSUNGROW_DASHBOARD_URL_PATH:-gosungrow-flow}."
+  dashboard_args=(
+    ha install-dashboard
+    "--asset-dir=$GOSUNGROW_ASSET_DIR"
+    "--url-path=${GOSUNGROW_DASHBOARD_URL_PATH:-gosungrow-flow}"
+    "--title=${GOSUNGROW_DASHBOARD_TITLE:-GoSungrow Flow}"
+  )
+
+  if bashio::config.true 'dashboard_force_update'; then
+    dashboard_args+=("--force-update")
+  fi
+
+  if ! GoSungrow "${dashboard_args[@]}"; then
+    bashio::log.warning 'Managed dashboard installation failed; continuing without changing Home Assistant dashboards.'
+  fi
+fi
 
 bashio::log.info "Starting GoSungrow against MQTT broker ${GOSUNGROW_MQTT_HOST}:${GOSUNGROW_MQTT_PORT}."
 exec GoSungrow mqtt run

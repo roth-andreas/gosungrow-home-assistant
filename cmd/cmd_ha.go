@@ -1,16 +1,15 @@
 package cmd
 
 import (
+	"fmt"
 	"github.com/MickMake/GoSungrow/iSolarCloud"
 	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct/output"
-	"fmt"
 	"github.com/MickMake/GoUnify/Only"
 	"github.com/MickMake/GoUnify/cmdHelp"
 	"github.com/MickMake/GoUnify/cmdPath"
 	"github.com/spf13/cobra"
 	"strings"
 )
-
 
 //goland:noinspection GoNameStartsWithPackageName
 type CmdHa CmdDefault
@@ -46,7 +45,7 @@ func (c *CmdHa) AttachCommand(cmd *cobra.Command) *cobra.Command {
 			DisableFlagParsing:    false,
 			DisableFlagsInUseLine: false,
 			PreRunE:               cmds.SunGrowArgs,
-			RunE:                  func(cmd *cobra.Command, args []string) error {
+			RunE: func(cmd *cobra.Command, args []string) error {
 				return cmd.Help()
 			},
 			Args: cobra.MinimumNArgs(1),
@@ -65,14 +64,15 @@ func (c *CmdHa) AttachCommand(cmd *cobra.Command) *cobra.Command {
 			DisableFlagsInUseLine: false,
 			PreRunE:               cmds.SunGrowArgs,
 			RunE:                  c.CmdLovelace,
-			Args: cobra.MinimumNArgs(0),
+			Args:                  cobra.MinimumNArgs(0),
 		}
 		c.SelfCmd.AddCommand(cmdHaGet)
 		cmdHaGet.Example = cmdHelp.PrintExamples(cmdHaGet, "[area.]<endpoint>")
+
+		c.SelfCmd.AddCommand(c.newInstallDashboardCommand())
 	}
 	return c.SelfCmd
 }
-
 
 func (c *CmdHa) CmdLovelace(cmd *cobra.Command, args []string) error {
 	for range Only.Once {
@@ -166,7 +166,6 @@ func (c *CmdHa) CmdLovelace(cmd *cobra.Command, args []string) error {
 
 	return c.Error
 }
-
 
 const lovelaceBasic = `views:
   - theme: Backend-selected

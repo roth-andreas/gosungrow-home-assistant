@@ -17,5 +17,13 @@ configuration:
     name: MQTT username
   mqtt_password:
     name: MQTT password
+  install_dashboard:
+    name: Install managed dashboard
+  dashboard_url_path:
+    name: Dashboard URL path
+  dashboard_title:
+    name: Dashboard title
+  dashboard_force_update:
+    name: Force dashboard update
   debug:
     name: Enable debug mode

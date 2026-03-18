@@ -1,5 +1,5 @@
 name: GoSungrow
-version: 3.0.7-haos3
+version: 3.0.7-haos4
 slug: gosungrow
 url: https://github.com/roth-andreas/gosungrow-home-assistant
 image: ghcr.io/roth-andreas/gosungrow-addon-{arch}
@@ -8,8 +8,12 @@ panel_icon: mdi:solar-power
 startup: services
 boot: auto
 init: false
+homeassistant_api: true
 services:
   - mqtt:want
+map:
+  - type: homeassistant_config
+    read_only: false
 arch:
   - aarch64
   - amd64
@@ -23,6 +27,10 @@ options:
   mqtt_port: 1883
   mqtt_user: ""
   mqtt_password: ""
+  install_dashboard: true
+  dashboard_url_path: gosungrow-flow
+  dashboard_title: GoSungrow Flow
+  dashboard_force_update: false
   debug: false
 schema:
   gosungrow_user: str
@@ -34,4 +42,8 @@ schema:
   mqtt_port: port
   mqtt_user: str
   mqtt_password: password
+  install_dashboard: bool
+  dashboard_url_path: str
+  dashboard_title: str
+  dashboard_force_update: bool
   debug: bool

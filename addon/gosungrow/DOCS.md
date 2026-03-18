@@ -31,6 +31,10 @@ This add-on now pulls a prebuilt image from GHCR instead of building from a copi
 - `mqtt_host`, `mqtt_port`, `mqtt_user`, `mqtt_password`: Only needed if you are not using the Home Assistant MQTT service.
 - `gosungrow_host`: Defaults to `https://augateway.isolarcloud.com`.
 - `gosungrow_appkey`: Defaults to the app key currently used by this project.
+- `install_dashboard`: If enabled, the add-on copies the Sungrow flow images into `/config/www/gosungrow` and creates or updates a managed Lovelace dashboard without restarting Home Assistant.
+- `dashboard_url_path`: URL path used for the managed dashboard.
+- `dashboard_title`: Sidebar title for the managed dashboard.
+- `dashboard_force_update`: Replace an existing dashboard at the same URL path even if it was edited outside GoSungrow.
 - `debug`: Enables GoSungrow debug mode.
 
 ## Image publishing
@@ -58,9 +62,11 @@ Old `.env` key to new add-on option mapping:
 ## Persistence
 
 Runtime state is stored in `/data/.GoSungrow` inside the add-on data volume.
+Managed dashboard state is stored in `/data/.GoSungrow/dashboard_state.json`.
 
 ## Notes
 
 - Do not leave the old Docker container running against the same MQTT broker at the same time.
 - If you use Home Assistant's Mosquitto add-on, keep `use_homeassistant_mqtt: true` and leave the manual MQTT fields empty.
+- The add-on uses Home Assistant's websocket API to create a storage-mode dashboard, so a Home Assistant restart is not required.
 - For local development, build the image from the repo root with `docker build -f addon/gosungrow/Dockerfile .`.

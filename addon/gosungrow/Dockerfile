@@ -44,12 +44,14 @@ LABEL \
   org.opencontainers.image.source="https://github.com/roth-andreas/gosungrow-home-assistant"
 
 ENV HOME=/data \
-    GOSUNGROW_CONFIG=/data/.GoSungrow/config.json
+    GOSUNGROW_CONFIG=/data/.GoSungrow/config.json \
+    GOSUNGROW_ASSET_DIR=/opt/gosungrow/assets
 
 COPY --from=builder /out/GoSungrow /usr/local/bin/GoSungrow
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 COPY addon/gosungrow/run.sh /run.sh
+COPY addon/gosungrow/assets /opt/gosungrow/assets
 
 RUN chmod a+x /run.sh
 
