@@ -221,9 +221,14 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 
 	if exists {
 		if err := client.UpdateDashboard(ctx, opts); err != nil {
-			return err
+			wsErr, ok := err.(*haWSCallError)
+			if !(ok && wsErr.IsCode("not_found")) {
+				return err
+			}
+			exists = false
 		}
-	} else {
+	}
+	if !exists {
 		if err := client.CreateDashboard(ctx, opts); err != nil {
 			return err
 		}
