@@ -185,7 +185,11 @@ func (c *CmdMqtt) MqttArgs(_ *cobra.Command, _ []string) error {
 		}
 
 		c.log.Info("Connecting to SunGrow...\n")
-		c.Client.SungrowDevices, c.Error = cmds.Api.SunGrow.GetDeviceList()
+		c.Error = c.retryStartupTokenInvalid("device discovery", func() error {
+			var err error
+			c.Client.SungrowDevices, err = cmds.Api.SunGrow.GetDeviceList()
+			return err
+		})
 		if c.Error != nil {
 			break
 		}
@@ -249,12 +253,18 @@ func (c *CmdMqtt) MqttArgs(_ *cobra.Command, _ []string) error {
 		}
 
 		c.log.Info("Caching Sungrow metadata...\n")
-		c.Error = c.GetEndPoints()
+		c.Error = c.retryStartupTokenInvalid("metadata discovery", func() error {
+			return c.GetEndPoints()
+		})
 		if c.Error != nil {
 			break
 		}
 
-		c.points, c.Error = cmds.Api.SunGrow.DevicePointAttrsMap("")
+		c.Error = c.retryStartupTokenInvalid("device point discovery", func() error {
+			var err error
+			c.points, err = cmds.Api.SunGrow.DevicePointAttrsMap("")
+			return err
+		})
 		if c.Error != nil {
 			break
 		}
@@ -362,26 +372,27 @@ func (c *CmdMqtt) Cron() error {
 			newDay = true
 		}
 
-		data := cmds.Api.SunGrow.NewSunGrowData()
-		data.SetCacheTimeout(c.optionFetchSchedule)
+		c.Error = c.collectAndPublish(newDay)
+		if c.Error != nil && c.isTokenInvalidError(c.Error) {
+			c.log.Info("Token expired/invalid. Re-authenticating...\n")
 
-		data.SetPsIds()
-		if data.Error != nil {
-			c.Error = data.Error
-			break
-		}
-
-		data.SetEndpoints(c.endpoints.Names()...)
-		c.Error = data.GetData()
-		if c.Error != nil {
-			break
-		}
-
-		for _, result := range data.Results {
-			c.Error = c.Update(result.EndPointName.String(), result.Response.Data, newDay)
+			c.Error = cmds.Api.ApiLogin(true)
 			if c.Error != nil {
 				break
 			}
+
+			c.Client.SungrowDevices, c.Error = cmds.Api.SunGrow.GetDeviceList()
+			if c.Error != nil {
+				break
+			}
+
+			c.Error = c.collectAndPublish(newDay)
+			if c.Error != nil {
+				break
+			}
+		}
+		if c.Error != nil {
+			break
 		}
 
 		c.Client.LastRefresh = time.Now()
@@ -391,6 +402,95 @@ func (c *CmdMqtt) Cron() error {
 		c.log.Error("%s\n", c.Error)
 	}
 	return c.Error
+}
+
+func (c *CmdMqtt) collectAndPublish(newDay bool) error {
+	data := cmds.Api.SunGrow.NewSunGrowData()
+	data.SetCacheTimeout(c.optionFetchSchedule)
+
+	data.SetPsIds()
+	if data.Error != nil {
+		return data.Error
+	}
+
+	endpoints := c.endpoints.Names()
+	psKey := c.getRealtimePsKey()
+	if psKey != "" {
+		data.SetArgs("PsKeyList:" + psKey)
+	} else {
+		filtered := make([]string, 0, len(endpoints))
+		for _, name := range endpoints {
+			if name == "queryDeviceRealTimeDataByPsKeys" {
+				continue
+			}
+			filtered = append(filtered, name)
+		}
+		endpoints = filtered
+	}
+
+	data.SetEndpoints(endpoints...)
+	if err := data.GetData(); err != nil {
+		return err
+	}
+
+	for _, result := range data.Results {
+		if err := c.Update(result.EndPointName.String(), result.Response.Data, newDay); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *CmdMqtt) getRealtimePsKey() string {
+	for _, device := range c.Client.SungrowDevices {
+		psKey := strings.TrimSpace(device.PsKey.String())
+		if psKey == "" {
+			continue
+		}
+		if device.DeviceType.Value() == 14 {
+			return psKey
+		}
+	}
+
+	for _, device := range c.Client.SungrowDevices {
+		psKey := strings.TrimSpace(device.PsKey.String())
+		if psKey != "" {
+			return psKey
+		}
+	}
+
+	return ""
+}
+
+func (c *CmdMqtt) isTokenInvalidError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "er_token_login_invalid") {
+		return true
+	}
+	if strings.Contains(msg, "need to login again") {
+		return true
+	}
+
+	return false
+}
+
+func (c *CmdMqtt) retryStartupTokenInvalid(step string, fn func() error) error {
+	err := fn()
+	if !c.isTokenInvalidError(err) {
+		return err
+	}
+
+	c.log.Info("Token expired/invalid during %s. Re-authenticating...\n", step)
+	if err = cmds.Api.ApiLogin(true); err != nil {
+		return err
+	}
+
+	return fn()
 }
 
 func (c *CmdMqtt) Update(endpoint string, data api.DataMap, newDay bool) error {
@@ -848,6 +948,13 @@ const DefaultMqttFile = `{
 		"exclude": [
 			"queryDeviceList.*.devices.*",
 			"queryDeviceList.*.device_types.*"
+		]
+	},
+	"queryDeviceRealTimeDataByPsKeys": {
+		"include": [
+			"*"
+		],
+		"exclude": [
 		]
 	},
 	"getPsList": {
