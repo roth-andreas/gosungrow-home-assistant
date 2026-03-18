@@ -4,9 +4,15 @@ Custom Home Assistant add-on for importing Sungrow iSolarCloud data into Home As
 
 This repository is based on the original [MickMake/GoSungrow](https://github.com/MickMake/GoSungrow) project and is maintained here by Andreas Roth with a clear focus on Home Assistant add-on deployment.
 
-## Read This First
+![Home Assistant Add-on](https://img.shields.io/badge/Home%20Assistant-Add--on-41BDF5?logo=homeassistant&logoColor=white)
+![MQTT Required](https://img.shields.io/badge/MQTT-Required-F97316?logo=eclipsemosquitto&logoColor=white)
+![Architectures](https://img.shields.io/badge/Arch-aarch64%20%7C%20amd64-16A34A?logo=raspberrypi&logoColor=white)
+![Maintained](https://img.shields.io/badge/Maintained%20by-Andreas%20Roth-2563EB)
 
-This add-on depends on MQTT.
+## ⚠️ Read This First
+
+> [!IMPORTANT]
+> This add-on depends on MQTT. Install and verify MQTT in Home Assistant before you install `GoSungrow`.
 
 Before you install `GoSungrow`, you must already have these working in Home Assistant:
 
@@ -22,7 +28,7 @@ For most users that means:
 
 If MQTT is not installed first, this add-on has nowhere to publish its entities.
 
-## What This Fork Is For
+## 🎯 What This Fork Is For
 
 Use this repository if you want to:
 
@@ -32,7 +38,7 @@ Use this repository if you want to:
 
 This repository is intentionally centered on the Home Assistant add-on use case. It is not meant to be the full historical upstream CLI/API manual.
 
-## Why This Fork Exists
+## ✨ Why This Fork Exists
 
 The original GoSungrow project is the technical base. This fork packages it in a way that is practical for Home Assistant users today:
 
@@ -41,7 +47,7 @@ The original GoSungrow project is the technical base. This fork packages it in a
 - current repository structure for custom add-on installation
 - active maintenance for the Home Assistant deployment path
 
-## How It Works
+## 🔄 How It Works
 
 1. The add-on logs in to Sungrow iSolarCloud.
 2. It reads your plant and device data.
@@ -50,7 +56,7 @@ The original GoSungrow project is the technical base. This fork packages it in a
 
 That means this is not a native Home Assistant integration. MQTT is the transport layer between GoSungrow and Home Assistant.
 
-## Supported Setup
+## ✅ Supported Setup
 
 This repository is aimed at:
 
@@ -64,9 +70,12 @@ You also need:
 - working network access from Home Assistant to iSolarCloud
 - MQTT working in Home Assistant before you start this add-on
 
-## Installation
+## 🚀 Installation
 
 ### Recommended Path
+
+> [!TIP]
+> If you already use the `Mosquitto broker` add-on and Home Assistant already shows the `MQTT` integration, keep `use_homeassistant_mqtt: true` and leave the manual MQTT fields empty.
 
 1. In Home Assistant, install and start `Mosquitto broker` if you do not already have an MQTT broker.
 2. Confirm `MQTT` appears under `Settings > Devices & services`.
@@ -94,7 +103,7 @@ If you want to install it from files instead of from GitHub:
 
 This add-on still pulls its container image from GHCR.
 
-## Configuration
+## ⚙️ Configuration
 
 Required:
 
@@ -121,7 +130,7 @@ Available options:
 
 Use the manual MQTT fields only if you are not using Home Assistant's built-in MQTT service wiring.
 
-## First Start: What To Expect
+## 👀 First Start: What To Expect
 
 On a healthy setup, the sequence is:
 
@@ -135,7 +144,7 @@ If entities do not appear immediately, check the add-on logs before changing con
 - MQTT was not installed first
 - iSolarCloud credentials are wrong
 
-## Common Problems
+## 🩺 Common Problems
 
 ### The add-on starts but no entities appear
 
@@ -170,7 +179,7 @@ Check:
 - the GHCR package exists
 - the GHCR package visibility allows Home Assistant to pull it
 
-## For Users Of The Old Docker Setup
+## 🔁 For Users Of The Old Docker Setup
 
 If you previously ran GoSungrow as a separate Docker container on Raspberry Pi OS:
 
@@ -189,7 +198,7 @@ Environment variable mapping:
 - `GOSUNGROW_MQTT_USER` -> `mqtt_user`
 - `GOSUNGROW_MQTT_PASSWORD` -> `mqtt_password`
 
-## For Maintainers And Forks
+## 🧰 For Maintainers And Forks
 
 Important files:
 
@@ -212,7 +221,7 @@ If you fork this repository, update:
 
 The workflow already publishes to `ghcr.io/${github.repository_owner}/...`.
 
-## Development
+## 🛠️ Development
 
 Local checks:
 
@@ -221,14 +230,14 @@ go build .
 docker build -f addon/gosungrow/Dockerfile .
 ```
 
-## Security
+## 🔐 Security
 
 - do not commit iSolarCloud credentials
 - do not commit MQTT passwords
 - do not commit SSH keys
 - keep secrets in Home Assistant add-on configuration or GitHub secrets
 
-## Credit
+## 🙏 Credit
 
 - Original GoSungrow codebase and reverse engineering: MickMake
 - Home Assistant add-on packaging and maintenance in this repository: Andreas Roth
