@@ -197,9 +197,10 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	currentConfig, err := client.GetConfig(ctx, opts.DashboardURLPath)
 	if err != nil {
 		wsErr, ok := err.(*haWSCallError)
-		if !(exists && ok && wsErr.IsCode("config_not_found")) {
+		if !(ok && wsErr.IsCode("config_not_found")) {
 			return err
 		}
+		currentConfig = nil
 	}
 
 	currentHash := ""
