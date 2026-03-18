@@ -388,23 +388,55 @@ func copyDashboardAssets(assetDir string) error {
 		return fmt.Errorf("no dashboard images found in %q", assetDir)
 	}
 
-	destDir := filepath.Join("/homeassistant", "www", dashboardImageDirectory)
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return err
+	destRoots := existingDashboardAssetRoots()
+	if len(destRoots) == 0 {
+		return fmt.Errorf("no Home Assistant config root available for dashboard assets")
 	}
 
-	for _, src := range files {
-		data, err := os.ReadFile(src)
-		if err != nil {
+	for _, root := range destRoots {
+		destDir := filepath.Join(root, "www", dashboardImageDirectory)
+		if err := os.MkdirAll(destDir, 0755); err != nil {
 			return err
 		}
-		destPath := filepath.Join(destDir, filepath.Base(src))
-		if err := os.WriteFile(destPath, data, 0644); err != nil {
-			return err
+
+		for _, src := range files {
+			data, err := os.ReadFile(src)
+			if err != nil {
+				return err
+			}
+			destPath := filepath.Join(destDir, filepath.Base(src))
+			if err := os.WriteFile(destPath, data, 0644); err != nil {
+				return err
+			}
 		}
 	}
 
 	return nil
+}
+
+func existingDashboardAssetRoots() []string {
+	candidates := []string{
+		strings.TrimSpace(os.Getenv("GOSUNGROW_HOMEASSISTANT_CONFIG_DIR")),
+		strings.TrimSpace(os.Getenv("HOMEASSISTANT_CONFIG_DIR")),
+		"/config",
+		"/homeassistant",
+	}
+
+	seen := make(map[string]bool)
+	roots := make([]string, 0, len(candidates))
+	for _, root := range candidates {
+		if root == "" || seen[root] {
+			continue
+		}
+		info, err := os.Stat(root)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		seen[root] = true
+		roots = append(roots, root)
+	}
+
+	return roots
 }
 
 func targetPSKeys(targets []haDashboardTarget) []string {

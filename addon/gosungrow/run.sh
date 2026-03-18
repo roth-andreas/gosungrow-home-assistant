@@ -50,6 +50,7 @@ export GOSUNGROW_MQTT_USER
 export GOSUNGROW_MQTT_PASSWORD
 export GOSUNGROW_DEBUG="$(bashio::config 'debug')"
 export GOSUNGROW_ASSET_DIR="${GOSUNGROW_ASSET_DIR:-/opt/gosungrow/assets}"
+export GOSUNGROW_HOMEASSISTANT_CONFIG_DIR="${GOSUNGROW_HOMEASSISTANT_CONFIG_DIR:-/config}"
 
 mkdir -p "$(dirname "$GOSUNGROW_CONFIG")"
 
@@ -81,4 +82,31 @@ if bashio::config.true 'install_dashboard'; then
 fi
 
 bashio::log.info "Starting GoSungrow against MQTT broker ${GOSUNGROW_MQTT_HOST}:${GOSUNGROW_MQTT_PORT}."
-exec GoSungrow mqtt run
+
+run_mqtt_with_login_retry() {
+  local log_file
+  local rc
+
+  log_file="$(mktemp)"
+  set +e
+  GoSungrow mqtt run 2>&1 | tee "$log_file"
+  rc=${PIPESTATUS[0]}
+  set -e
+
+  if [ "$rc" -eq 0 ]; then
+    rm -f "$log_file"
+    return 0
+  fi
+
+  if grep -qiE 'er_token_login_invalid|need to login again' "$log_file"; then
+    bashio::log.warning 'GoSungrow session expired while starting or running. Refreshing login and retrying once.'
+    GoSungrow api login >/dev/null
+    rm -f "$log_file"
+    exec GoSungrow mqtt run
+  fi
+
+  rm -f "$log_file"
+  return "$rc"
+}
+
+run_mqtt_with_login_retry
