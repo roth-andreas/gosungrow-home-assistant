@@ -73,6 +73,23 @@ The original GoSungrow project is the technical base. This fork packages it in a
 
 That means this is not a native Home Assistant integration. MQTT is the transport layer between GoSungrow and Home Assistant.
 
+## 📊 Visualizations
+
+This repository includes two ways to build Sungrow dashboards in Home Assistant:
+
+- a modern setup based on Home Assistant's official energy cards
+- a custom Sungrow flow card using the included image assets
+
+Start here:
+
+- `docs/HomeAssistantVisualizations.md`
+- `docs/examples/home-assistant-energy-cards.yaml`
+- `docs/examples/home-assistant-sungrow-flow.yaml`
+
+Example dashboard from the original GoSungrow Lovelace setup:
+
+![Sungrow Home Assistant dashboard example](docs/SunGrowOnHASSIO1.png)
+
 ## ✅ Supported Setup
 
 This repository is aimed at:
