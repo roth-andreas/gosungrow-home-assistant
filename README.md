@@ -82,7 +82,6 @@ This repository includes two ways to build Sungrow dashboards in Home Assistant:
 
 Start here:
 
-- `docs/HomeAssistantVisualizations.md`
 - `docs/examples/home-assistant-energy-cards.yaml`
 - `docs/examples/home-assistant-sungrow-flow.yaml`
 
