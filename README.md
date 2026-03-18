@@ -9,6 +9,23 @@ This repository is based on the original [MickMake/GoSungrow](https://github.com
 ![Architectures](https://img.shields.io/badge/Arch-aarch64%20%7C%20amd64-16A34A?logo=raspberrypi&logoColor=white)
 ![Maintained](https://img.shields.io/badge/Maintained%20by-Andreas%20Roth-2563EB)
 
+## ⚡ Quick Installation
+
+If you want the shortest path, do this:
+
+1. Install and start the `Mosquitto broker` add-on in Home Assistant.
+2. Confirm `MQTT` appears under `Settings > Devices & services`.
+3. Open the Add-on Store and add this repository as a custom repository:
+   - `https://github.com/roth-andreas/gosungrow-home-assistant`
+4. Install `GoSungrow`.
+5. Enter:
+   - `gosungrow_user`
+   - `gosungrow_password`
+6. Leave `use_homeassistant_mqtt: true`.
+7. Start the add-on.
+
+Detailed setup, troubleshooting, and maintainer notes are below.
+
 ## ⚠️ Read This First
 
 > [!IMPORTANT]
