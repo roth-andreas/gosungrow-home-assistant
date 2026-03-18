@@ -58,6 +58,7 @@ type haDashboardState struct {
 }
 
 type haDashboardMetadata struct {
+	ID      string `json:"id"`
 	URLPath string `json:"url_path"`
 	Title   string `json:"title"`
 }
@@ -186,12 +187,17 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		return err
 	}
 
-	exists := false
+	var existing *haDashboardMetadata
 	for _, entry := range metadata {
 		if entry.URLPath == opts.DashboardURLPath {
-			exists = true
+			entryCopy := entry
+			existing = &entryCopy
 			break
 		}
+	}
+	exists := existing != nil
+	if exists && strings.TrimSpace(existing.ID) == "" {
+		return fmt.Errorf("dashboard URL path %q is already in use by a non-storage dashboard; choose a different dashboard_url_path or remove the existing dashboard", opts.DashboardURLPath)
 	}
 
 	currentConfig, err := client.GetConfig(ctx, opts.DashboardURLPath)
@@ -220,7 +226,7 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	}
 
 	if exists {
-		if err := client.UpdateDashboard(ctx, opts); err != nil {
+		if err := client.UpdateDashboard(ctx, existing.ID, opts); err != nil {
 			wsErr, ok := err.(*haWSCallError)
 			if !(ok && wsErr.IsCode("not_found")) {
 				return err
@@ -698,10 +704,10 @@ func (c *haWSClient) CreateDashboard(_ context.Context, opts haDashboardInstallO
 	}, nil)
 }
 
-func (c *haWSClient) UpdateDashboard(_ context.Context, opts haDashboardInstallOptions) error {
+func (c *haWSClient) UpdateDashboard(_ context.Context, dashboardID string, opts haDashboardInstallOptions) error {
 	return c.call(map[string]any{
 		"type":            "lovelace/dashboards/update",
-		"dashboard_id":    opts.DashboardURLPath,
+		"dashboard_id":    dashboardID,
 		"title":           opts.DashboardTitle,
 		"icon":            opts.DashboardIcon,
 		"show_in_sidebar": opts.ShowInSidebar,
