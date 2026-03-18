@@ -1,559 +1,225 @@
-# GoSungrow - Home Assistant OS Add-on
+# GoSungrow Home Assistant Add-on
 
-This repository is based on the original [MickMake/GoSungrow](https://github.com/MickMake/GoSungrow) project and is now maintained by Andreas Roth.
+GoSungrow publishes Sungrow iSolarCloud data into Home Assistant over MQTT discovery.
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/MickMake/GoSungrow.svg)](https://pkg.go.dev/github.com/MickMake/GoSungrow)
+This repository packages that functionality as a custom Home Assistant add-on. It is based on the original [MickMake/GoSungrow](https://github.com/MickMake/GoSungrow) project and is now maintained here by Andreas Roth.
 
-## Current Purpose Of This Repo
+## What This Repository Is
 
-This repository is primarily used to run GoSungrow as a custom Home Assistant OS add-on.
+This repository is for people who want to run GoSungrow on Home Assistant without maintaining a separate Docker deployment on another Linux host.
 
-- Add-on config: `addon/gosungrow/config.yaml`
-- Add-on runtime: `addon/gosungrow/run.sh`
-- Add-on image build: `addon/gosungrow/Dockerfile`
-- CI/CD publishing: `.github/workflows/homeassistant-addon.yml`
+It provides:
 
-The old Raspberry Pi Docker sidecar deployment still exists in `deploy/homeassistant/README.md`, but it is no longer the main procedure in this repository.
+- a Home Assistant add-on definition
+- a container image build for the add-on
+- GitHub Actions to build and publish images to GHCR
+- a repository layout that Home Assistant can consume as a custom add-on source
 
-## Current Procedure
+It does not try to be the general upstream documentation for every historical GoSungrow CLI workflow.
 
-1. Push this repository to GitHub.
-2. Let GitHub Actions build and publish:
-   - `ghcr.io/roth-andreas/gosungrow-addon-aarch64`
-   - `ghcr.io/roth-andreas/gosungrow-addon-amd64`
-3. If Home Assistant cannot pull the image, make the GHCR package public in GitHub package settings.
-4. In Home Assistant, add the custom add-on repository:
+## What You Get
+
+- Sungrow data imported from iSolarCloud
+- MQTT discovery entities in Home Assistant
+- add-on packaging for `aarch64` and `amd64`
+- a GitHub-based publish flow for your own fork
+
+## How It Works
+
+1. The add-on starts the GoSungrow binary inside a Home Assistant add-on container.
+2. GoSungrow logs in to the Sungrow iSolarCloud API with your account.
+3. The add-on publishes entities to MQTT.
+4. Home Assistant discovers those entities through MQTT discovery.
+
+The add-on can either:
+
+- use Home Assistant's MQTT service automatically, or
+- publish to a manually configured MQTT broker
+
+## Requirements
+
+- Home Assistant OS or another Home Assistant installation that supports add-ons
+- an MQTT broker
+- the MQTT integration enabled in Home Assistant
+- an iSolarCloud account
+
+Supported add-on architectures in this repository:
+
+- `aarch64`
+- `amd64`
+
+## Quick Start
+
+### Option 1: Install from this GitHub repository
+
+1. In Home Assistant, open the Add-on Store.
+2. Add this repository as a custom repository:
    - `https://github.com/roth-andreas/gosungrow-home-assistant`
-5. Install the `GoSungrow` add-on.
-6. Configure:
-   - `gosungrow_user`
-   - `gosungrow_password`
-7. If you use the Mosquitto add-on, keep `use_homeassistant_mqtt: true`.
+3. Refresh the Add-on Store.
+4. Install `GoSungrow`.
+5. Open the add-on configuration.
+6. Set `gosungrow_user` and `gosungrow_password`.
+7. If you already use Home Assistant MQTT or Mosquitto, keep `use_homeassistant_mqtt: true`.
 8. Start the add-on.
-9. Devices and entities should appear through MQTT discovery.
 
-## Maintenance Note
+### Option 2: Install locally on a Home Assistant host
 
-- Original codebase and API reverse engineering: MickMake
-- Home Assistant OS add-on packaging and maintenance in this repository: Andreas Roth
+1. Copy `addon/gosungrow` to `/addons/gosungrow`.
+2. Refresh the Add-on Store.
+3. Install `GoSungrow`.
+4. Configure credentials and MQTT settings.
+5. Start the add-on.
 
-## Legacy CLI / API Documentation
+Important:
 
-The rest of this README is largely the original GoSungrow CLI and API documentation. It is kept here as a technical reference for direct binary usage and for understanding the underlying API behavior.
+- This add-on pulls a prebuilt image from GHCR.
+- If image pulls fail, check that the package is published and public.
 
-![image](https://github.com/MickMake/GoSungrow/assets/17118367/c015b207-9aed-4aab-b521-57408bba85f5)
+## Configuration
 
+Required options:
 
-## What is it?
+- `gosungrow_user`
+- `gosungrow_password`
 
-This GoLang package has a complete implementation of the iSolarCloud API.
-There's been no published specs on this, so I've had to figure it all out based on the [Android app](https://play.google.com/store/apps/details?id=com.isolarcloud.manager), using javascript IDEs and various other means.
+Available options:
 
-Note:
-- [iSolarCloud](https://isolarcloud.com) has no interest in developing a public API.
-- Their "API" implementation is so broken with security and coding issues, I'm surprised it hasn't been exploited yet.
-- iSolarCloud reached out to me, (based off this GitHub page), to see what can be done about these security issues. So that's a very good thing.
-- As of 1st August 2022 I discovered a number of security holes. At which point I notified AusCert, the vendor and a number of other security companies - hopefully they will get patched because my tool makes it very easy.
+- `gosungrow_user`: iSolarCloud username
+- `gosungrow_password`: iSolarCloud password
+- `gosungrow_host`: API host, default `https://augateway.isolarcloud.com`
+- `gosungrow_appkey`: iSolarCloud app key used by this project
+- `use_homeassistant_mqtt`: use Home Assistant's MQTT service wiring
+- `mqtt_host`: manual MQTT broker host
+- `mqtt_port`: manual MQTT broker port
+- `mqtt_user`: manual MQTT username
+- `mqtt_password`: manual MQTT password
+- `debug`: enable verbose GoSungrow logging
 
-![alt text](https://github.com/MickMake/GoSungrow/blob/master/docs/iSolarCloudLogin.png?raw=true)
+Recommended setup for most users:
 
-![alt text](https://github.com/MickMake/GoSungrow/blob/master/docs/iSolarCloud.png?raw=true)
+- `use_homeassistant_mqtt: true`
+- leave `mqtt_host`, `mqtt_port`, `mqtt_user`, and `mqtt_password` at defaults unless you intentionally use an external broker
 
-I'm currently using it in my [HomeAssistant](https://www.home-assistant.io/) instance.
+## First Startup Expectations
 
-![alt text](https://github.com/MickMake/GoSungrow/blob/master/docs/SunGrowOnHASSIO1.png?raw=true)
+After the add-on starts:
 
-![alt text](https://github.com/MickMake/GoSungrow/blob/master/docs/SunGrowOnHASSIO2.png?raw=true)
+1. it logs in to iSolarCloud
+2. it connects to MQTT
+3. it begins publishing discovery topics and entity data
 
-![alt text](https://github.com/MickMake/GoSungrow/blob/master/docs/SunGrowOnHASSIO3.png?raw=true)
+If entities do not appear immediately, give Home Assistant a short time to process MQTT discovery and then check the add-on logs.
 
-![alt text](https://github.com/MickMake/GoSungrow/blob/master/docs/SunGrowOnHASSIO4.png?raw=true)
+## Repository Layout
 
-![alt text](https://github.com/MickMake/GoSungrow/blob/master/docs/SunGrowOnHASSIO5.png?raw=true)
+Key files:
 
+- `addon/gosungrow/config.yaml`: Home Assistant add-on metadata and options
+- `addon/gosungrow/Dockerfile`: add-on image build
+- `addon/gosungrow/run.sh`: runtime entrypoint
+- `.github/workflows/homeassistant-addon.yml`: validation and image publishing workflow
+- `repository.yaml`: custom add-on repository metadata
 
-![alt text](https://github.com/MickMake/GoSungrow/blob/master/docs/Grafana1.png?raw=true)
+## Publishing and Releases
 
-![alt text](https://github.com/MickMake/GoSungrow/blob/master/docs/Grafana2.png?raw=true)
+This repository is designed to publish add-on images through GitHub Actions.
 
-![alt text](https://github.com/MickMake/GoSungrow/blob/master/docs/Grafana3.png?raw=true)
+Workflow:
 
-![alt text](https://github.com/MickMake/GoSungrow/blob/master/docs/Grafana4.png?raw=true)
+- `.github/workflows/homeassistant-addon.yml`
 
+Published images:
 
-## What state is it in?
+- `ghcr.io/roth-andreas/gosungrow-addon-aarch64`
+- `ghcr.io/roth-andreas/gosungrow-addon-amd64`
 
-It was originally intended for my needs, (seeing all data in [HomeAssistant](https://www.home-assistant.io/)), but there seems to be a big interest in this tool.
-So I spent some time working on the v3.0.0 release, adding features.
+The workflow:
 
-I have now mapped out all the API calls. All the read-only endpoints are mapped out and fully tested. The write-only calls haven't been tested fully.
-It's tricky as their "API" changes regularly; however I've accommodated for quick changes in the v3.0.0 release.
+1. validates add-on and app version alignment
+2. runs `go build .`
+3. performs an add-on Docker smoke build
+4. publishes images to GHCR
 
-Most endpoints contain repeated data. The main endpoints that house most of the data I've provided easy commands to access.
-Of course, all endpoints are accessible. So go for your life.
+If you fork this repository, update these references:
 
-```
-+-------------------+-------------------+--------------------+------------+
-|       AREAS       | ENABLED ENDPOINTS | DISABLED ENDPOINTS | COVERAGE % |
-+-------------------+-------------------+--------------------+------------+
-| AliSmsService     |                 1 |                  0 |  100 %     |
-| AppService        |               574 |                  0 |  100 %     |
-| MttvScreenService |                30 |                  0 |  100 %     |
-| NullArea          |                 1 |                  0 |  100 %     |
-| PowerPointService |                 1 |                  0 |  100 %     |
-| WebAppService     |               190 |                  0 |  100 %     |
-| WebIscmAppService |               184 |                  0 |  100 %     |
-| ----------------  | ----------------  | -----------------  | ---------  |
-| Total             |               981 |                  0 |  100 %     |
-+-------------------+-------------------+--------------------+------------+
-```
+- `addon/gosungrow/config.yaml`
+- `repository.yaml`
+- `addon/gosungrow/Dockerfile`
 
+The workflow already publishes to `ghcr.io/${github.repository_owner}/...`, so image publishing follows the repository owner automatically.
 
-## What does it do?
+## Migration Notes
 
-This GoLang package does several things:
-1. Provides ready access to all API calls via a simple get/put framework.
-2. MQTT client to push to [HomeAssistant](https://www.home-assistant.io/).
-3. Graphing any data points, over daily, monthly and yearly with 5 minute to 1 hour granularity.
-4. Output data to various formats - tables, JSON, CSV, raw, Graphing, XML, XLSX, Markdown, SQL, HTML and GoLang structures.
+If you previously ran GoSungrow as a separate Docker container on Raspberry Pi OS:
 
+- do not run the old container and this add-on against the same MQTT broker at the same time
+- move your old environment values into add-on options
+- keep MQTT topic ownership with only one active publisher
 
-## What is the roadmap?
+Old environment variable to new option mapping:
 
-I've implemented most of the features I've wanted to, except for... 
-1. IFTTT support.
+- `GOSUNGROW_USER` -> `gosungrow_user`
+- `GOSUNGROW_PASSWORD` -> `gosungrow_password`
+- `GOSUNGROW_HOST` -> `gosungrow_host`
+- `GOSUNGROW_APPKEY` -> `gosungrow_appkey`
+- `GOSUNGROW_MQTT_HOST` -> `mqtt_host`
+- `GOSUNGROW_MQTT_PORT` -> `mqtt_port`
+- `GOSUNGROW_MQTT_USER` -> `mqtt_user`
+- `GOSUNGROW_MQTT_PASSWORD` -> `mqtt_password`
 
-The most recent version has changed the code-base substantially, making it a lot more robust to changes in the API JSON schema.
+## Troubleshooting
 
+### Add-on starts but no entities appear
 
-## Using GoSungrow:
+Check:
 
-### Config and login.
+- Home Assistant MQTT integration is enabled
+- the broker is reachable
+- the add-on logs show a successful MQTT connection
+- your iSolarCloud credentials are correct
 
-Add your username and password to the config. (See [the website](https://portalau.isolarcloud.com/))
-Once done, it's a case of set and forget. GoSungrow will handle the re-authentication for you.
-```
-% ./bin/GoSungrow config write --user=USERNAME --password=PASSWORD
-Using config file '/Users/mick/.GoSungrow/config.json'
-```
+### Home Assistant cannot install or pull the image
 
-Login to SunGrow website.
-```
-% ./bin/GoSungrow api login
-Email:	your@email.address
-Create Date:	Tue Nov 16 23:30:12 CST 2021
-Login Last Date:	2022-03-10 17:14:49
-Login Last IP:
-Login State:	1
-User Account:	mickmake
-User Id:	276937
-User Name:	MickMake
-Is Online:	0
-Token:	424242_42424242424242424242424242424242
-Token File:	/Users/mick/.GoSungrow/AppService_login.json
-```
+Check:
 
+- the GitHub Actions workflow completed successfully
+- the GHCR package exists
+- the GHCR package visibility allows pulls
 
-### High level reporting examples.
-For more examples see the EXAMPLES.md and examples.txt files.
-[EXAMPLES.md](https://github.com/MickMake/GoSungrow/blob/master/EXAMPLES.md)
-[examples.txt](https://github.com/MickMake/GoSungrow/blob/master/examples.txt)
+### Add-on cannot connect to MQTT
 
+Check:
 
-Show all devices on your iSolarCloud account.
-```
-% ./bin/GoSungrow show ps list
-┏━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┓
-┃ Ps Key           ┃ Ps Id   ┃ Device Type ┃ Device Code ┃ Channel Id ┃ Serial #    ┃ Factory Name ┃ Device Model ┃
-┣━━━━━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━┫
-┃ 1129147_14_1_1   │ 1129147 │ 14          │ 1           │ 1          │ B2192301528 │ SUNGROW      │ SH10RT       ┃
-┃ 1129147_22_247_1 │ 1129147 │ 22          │ 247         │ 1          │ B2192301528 │ SUNGROW      │ WiNet-S      ┃
-┃ 1129147_43_2_1   │ 1129147 │ 43          │ 2           │ 1          │ B2192301528 │ SUNGROW      │ SBR096       ┃
-┃ 1171348_14_1_2   │ 1171348 │ 14          │ 1           │ 2          │ B2281302388 │ SUNGROW      │ SH10RT-V112  ┃
-┃ 1171348_22_247_2 │ 1171348 │ 22          │ 247         │ 2          │ B2281302388 │ SUNGROW      │ WiNet-S      ┃
-┃ 1171348_43_2_2   │ 1171348 │ 43          │ 2           │ 2          │ B2281302388 │ SUNGROW      │ SBR096       ┃
-┗━━━━━━━━━━━━━━━━━━┷━━━━━━━━━┷━━━━━━━━━━━━━┷━━━━━━━━━━━━━┷━━━━━━━━━━━━┷━━━━━━━━━━━━━┷━━━━━━━━━━━━━━┷━━━━━━━━━━━━━━┛
-```
+- `use_homeassistant_mqtt` matches your setup
+- manual broker settings are correct if you are not using the Home Assistant MQTT service
 
+### Add-on cannot connect to iSolarCloud
 
-Show the device tree on your iSolarCloud account.
-```
-% ./bin/GoSungrow show ps tree
-+	PsId:1129147	PsName:MickMake	PsKey:1129147_11_0_0	DeviceName:MickMake	Uuid:844763
-+--	PsId:1129147	PsName:MickMake	PsKey:1129147_14_1_1	DeviceName:SH10RT	Uuid:844775
-+----	PsId:1129147	PsName:MickMake	PsKey:1129147_43_2_1	DeviceName:Battery_001_002	Uuid:1155386
-+--	PsId:1129147	PsName:MickMake	PsKey:1129147_22_247_1	DeviceName:WiNet-S	Uuid:844774
-+	PsId:1171348	PsName:MickMake42	PsKey:1171348_11_0_0	DeviceName:MickMake42	Uuid:1179860
-+--	PsId:1171348	PsName:MickMake42	PsKey:1171348_22_247_2	DeviceName:Communication Module 02_247	Uuid:1179877
-+--	PsId:1171348	PsName:MickMake42	PsKey:1171348_14_1_2	DeviceName:Energy Storage System 02_01	Uuid:1179878
-+----	PsId:1171348	PsName:MickMake42	PsKey:1171348_43_2_2	DeviceName:Battery 02_02	Uuid:1179879
+Check:
+
+- username and password
+- network connectivity from Home Assistant
+- whether the configured API host is still valid for your account region
+
+## Development
+
+Local validation:
+
+```bash
+go build .
+docker build -f addon/gosungrow/Dockerfile .
 ```
 
+This repository uses an image-based add-on design. The add-on does not carry a copied application snapshot inside the add-on folder.
 
-List all known data points for all PS on your account.
-```
-% ./bin/GoSungrow show ps points 
-# Available points:
-┏━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Id       ┃ Name                                                     ┃ Unit   ┃ Unit Type ┃ Ps Id   ┃ Device Type ┃ Device Name                 ┃
-┣━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
-┃ p83001   │ Inverter AC Power Normalization                          │ kW/kWp │ 43        │ 1129147 │ 11          │ MickMake                    ┃
-┃ p83002   │ Inverter AC Power                                        │ kW     │ 3         │ 1129147 │ 11          │ MickMake                    ┃
-┃ p83004   │ Inverter Total Yield                                     │ kWh    │ 7         │ 1129147 │ 11          │ MickMake                    ┃
-┃ p83005   │ Daily Equivalent Hours of Meter                          │ h      │ 15        │ 1129147 │ 11          │ MickMake                    ┃
-┃ p83006   │ Meter Daily Yield                                        │ kWh    │ 7         │ 1129147 │ 11          │ MickMake                    ┃
-┃ p83007   │ Meter PR                                                 │ %      │ 10        │ 1129147 │ 11          │ MickMake                    ┃
-┃ p83008   │ Daily Equivalent Hours of Inverter                       │ h      │ 15        │ 1129147 │ 11          │ MickMake                    ┃
-┃ p83009   │ Daily Yield by Inverter                                  │ kWh    │ 7         │ 1129147 │ 11          │ MickMake                    ┃
-┃ p83010   │ Inverter PR                                              │ %      │ 10        │ 1129147 │ 11          │ MickMake                    ┃
-┃ p83011   │ Meter E-daily Consumption                                │ kWh    │ 7         │ 1129147 │ 11          │ MickMake                    ┃
+## Security
 
-...
+- Do not commit iSolarCloud credentials.
+- Do not commit MQTT passwords.
+- Do not commit SSH keys.
+- Keep secrets in Home Assistant add-on configuration or GitHub secrets only.
 
-┃ p58630   │ Min. Cell Voltage of Module 5                            │ mV     │ 31        │ 1171348 │ 43          │ Battery 02_02               ┃
-┃ p58631   │ Min. Cell Voltage of Module 6                            │ mV     │ 31        │ 1171348 │ 43          │ Battery 02_02               ┃
-┃ p58632   │ Min. Cell Voltage of Module 7                            │ mV     │ 31        │ 1171348 │ 43          │ Battery 02_02               ┃
-┃ p58633   │ Min. Cell Voltage of Module 8                            │ mV     │ 31        │ 1171348 │ 43          │ Battery 02_02               ┃
-┃ p58635   │ DC Contactor State                                       │        │ 999       │ 1171348 │ 43          │ Battery 02_02               ┃
-┃ p58636   │ Fault Module ID                                          │        │ 999       │ 1171348 │ 43          │ Battery 02_02               ┃
-┗━━━━━━━━━━┷━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┷━━━━━━━━┷━━━━━━━━━━━┷━━━━━━━━━┷━━━━━━━━━━━━━┷━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-```
+## Credit
 
-Produce data table of device_type 22 on ps_id 1171348 between 20221001 and 20221002 at 60 minute increments.
-```
-% ./bin/GoSungrow show ps data 1171348 22 20221001 20221002 60
-
-# DataTable AppService.queryMutiPointDataList.ResultData.Data - PsKeys:1171348_22_247_2,1171348_22_247_2,1171348_22_247_2,1171348_22_247_2,1171348_22_247_2,1171348_22_247_2,1171348_22_247_2,1171348_22_247_2 Points:p23001,p23014,p23019,p23020,p23021,p23022,p23023,p23024 PsId:1171348 StartTimeStamp:20221001000000 EndTimeStamp:20221002000000 MinuteInterval:60 
-┏━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Timestamp              ┃ Ps Key              ┃ 1171348_22_247_2.p23014    ┃
-┣━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
-┃ 2022-10-01 00:00:00    ┃ 1171348_22_247_2    ┃ --                         ┃
-┃ 2022-10-01 01:00:00    ┃ 1171348_22_247_2    ┃ --                         ┃
-┃ 2022-10-01 02:00:00    ┃ 1171348_22_247_2    ┃ --                         ┃
-┃ 2022-10-01 03:00:00    ┃ 1171348_22_247_2    ┃ --                         ┃
-┃ 2022-10-01 04:00:00    ┃ 1171348_22_247_2    ┃ --                         ┃
-┃ 2022-10-01 05:00:00    ┃ 1171348_22_247_2    ┃ --                         ┃
-┃ 2022-10-01 06:00:00    ┃ 1171348_22_247_2    ┃ --                         ┃
-┃ 2022-10-01 07:00:00    ┃ 1171348_22_247_2    ┃ --                         ┃
-┃ 2022-10-01 08:00:00    ┃ 1171348_22_247_2    ┃ --                         ┃
-┃ 2022-10-01 09:00:00    ┃ 1171348_22_247_2    ┃ --                         ┃
-┃ 2022-10-01 10:00:00    ┃ 1171348_22_247_2    ┃ --                         ┃
-┃ 2022-10-01 11:00:00    ┃ 1171348_22_247_2    ┃ --                         ┃
-┃ 2022-10-01 12:00:00    ┃ 1171348_22_247_2    ┃ --                         ┃
-┃ 2022-10-01 13:00:00    ┃ 1171348_22_247_2    ┃ --                         ┃
-┃ 2022-10-01 14:00:00    ┃ 1171348_22_247_2    ┃ -68                        ┃
-┃ 2022-10-01 15:00:00    ┃ 1171348_22_247_2    ┃ -82                        ┃
-┃ 2022-10-01 16:00:00    ┃ 1171348_22_247_2    ┃ -81                        ┃
-┃ 2022-10-01 17:00:00    ┃ 1171348_22_247_2    ┃ -81                        ┃
-┃ 2022-10-01 18:00:00    ┃ 1171348_22_247_2    ┃ -86                        ┃
-┃ 2022-10-01 19:00:00    ┃ 1171348_22_247_2    ┃ -82                        ┃
-┃ 2022-10-01 20:00:00    ┃ 1171348_22_247_2    ┃ -90                        ┃
-┃ 2022-10-01 21:00:00    ┃ 1171348_22_247_2    ┃ -89                        ┃
-┃ 2022-10-01 22:00:00    ┃ 1171348_22_247_2    ┃ -88                        ┃
-┃ 2022-10-01 23:00:00    ┃ 1171348_22_247_2    ┃ -86                        ┃
-┃ 2022-10-02 00:00:00    ┃ 1171348_22_247_2    ┃ -83                        ┃
-┗━━━━━━━━━━━━━━━━━━━━━━━━┷━━━━━━━━━━━━━━━━━━━━━┷━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-```
-
-
-Do the same, but with a graph!
-```
-% ./bin/GoSungrow show ps graph 1171348 22 20221001 20221002 60
-Found ps_keys: 1129147_14_1_1,1129147_22_247_1,1129147_43_2_1,1171348_14_1_2,1171348_22_247_2,1171348_43_2_2
-Finding points to graph...
-Table Headers: Timestamp, Ps Key, 1171348_22_247_2.p23014
-Table rows: 25
-Found 1 points.
-Creating graph file 'AppService.queryMutiPointDataList.ResultData.Data-1171348-1171348_22_247_2.p23014.png'
-```
-![alt text](https://github.com/MickMake/GoSungrow/blob/master/docs/AppService.queryMutiPointDataList.ResultData.Data-1171348-1171348_22_247_2.p23014.png?raw=true)
-
-
-Get all defined report templates.
-```
-% ./bin/GoSungrow show template list
-
-# DataTable AppService.getTemplateList.ResultData.PageList - DataTable AppService.getTemplateList.ResultData.PageList
-┏━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Template Id    ┃ Template Name    ┃ Update Time            ┃
-┣━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━┫
-┃ 7981           ┃ Power            ┃ 2022-02-09 10:03:40    ┃
-┃ 8031           ┃ kWh              ┃ 2022-02-15 07:57:36    ┃
-┃ 8035           ┃ Hours            ┃ 2022-02-15 08:55:56    ┃
-┃ 8033           ┃ kW               ┃ 2022-02-15 09:01:19    ┃
-┃ 8037           ┃ MW               ┃ 2022-02-15 09:03:22    ┃
-┃ 8038           ┃ MWh              ┃ 2022-02-15 09:09:22    ┃
-┃ 8034           ┃ Percent          ┃ 2022-02-15 09:30:41    ┃
-┃ 8040           ┃ A                ┃ 2022-02-15 09:30:56    ┃
-┃ 8039           ┃ v                ┃ 2022-02-15 09:31:10    ┃
-┃ 8036           ┃ C                ┃ 2022-02-15 09:31:35    ┃
-┃ 8041           ┃ extras           ┃ 2022-02-15 09:40:04    ┃
-┃ 8042           ┃ Critical         ┃ 2022-02-15 13:00:28    ┃
-┃ 8092           ┃ ALL1             ┃ 2022-03-09 17:18:21    ┃
-┃ 8093           ┃ ALL2             ┃ 2022-03-09 17:20:42    ┃
-┃ 8094           ┃ ALL3             ┃ 2022-03-09 17:36:20    ┃
-┃ 8095           ┃ ALL4             ┃ 2022-03-09 17:37:56    ┃
-┃ 8652           ┃ NewAll1          ┃ 2022-10-04 12:27:00    ┃
-┃ 8653           ┃ NewAll2          ┃ 2022-10-04 12:28:58    ┃
-┃ 8654           ┃ NewAll03         ┃ 2022-10-04 12:31:39    ┃
-┃ 8655           ┃ NewAll04         ┃ 2022-10-04 12:34:51    ┃
-┃ 8656           ┃ NewAll05         ┃ 2022-10-04 12:37:34    ┃
-┃ 8657           ┃ NewAll06         ┃ 2022-10-04 12:38:27    ┃
-┗━━━━━━━━━━━━━━━━┷━━━━━━━━━━━━━━━━━━┷━━━━━━━━━━━━━━━━━━━━━━━━┛
-```
-
-
-Show all data points used in a report template.
-```
-% ./bin/GoSungrow show template points 8040
-
-# DataTable WebAppService.queryUserCurveTemplateData.8040.ResultData.PointsData.Devices.[1129147_14_1_1].Points - TemplateId:8040 
-┏━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━┓
-┃ Point Id    ┃ Point Name                        ┃ Ps Id      ┃ Ps Key            ┃ Color      ┃ Detail Id    ┃ Ps Name     ┃ Statistics    ┃ Style    ┃ Unit    ┃ Data List    ┃
-┣━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━┫
-┃ p13002      ┃ MPPT1 Current                     ┃ 1129147    ┃ 1129147_14_1_1    ┃ #FFFF00    ┃ 123808       ┃ MickMake    ┃ 5             ┃ 1        ┃ A       ┃              ┃
-┃ p13008      ┃ Phase A Current                   ┃ 1129147    ┃ 1129147_14_1_1    ┃ #FF0000    ┃ 123814       ┃ MickMake    ┃ 5             ┃ 1        ┃ A       ┃              ┃
-┃ p13009      ┃ Phase B Current                   ┃ 1129147    ┃ 1129147_14_1_1    ┃ #00FF00    ┃ 123813       ┃ MickMake    ┃ 5             ┃ 1        ┃ A       ┃              ┃
-┃ p13010      ┃ Phase C Current                   ┃ 1129147    ┃ 1129147_14_1_1    ┃ #0000FF    ┃ 123812       ┃ MickMake    ┃ 5             ┃ 1        ┃ A       ┃              ┃
-┃ p13106      ┃ MPPT2 Current                     ┃ 1129147    ┃ 1129147_14_1_1    ┃ #70DB93    ┃ 123807       ┃ MickMake    ┃ 5             ┃ 1        ┃ A       ┃              ┃
-┃ p13139      ┃ Battery Current                   ┃ 1129147    ┃ 1129147_14_1_1    ┃ #CD7F32    ┃ 123806       ┃ MickMake    ┃ 5             ┃ 1        ┃ A       ┃              ┃
-┃ p13162      ┃ Max. Charging Current (BMS)       ┃ 1129147    ┃ 1129147_14_1_1    ┃ #C0C0C0    ┃ 123805       ┃ MickMake    ┃ 5             ┃ 1        ┃ A       ┃              ┃
-┃ p13163      ┃ Max. Discharging Current (BMS)    ┃ 1129147    ┃ 1129147_14_1_1    ┃ #9F9F9F    ┃ 123804       ┃ MickMake    ┃ 5             ┃ 1        ┃ A       ┃              ┃
-┃ p18062      ┃ Phase A Backup Current            ┃ 1129147    ┃ 1129147_14_1_1    ┃ #FF00FF    ┃ 123811       ┃ MickMake    ┃ 5             ┃ 1        ┃ A       ┃              ┃
-┃ p18063      ┃ Phase B Backup Current            ┃ 1129147    ┃ 1129147_14_1_1    ┃ #00FFFF    ┃ 123810       ┃ MickMake    ┃ 5             ┃ 1        ┃ A       ┃              ┃
-┃ p18064      ┃ Phase C Backup Current            ┃ 1129147    ┃ 1129147_14_1_1    ┃ #000000    ┃ 123809       ┃ MickMake    ┃ 5             ┃ 1        ┃ A       ┃              ┃
-┗━━━━━━━━━━━━━┷━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┷━━━━━━━━━━━━┷━━━━━━━━━━━━━━━━━━━┷━━━━━━━━━━━━┷━━━━━━━━━━━━━━┷━━━━━━━━━━━━━┷━━━━━━━━━━━━━━━┷━━━━━━━━━━┷━━━━━━━━━┷━━━━━━━━━━━━━━┛
-```
-
-
-Produce daily report for template 8040 for date 2022/02/24 display on STDOUT.
-```
-% ./bin/GoSungrow show template data 8040 20220204 20220205 120
-
-# DataTable AppService.queryMutiPointDataList.ResultData.Data - MinuteInterval:120 PsKeys:1129147_14_1_1,1129147_14_1_1,1129147_14_1_1,1129147_14_1_1,1129147_14_1_1,1129147_14_1_1,1129147_14_1_1,1129147_14_1_1,1129147_14_1_1,1129147_14_1_1,1129147_14_1_1 Points:p13008,p13010,p13162,p18062,p13009,p18064,p13106,p13139,p13163,p18063,p13002 PsId:1129147 StartTimeStamp:20220204000000 EndTimeStamp:20220205000000 
-┏━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Timestamp              ┃ Ps Key            ┃ 1129147_14_1_1.p13002    ┃ 1129147_14_1_1.p13008    ┃ 1129147_14_1_1.p13009    ┃ 1129147_14_1_1.p13010    ┃ 1129147_14_1_1.p13106    ┃ 1129147_14_1_1.p13139    ┃ 1129147_14_1_1.p13162    ┃ 1129147_14_1_1.p13163    ┃ 1129147_14_1_1.p18062    ┃ 1129147_14_1_1.p18063    ┃ 1129147_14_1_1.p18064    ┃
-┣━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━┫
-┃ 2022-02-04 00:00:00    ┃ 1129147_14_1_1    ┃ 0                        ┃ 0                        ┃ 0                        ┃ 0                        ┃ 0                        ┃ 0                        ┃ 30                       ┃ 30                       ┃ 0                        ┃ 0.1                      ┃ 0                        ┃
-┃ 2022-02-04 02:00:00    ┃ 1129147_14_1_1    ┃ 0                        ┃ 0                        ┃ 0                        ┃ 0                        ┃ 0                        ┃ 0                        ┃ 30                       ┃ 30                       ┃ 0                        ┃ 0.1                      ┃ 0                        ┃
-┃ 2022-02-04 04:00:00    ┃ 1129147_14_1_1    ┃ 0                        ┃ 0                        ┃ 0                        ┃ 0                        ┃ 0                        ┃ 0                        ┃ 30                       ┃ 30                       ┃ 0                        ┃ 0.1                      ┃ 0                        ┃
-┃ 2022-02-04 06:00:00    ┃ 1129147_14_1_1    ┃ 0                        ┃ 1.38                     ┃ 1.38                     ┃ 1.29                     ┃ 0                        ┃ 4.6                      ┃ 30                       ┃ 28                       ┃ 0                        ┃ 0.1                      ┃ 0                        ┃
-┃ 2022-02-04 08:00:00    ┃ 1129147_14_1_1    ┃ 2.39                     ┃ 3.31                     ┃ 3.31                     ┃ 3.31                     ┃ 6.1                      ┃ 0                        ┃ 30                       ┃ 29                       ┃ 0                        ┃ 0.1                      ┃ 0                        ┃
-┃ 2022-02-04 10:00:00    ┃ 1129147_14_1_1    ┃ 6.35                     ┃ 1.75                     ┃ 1.75                     ┃ 1.75                     ┃ 15.4                     ┃ 24.5                     ┃ 30                       ┃ 30                       ┃ 0                        ┃ 0.1                      ┃ 0                        ┃
-┃ 2022-02-04 12:00:00    ┃ 1129147_14_1_1    ┃ 6.99                     ┃ 9.84                     ┃ 9.94                     ┃ 9.84                     ┃ 19.5                     ┃ 0                        ┃ 0                        ┃ 30                       ┃ 0                        ┃ 0.2                      ┃ 0                        ┃
-┃ 2022-02-04 14:00:00    ┃ 1129147_14_1_1    ┃ 0.64                     ┃ 0.83                     ┃ 0.83                     ┃ 0.83                     ┃ 1.4                      ┃ 0                        ┃ 0                        ┃ 30                       ┃ 0                        ┃ 0.1                      ┃ 0                        ┃
-┃ 2022-02-04 16:00:00    ┃ 1129147_14_1_1    ┃ 0.37                     ┃ 3.13                     ┃ 3.13                     ┃ 3.13                     ┃ 0.8                      ┃ 10.1                     ┃ 20                       ┃ 30                       ┃ 0                        ┃ 0.1                      ┃ 0                        ┃
-┃ 2022-02-04 18:00:00    ┃ 1129147_14_1_1    ┃ 0                        ┃ 1.01                     ┃ 0.92                     ┃ 1.01                     ┃ 0                        ┃ 3.8                      ┃ 30                       ┃ 30                       ┃ 0                        ┃ 0.1                      ┃ 0                        ┃
-┃ 2022-02-04 20:00:00    ┃ 1129147_14_1_1    ┃ 0                        ┃ 1.38                     ┃ 1.47                     ┃ 1.47                     ┃ 0                        ┃ 5.5                      ┃ 30                       ┃ 30                       ┃ 0                        ┃ 0.1                      ┃ 0                        ┃
-┃ 2022-02-04 22:00:00    ┃ 1129147_14_1_1    ┃ 0                        ┃ 0                        ┃ 0                        ┃ 0                        ┃ 0                        ┃ 0                        ┃ 30                       ┃ 30                       ┃ 0                        ┃ 0.1                      ┃ 0                        ┃
-┃ 2022-02-05 00:00:00    ┃ 1129147_14_1_1    ┃ 0                        ┃ 0                        ┃ 0                        ┃ 0                        ┃ 0                        ┃ 0                        ┃ 30                       ┃ 30                       ┃ 0                        ┃ 0.1                      ┃ 0                        ┃
-┗━━━━━━━━━━━━━━━━━━━━━━━━┷━━━━━━━━━━━━━━━━━━━┷━━━━━━━━━━━━━━━━━━━━━━━━━━┷━━━━━━━━━━━━━━━━━━━━━━━━━━┷━━━━━━━━━━━━━━━━━━━━━━━━━━┷━━━━━━━━━━━━━━━━━━━━━━━━━━┷━━━━━━━━━━━━━━━━━━━━━━━━━━┷━━━━━━━━━━━━━━━━━━━━━━━━━━┷━━━━━━━━━━━━━━━━━━━━━━━━━━┷━━━━━━━━━━━━━━━━━━━━━━━━━━┷━━━━━━━━━━━━━━━━━━━━━━━━━━┷━━━━━━━━━━━━━━━━━━━━━━━━━━┷━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-```
-
-
-And now graph it!
-```
-% ./bin/GoSungrow show template graph 8040 20220204 20220205 120
-Finding points to graph...
-Table Headers: Timestamp, Ps Key, 1129147_14_1_1.p13002, 1129147_14_1_1.p13008, 1129147_14_1_1.p13009, 1129147_14_1_1.p13010, 1129147_14_1_1.p13106, 1129147_14_1_1.p13139, 1129147_14_1_1.p13162, 1129147_14_1_1.p13163, 1129147_14_1_1.p18062, 1129147_14_1_1.p18063, 1129147_14_1_1.p18064
-Table rows: 13
-Found 11 points.
-Creating graph file 'AppService.queryMutiPointDataList.ResultData.Data-1129147-1129147_14_1_1.p13002.png'
-Creating graph file 'AppService.queryMutiPointDataList.ResultData.Data-1129147-1129147_14_1_1.p13008.png'
-Creating graph file 'AppService.queryMutiPointDataList.ResultData.Data-1129147-1129147_14_1_1.p13009.png'
-Creating graph file 'AppService.queryMutiPointDataList.ResultData.Data-1129147-1129147_14_1_1.p13010.png'
-Creating graph file 'AppService.queryMutiPointDataList.ResultData.Data-1129147-1129147_14_1_1.p13106.png'
-```
-![alt text](https://github.com/MickMake/GoSungrow/blob/master/docs/AppService.queryMutiPointDataList.ResultData.Data-1171348-1171348_22_247_2.p23014.png?raw=true)
-![alt text](https://github.com/MickMake/GoSungrow/blob/master/docs/AppService.queryMutiPointDataList.ResultData.Data-1129147-1129147_14_1_1.p13002.png?raw=true)
-![alt text](https://github.com/MickMake/GoSungrow/blob/master/docs/AppService.queryMutiPointDataList.ResultData.Data-1129147-1129147_14_1_1.p13008.png?raw=true)
-![alt text](https://github.com/MickMake/GoSungrow/blob/master/docs/AppService.queryMutiPointDataList.ResultData.Data-1129147-1129147_14_1_1.p13139.png?raw=true)
-![alt text](https://github.com/MickMake/GoSungrow/blob/master/docs/AppService.queryMutiPointDataList.ResultData.Data-1129147-1129147_14_1_1.p13162.png?raw=true)
-
-
-List all possible devices
-```
-% ./bin/GoSungrow show device list
-# Available points:
-┏━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Device Type ┃ Name                                           ┃
-┣━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
-┃ 1           │ Inverter                                       ┃
-┃ 10          │ String                                         ┃
-┃ 11          │ Plant                                          ┃
-┃ 12          │ Circuit Protection                             ┃
-┃ 13          │ Splitting Device                               ┃
-┃ 14          │ Energy Storage System                          ┃
-┃ 15          │ Sampling Device                                ┃
-┃ 16          │ EMU                                            ┃
-┃ 17          │ Unit                                           ┃
-┃ 18          │ Temperature and Humidity Sensor                ┃
-┃ 19          │ Intelligent Power Distribution Cabinet         ┃
-┃ 20          │ Display Device                                 ┃
-┃ 21          │ AC Power Distributed Cabinet                   ┃
-┃ 22          │ Communication Module                           ┃
-┃ 23          │ System-BMS                                     ┃
-┃ 24          │ RackBMS                                        ┃
-┃ 25          │ DC-DC                                          ┃
-┃ 26          │ Energy Management System                       ┃
-┃ 28          │ Wind Energy Converter                          ┃
-┃ 29          │ SVG                                            ┃
-┃ 3           │ Grid-connection Point                          ┃
-┃ 30          │ PT Cabinet                                     ┃
-┃ 31          │ Bus Protection                                 ┃
-┃ 32          │ Cleaning Robot                                 ┃
-┃ 33          │ Direct Current Cabinet                         ┃
-┃ 34          │ Public Measurement and Control                 ┃
-┃ 35          │ Anti-islanding Protection Device               ┃
-┃ 36          │ Frequency and Voltage Emergency Control Device ┃
-┃ 37          │ PCS                                            ┃
-┃ 38          │ Cell BMS                                       ┃
-┃ 39          │ Power Quality                                  ┃
-┃ 4           │ Combiner Box                                   ┃
-┃ 40          │ Shuttle                                        ┃
-┃ 41          │ Optimizer                                      ┃
-┃ 42          │ Tracking axis communication box                ┃
-┃ 43          │ Battery                                        ┃
-┃ 44          │ Battery Cluster Management Unit                ┃
-┃ 45          │ Local Controller                               ┃
-┃ 46          │ Networking Devices                             ┃
-┃ 47          │ Energy Storage Unit                            ┃
-┃ 48          │ DC Container                                   ┃
-┃ 5           │ Meteo Station                                  ┃
-┃ 50          │ IO Module                                      ┃
-┃ 51          │ Charger                                        ┃
-┃ 52          │ Battery System Controller                      ┃
-┃ 6           │ Transformer                                    ┃
-┃ 7           │ Meter                                          ┃
-┃ 8           │ UPS                                            ┃
-┃ 9           │ Data Logger                                    ┃
-┃ 99          │ Others                                         ┃
-┗━━━━━━━━━━━━━┷━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-```
-
-Get mains power frequency variation graph from template id 8041 on date 2022/02/28
-```
-% ./bin/GoSungrow show point data 20220301 20220302 120 1129147_14_1_1.p13007
-
-# DataTable AppService.queryMutiPointDataList.ResultData.Data - PsId:1129147 StartTimeStamp:20220301000000 EndTimeStamp:20220302000000 MinuteInterval:120 PsKeys:1129147_14_1_1 Points:p13007 
-┏━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Timestamp              ┃ Ps Key            ┃ 1129147_14_1_1.p13007    ┃
-┣━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━┫
-┃ 2022-03-01 00:00:00    ┃ 1129147_14_1_1    ┃ 49.969997                ┃
-┃ 2022-03-01 02:00:00    ┃ 1129147_14_1_1    ┃ 49.98                    ┃
-┃ 2022-03-01 04:00:00    ┃ 1129147_14_1_1    ┃ 50.01                    ┃
-┃ 2022-03-01 06:00:00    ┃ 1129147_14_1_1    ┃ 49.98                    ┃
-┃ 2022-03-01 08:00:00    ┃ 1129147_14_1_1    ┃ 49.98                    ┃
-┃ 2022-03-01 10:00:00    ┃ 1129147_14_1_1    ┃ 50.01                    ┃
-┃ 2022-03-01 12:00:00    ┃ 1129147_14_1_1    ┃ 50                       ┃
-┃ 2022-03-01 14:00:00    ┃ 1129147_14_1_1    ┃ 50.02                    ┃
-┃ 2022-03-01 16:00:00    ┃ 1129147_14_1_1    ┃ 49.96                    ┃
-┃ 2022-03-01 18:00:00    ┃ 1129147_14_1_1    ┃ 50.01                    ┃
-┃ 2022-03-01 20:00:00    ┃ 1129147_14_1_1    ┃ 50                       ┃
-┃ 2022-03-01 22:00:00    ┃ 1129147_14_1_1    ┃ 49.969997                ┃
-┃ 2022-03-02 00:00:00    ┃ 1129147_14_1_1    ┃ 50.01                    ┃
-┗━━━━━━━━━━━━━━━━━━━━━━━━┷━━━━━━━━━━━━━━━━━━━┷━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-
-% ./bin/GoSungrow show point graph 20220301 20220302 120 1129147_14_1_1.p13007
-Finding points to graph...
-Table Headers: Timestamp, Ps Key, 1129147_14_1_1.p13007
-Table rows: 13
-Found 1 points.
-Creating graph file 'AppService.queryMutiPointDataList.ResultData.Data-1129147-1129147_14_1_1.p13007.png'
-```
-![alt text](https://github.com/MickMake/GoSungrow/blob/master/docs/AppService.queryMutiPointDataList.ResultData.Data-1129147-1129147_14_1_1.p13007.png?raw=true)
-
-
-### Using the API instead.
-Want to get your hands dirty?
-
-Get basic inverter information for inverter id 1129147
-```
-% ./bin/GoSungrow api get findPsType '{"ps_id":"1129147"}'
-```
-
-```
-% ./bin/GoSungrow api get getPsDetailWithPsType '{"ps_id":"1129147"}'
-```
-
-Get basic power stats for inverter
-```
-% ./bin/GoSungrow api get getPowerStatistics '{"ps_id":"1129147"}'
-```
-
-Get point_id to point names for different device types
-```
-% ./bin/GoSungrow api get getPowerDevicePointNames '{"device_type":"1"}'
-```
-
-```
-% ./bin/GoSungrow api get getPowerDevicePointNames '{"device_type":"2"}'
-```
-
-```
-% ./bin/GoSungrow api get getPowerDevicePointNames '{"device_type":"7"}'
-```
-
-Get all inverters
-```
-% ./bin/GoSungrow api get getPsList
-```
-
-```
-% ./bin/GoSungrow api get WebAppService.showPSView '{"ps_id":"1129147"}'
-```
-
-Produce basic storage report
-```
-% ./bin/GoSungrow api get queryMutiPointDataList '{"ps_key":"1129147_14_1_1,1129147_14_1_1,1129147_14_1_1,1129147_14_1_1,1129147_14_1_1,1129147_14_1_1,1129147_14_1_1,1129147_14_1_1,1129147_14_1_1,1129147_11_0_0","points":"p13150,p13126,p13142,p13143,p13019,p13141,p13121,p13003,p13149,p83106","minute_interval":"5","start_time_stamp":"20220215000000","end_time_stamp":"20220215235900", "ps_id":"1129147"}'
-```
-
-Get the household storage report
-```
-% ./bin/GoSungrow api get getHouseholdStoragePsReport '{"date_id":"2022","date_type":"4","ps_id":"1129147"}'
-```
-
-
-### Config file.
-Show current config.
-
-	% GoSungrow config read
-
-Write current config.
-
-	% GoSungrow config write
-
-Change diff command used in compares.
-
-	% GoSungrow --diff-cmd='sdiff' config write
-
-Change iSolarCloud API token.
-
-	% GoSungrow --cf-token='this is a token string' config write
-
-
-## Flags available for all commands:
-```
-% ./bin/GoSungrow help flags
-+-----------------+------------+-------------------------+--------------------------------+------------------------------------+
-|      FLAG       | SHORT FLAG |       ENVIRONMENT       |          DESCRIPTION           |        VALUE (* = DEFAULT)         |
-+-----------------+------------+-------------------------+--------------------------------+------------------------------------+
-| --config        |            | GOSUNGROW_CONFIG        | GoSungrow: config file.        | /Users/mick/.GoSungrow/config.json |
-| --debug         |            | GOSUNGROW_DEBUG         | GoSungrow: Debug mode.         | false *                            |
-| --quiet         |            | GOSUNGROW_QUIET         | GoSungrow: Silence all         | false *                            |
-|                 |            |                         | messages.                      |                                    |
-| --timeout       |            | GOSUNGROW_TIMEOUT       | Web timeout.                   | 0s                                 |
-| --user          | -u         | GOSUNGROW_USER          | SunGrow: api username.         | ------------------                 |
-| --password      | -p         | GOSUNGROW_PASSWORD      | SunGrow: api password.         | ---------------------------        |
-| --appkey        |            | GOSUNGROW_APPKEY        | SunGrow: api application key.  | 93D72E60331ABDCDC7B39ADC2D1F32B3   |
-|                 |            |                         |                                | *                                  |
-| --host          |            | GOSUNGROW_HOST          | SunGrow: Provider API URL.     | https://augateway.isolarcloud.com  |
-|                 |            |                         |                                | *                                  |
-| --token-expiry  |            | GOSUNGROW_TOKEN_EXPIRY  | SunGrow: last login.           | 2022-12-08T16:58:19                |
-| --save          | -s         | GOSUNGROW_SAVE          | Save output as a file.         | false *                            |
-| --mqtt-user     |            | GOSUNGROW_MQTT_USER     | HASSIO: mqtt username.         | ------------------                 |
-| --mqtt-password |            | GOSUNGROW_MQTT_PASSWORD | HASSIO: mqtt password.         | --------------                     |
-| --mqtt-host     |            | GOSUNGROW_MQTT_HOST     | HASSIO: mqtt host.             | localhost                          |
-| --mqtt-port     |            | GOSUNGROW_MQTT_PORT     | HASSIO: mqtt port.             |                               1883 |
-+-----------------+------------+-------------------------+--------------------------------+------------------------------------+
-```
+- Original GoSungrow codebase and reverse engineering: MickMake
+- Home Assistant add-on packaging and maintenance in this repository: Andreas Roth
