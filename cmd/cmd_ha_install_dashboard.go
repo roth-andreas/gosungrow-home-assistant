@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -152,12 +154,8 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		return fmt.Errorf("no Sungrow ESS devices were discovered")
 	}
 
-	if err := copyDashboardAssets(opts.AssetDir); err != nil {
-		return err
-	}
-
 	templatePath := filepath.Join(opts.AssetDir, dashboardTemplateFile)
-	config, err := renderDashboardConfig(templatePath, opts.DashboardTitle, targets)
+	config, err := renderDashboardConfig(templatePath, opts.AssetDir, opts.DashboardTitle, targets)
 	if err != nil {
 		return err
 	}
@@ -340,7 +338,7 @@ func (c *CmdHa) discoverDashboardTargets(args []string) ([]haDashboardTarget, er
 	return ret, nil
 }
 
-func renderDashboardConfig(templatePath string, dashboardTitle string, targets []haDashboardTarget) (map[string]any, error) {
+func renderDashboardConfig(templatePath string, assetDir string, dashboardTitle string, targets []haDashboardTarget) (map[string]any, error) {
 	content, err := os.ReadFile(templatePath)
 	if err != nil {
 		return nil, err
@@ -356,10 +354,14 @@ func renderDashboardConfig(templatePath string, dashboardTitle string, targets [
 		return nil, fmt.Errorf("dashboard template %q does not contain any views", templatePath)
 	}
 
-	prototype := rawViews[0]
+	inlinedPrototype, err := inlineDashboardAssets(rawViews[0], assetDir)
+	if err != nil {
+		return nil, err
+	}
+
 	generatedViews := make([]any, 0, len(targets))
 	for _, target := range targets {
-		view, err := deepCopyJSONValue(prototype)
+		view, err := deepCopyJSONValue(inlinedPrototype)
 		if err != nil {
 			return nil, err
 		}
@@ -378,65 +380,50 @@ func renderDashboardConfig(templatePath string, dashboardTitle string, targets [
 	return template, nil
 }
 
-func copyDashboardAssets(assetDir string) error {
-	sourcePattern := filepath.Join(assetDir, "SungrowEnergy2*.png")
-	files, err := filepath.Glob(sourcePattern)
-	if err != nil {
-		return err
-	}
-	if len(files) == 0 {
-		return fmt.Errorf("no dashboard images found in %q", assetDir)
-	}
-
-	destRoots := existingDashboardAssetRoots()
-	if len(destRoots) == 0 {
-		return fmt.Errorf("no Home Assistant config root available for dashboard assets")
-	}
-
-	for _, root := range destRoots {
-		destDir := filepath.Join(root, "www", dashboardImageDirectory)
-		if err := os.MkdirAll(destDir, 0755); err != nil {
-			return err
-		}
-
-		for _, src := range files {
-			data, err := os.ReadFile(src)
+func inlineDashboardAssets(value any, assetDir string) (any, error) {
+	switch v := value.(type) {
+	case map[string]any:
+		ret := make(map[string]any, len(v))
+		for key, inner := range v {
+			replaced, err := inlineDashboardAssets(inner, assetDir)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			destPath := filepath.Join(destDir, filepath.Base(src))
-			if err := os.WriteFile(destPath, data, 0644); err != nil {
-				return err
-			}
+			ret[key] = replaced
 		}
+		return ret, nil
+	case []any:
+		ret := make([]any, len(v))
+		for i, inner := range v {
+			replaced, err := inlineDashboardAssets(inner, assetDir)
+			if err != nil {
+				return nil, err
+			}
+			ret[i] = replaced
+		}
+		return ret, nil
+	case string:
+		const prefix = "/local/" + dashboardImageDirectory + "/"
+		if !strings.HasPrefix(v, prefix) {
+			return v, nil
+		}
+		assetPath := filepath.Join(assetDir, filepath.Base(v))
+		return dashboardAssetDataURI(assetPath)
+	default:
+		return value, nil
 	}
-
-	return nil
 }
 
-func existingDashboardAssetRoots() []string {
-	candidates := []string{
-		strings.TrimSpace(os.Getenv("GOSUNGROW_HOMEASSISTANT_CONFIG_DIR")),
-		strings.TrimSpace(os.Getenv("HOMEASSISTANT_CONFIG_DIR")),
-		"/config",
-		"/homeassistant",
+func dashboardAssetDataURI(assetPath string) (string, error) {
+	data, err := os.ReadFile(assetPath)
+	if err != nil {
+		return "", err
 	}
-
-	seen := make(map[string]bool)
-	roots := make([]string, 0, len(candidates))
-	for _, root := range candidates {
-		if root == "" || seen[root] {
-			continue
-		}
-		info, err := os.Stat(root)
-		if err != nil || !info.IsDir() {
-			continue
-		}
-		seen[root] = true
-		roots = append(roots, root)
+	mimeType := mime.TypeByExtension(filepath.Ext(assetPath))
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
 	}
-
-	return roots
+	return fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(data)), nil
 }
 
 func targetPSKeys(targets []haDashboardTarget) []string {
