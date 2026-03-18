@@ -1,0 +1,16 @@
+.git
+.github
+.idea
+.local
+.tmp_modcache
+%USERPROFILE%
+_tmp_*
+docs
+example
+notgit
+*.tar
+*.exe
+configuration.yaml.recorder.new
+gosungrow-pi.tar
+tmp_configuration.yaml
+tmp_ha_configuration.yaml

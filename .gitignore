@@ -8,4 +8,5 @@ WebAppService_*.json
 /dist/
 /notgit/
 logfile
+/%USERPROFILE%/
 

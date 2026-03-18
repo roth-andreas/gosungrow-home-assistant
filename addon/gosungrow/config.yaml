@@ -1,0 +1,37 @@
+name: GoSungrow
+version: 3.0.7-haos2
+slug: gosungrow
+url: https://github.com/roth-andreas/gosungrow-home-assistant
+image: ghcr.io/roth-andreas/gosungrow-addon-{arch}
+description: Publish Sungrow iSolarCloud data to Home Assistant over MQTT discovery.
+panel_icon: mdi:solar-power
+startup: services
+boot: auto
+init: false
+services:
+  - mqtt:want
+arch:
+  - aarch64
+  - amd64
+options:
+  gosungrow_user: null
+  gosungrow_password: null
+  gosungrow_host: https://augateway.isolarcloud.com
+  gosungrow_appkey: B0455FBE7AA0328DB57B59AA729F05D8
+  use_homeassistant_mqtt: true
+  mqtt_host: ""
+  mqtt_port: 1883
+  mqtt_user: ""
+  mqtt_password: ""
+  debug: false
+schema:
+  gosungrow_user: str
+  gosungrow_password: password
+  gosungrow_host: str
+  gosungrow_appkey: str
+  use_homeassistant_mqtt: bool
+  mqtt_host: str
+  mqtt_port: port
+  mqtt_user: str
+  mqtt_password: password
+  debug: bool
