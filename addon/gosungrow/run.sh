@@ -59,6 +59,9 @@ GoSungrow config write \
   --user="$GOSUNGROW_USER" \
   --password="$GOSUNGROW_PASSWORD" >/dev/null
 
+bashio::log.info 'Refreshing iSolarCloud session.'
+GoSungrow api login >/dev/null
+
 if bashio::config.true 'install_dashboard'; then
   bashio::log.info "Installing managed Home Assistant dashboard at ${GOSUNGROW_DASHBOARD_URL_PATH:-gosungrow-flow}."
   dashboard_args=(
