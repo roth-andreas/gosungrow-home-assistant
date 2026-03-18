@@ -24,34 +24,9 @@ type RequestCommon struct {
 
 
 func (req RequestCommon) IsValid() error {
-	var err error
-	for range Only.Once {
-		err = CheckString("Appkey", req.Appkey)
-		if err != nil {
-			break
-		}
-		err = CheckString("Lang", req.Lang)
-		if err != nil {
-			break
-		}
-		err = CheckString("SysCode", req.SysCode)
-		if err != nil {
-			break
-		}
-		err = CheckString("Auth", req.Token)
-		if err != nil {
-			break
-		}
-		err = CheckString("UserID", req.UserId)
-		if err != nil {
-			break
-		}
-		err = CheckString("ValidFlag", req.ValidFlag)
-		if err != nil {
-			break
-		}
-	}
-	return err
+	// RequestCommon fields are populated centrally in api/web.go.
+	// Keep endpoint-specific RequestData validation as the gate.
+	return nil
 }
 
 func (req RequestCommon) String() string {

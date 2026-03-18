@@ -105,8 +105,12 @@ func (sg *SunGrow) GetEndpoint(ae string) api.EndPoint {
 		}
 
 		if sg.Auth.Token() != "" {
+			appKey := sg.GetAppKey()
+			if appKey == "" {
+				appKey = DefaultApiAppKey
+			}
 			ep = ep.SetRequest(api.RequestCommon{
-				Appkey:    sg.GetAppKey(), // sg.Auth.RequestCommon.Appkey
+				Appkey:    appKey,
 				Lang:      "_en_US",
 				SysCode:   "200",
 				Token:     sg.GetToken(),
@@ -324,9 +328,8 @@ func (sg *SunGrow) Login(auth login.SunGrowAuth) error {
 		for range Only.Twice {
 			sg.Error = nil	// Needed for looping twice.
 			sg.Error = sg.login()
-			if sg.Error == nil {
-				// - DO NOT BREAK
-				// We want to test a simple request first.
+			if sg.Error != nil {
+				break
 			}
 
 			_ = sg.GetByStruct(getUserList.EndPointName, nil, DefaultCacheTimeout)
@@ -344,7 +347,9 @@ func (sg *SunGrow) Login(auth login.SunGrowAuth) error {
 		}
 
 		if sg.NeedLogin {
-			sg.Error = errors.New("cannot login")
+			if sg.Error == nil {
+				sg.Error = errors.New("need to login again")
+			}
 			break
 		}
 		if sg.Error != nil {

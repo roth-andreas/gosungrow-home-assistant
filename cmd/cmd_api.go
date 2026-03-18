@@ -11,6 +11,7 @@ import (
 	"github.com/MickMake/GoUnify/cmdHelp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"strings"
 	"time"
 )
 
@@ -385,15 +386,117 @@ func (c *CmdApi) ApiLogin(force bool)	error {
 			c.Error = errors.New("sungrow instance not configured")
 			break
 		}
-
-		auth := login.SunGrowAuth {
-			AppKey:       c.AppKey,
-			UserAccount:  c.Username,
-			UserPassword: c.Password,
-			TokenFile:    c.ApiTokenFile,
-			Force:        force,
+		if c.AppKey == "" || c.AppKey == "93D72E60331ABDCDC7B39ADC2D1F32B3" {
+			c.AppKey = iSolarCloud.DefaultApiAppKey
 		}
-		c.Error = c.SunGrow.Login(auth)
+		type loginAttempt struct {
+			host   string
+			appKey string
+		}
+		appendUnique := func(list []loginAttempt, item loginAttempt) []loginAttempt {
+			host := strings.TrimSpace(item.host)
+			key := strings.TrimSpace(item.appKey)
+			if host == "" || key == "" {
+				return list
+			}
+			for _, e := range list {
+				if e.host == host && e.appKey == key {
+					return list
+				}
+			}
+			return append(list, loginAttempt{
+				host:   host,
+				appKey: key,
+			})
+		}
+		shouldTryNext := func(err error) bool {
+			if err == nil {
+				return false
+			}
+			msg := strings.ToLower(err.Error())
+			return strings.Contains(msg, "login_state=-1") ||
+				strings.Contains(msg, "login rejected by gateway") ||
+				strings.Contains(msg, "appkey is incorrect") ||
+				strings.Contains(msg, "need to login again") ||
+				strings.Contains(msg, "er_token_login_invalid") ||
+				strings.Contains(msg, "cannot login")
+		}
+
+		candidates := make([]loginAttempt, 0)
+		defaultAppKey := iSolarCloud.DefaultApiAppKey
+		oldAppKey := "A5C22A880B97303FCB902069C6B042AB"
+		legacyAppKey := "93D72E60331ABDCDC7B39ADC2D1F32B3"
+		hosts := []string{
+			c.Url,
+			iSolarCloud.DefaultHost,
+			"https://gateway.isolarcloud.com",
+			"https://gateway.isolarcloud.eu",
+			"https://gateway.isolarcloud.com.cn",
+		}
+		appKeys := []string{
+			c.AppKey,
+			defaultAppKey,
+			oldAppKey,
+			legacyAppKey,
+		}
+		for _, host := range hosts {
+			for _, appKey := range appKeys {
+				candidates = appendUnique(candidates, loginAttempt{
+					host:   host,
+					appKey: appKey,
+				})
+			}
+		}
+
+		cacheDir := c.SunGrow.ApiRoot.GetCacheDir()
+		var firstRetriableErr error
+		var lastErr error
+		exhaustedRetriable := true
+		for idx, attempt := range candidates {
+			if idx > 0 && c.SunGrow != nil {
+				c.SunGrow.Logout()
+			}
+			c.SunGrow = iSolarCloud.NewSunGro(attempt.host, cacheDir)
+			if c.SunGrow.Error != nil {
+				c.Error = c.SunGrow.Error
+				break
+			}
+			c.Error = c.SunGrow.Init()
+			if c.Error != nil {
+				break
+			}
+			c.SunGrow.SetOutputType(c.OutputType)
+			c.SunGrow.SaveAsFile = c.SaveFile
+
+			auth := login.SunGrowAuth{
+				AppKey:       attempt.appKey,
+				UserAccount:  c.Username,
+				UserPassword: c.Password,
+				TokenFile:    c.ApiTokenFile,
+				Force:        force,
+			}
+			c.Error = c.SunGrow.Login(auth)
+			if c.Error == nil {
+				c.Url = attempt.host
+				c.AppKey = attempt.appKey
+				break
+			}
+			lastErr = c.Error
+			if !shouldTryNext(c.Error) {
+				exhaustedRetriable = false
+				break
+			}
+			if firstRetriableErr == nil {
+				firstRetriableErr = c.Error
+			}
+		}
+		if c.Error != nil {
+			if exhaustedRetriable && firstRetriableErr != nil {
+				c.Error = firstRetriableErr
+			} else if lastErr != nil {
+				c.Error = lastErr
+			}
+		}
 		if c.Error != nil {
 			break
 		}

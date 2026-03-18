@@ -3,6 +3,7 @@ package login
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/MickMake/GoSungrow/iSolarCloud/api"
@@ -64,8 +65,13 @@ func (e *EndPoint) Login(auth *SunGrowAuth) error {
 	for range Only.Once {
 		e.Auth = auth
 		e.Request.RequestData = RequestData{
-			UserAccount:  valueTypes.SetStringValue(auth.UserAccount),
-			UserPassword: valueTypes.SetStringValue(auth.UserPassword),
+			UserAccount:        valueTypes.SetStringValue(auth.UserAccount),
+			UserPassword:       valueTypes.SetStringValue(auth.UserPassword),
+			LoginType:          valueTypes.SetStringValue("1"),
+			StrongWeakPassword: valueTypes.SetStringValue("1"),
+			RememberMe:         valueTypes.SetBoolValue(false),
+			SupportTotp:        valueTypes.SetStringValue("1"),
+			IsNamePassword:     valueTypes.SetBoolValue(true),
 		}
 		e.Request.RequestCommon = api.RequestCommon{
 			Appkey:  auth.AppKey,
@@ -102,6 +108,17 @@ func (e *EndPoint) Login(auth *SunGrowAuth) error {
 		e.Auth.lastLogin = time.Now()
 
 		if e.IsTokenInvalid() {
+			state := strings.TrimSpace(e.LoginState())
+			msg := strings.TrimSpace(e.Response.ResultData.Msg.String())
+			if state != "" && state != "1" {
+				if msg != "" {
+					e.Error = errors.New(fmt.Sprintf("login failed (login_state=%s): %s", state, msg))
+				} else {
+					e.Error = errors.New(fmt.Sprintf("login failed (login_state=%s)", state))
+				}
+			} else {
+				e.Error = errors.New("login did not return a valid token")
+			}
 			break
 		}
 

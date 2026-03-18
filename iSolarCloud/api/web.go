@@ -1,11 +1,12 @@
 package api
 
 import (
-	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct"
 	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct/output"
 	"github.com/MickMake/GoUnify/Only"
 	"github.com/MickMake/GoUnify/cmdPath"
+	"crypto/rand"
 	"io"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -14,6 +15,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 )
 
 
@@ -25,9 +28,77 @@ type Web struct {
 	cacheDir     string
 	cacheTimeout time.Duration
 	retry        int
+	timeOffset   time.Duration
 	client       http.Client
 	httpRequest  *http.Request
 	httpResponse *http.Response
+}
+
+const defaultWebClientVersion = "2026011301"
+
+func randomDigits(length int) (string, error) {
+	if length <= 0 {
+		return "", errors.New("invalid random digit length")
+	}
+	const digits = "0123456789"
+	raw := make([]byte, length)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	var sb strings.Builder
+	sb.Grow(length)
+	for i := 0; i < length; i++ {
+		sb.WriteByte(digits[int(raw[i])%len(digits)])
+	}
+	return sb.String(), nil
+}
+
+func currentGMTHeader() string {
+	_, offsetSeconds := time.Now().Zone()
+	sign := "%2B"
+	hours := offsetSeconds / 3600
+	if hours < 0 {
+		sign = "-"
+		hours = -hours
+	}
+	return fmt.Sprintf("GMT%s%d", sign, hours)
+}
+
+func (w *Web) requestTimestampMillis() int64 {
+	now := time.Now().Add(w.timeOffset)
+	if offset := strings.TrimSpace(os.Getenv("GOSUNGROW_TIMESTAMP_OFFSET_MS")); offset != "" {
+		if ms, err := strconv.ParseInt(offset, 10, 64); err == nil {
+			now = now.Add(time.Duration(ms) * time.Millisecond)
+		}
+	}
+	return now.UnixMilli()
+}
+
+func (w *Web) refreshTimeOffsetFromResponse() bool {
+	if w.httpResponse == nil {
+		return false
+	}
+	dateHeader := strings.TrimSpace(w.httpResponse.Header.Get("Date"))
+	if dateHeader == "" {
+		return false
+	}
+
+	serverNow, err := http.ParseTime(dateHeader)
+	if err != nil {
+		return false
+	}
+
+	w.timeOffset = serverNow.Sub(time.Now().UTC())
+	return true
+}
+
+func (w *Web) isExpiredRequestResponse(raw []byte, decrypted []byte) bool {
+	check := strings.ToLower(string(raw))
+	if strings.Contains(check, "expired request") {
+		return true
+	}
+	check = strings.ToLower(string(decrypted))
+	return strings.Contains(check, "expired request")
 }
 
 
@@ -105,10 +176,6 @@ func (w *Web) Get(endpoint EndPoint) EndPoint {
 func (w *Web) getApi(endpoint EndPoint) ([]byte, error) {
 	for range Only.Once {
 		request := endpoint.RequestRef()
-		w.Error = GoStruct.VerifyOptionsRequired(request)
-		if w.Error != nil {
-			break
-		}
 
 		w.Error = endpoint.IsRequestValid()
 		if w.Error != nil {
@@ -122,13 +189,157 @@ func (w *Web) getApi(endpoint EndPoint) ([]byte, error) {
 		}
 
 		postUrl := w.ServerUrl.AppendPath(u.String()).String()
-		var j []byte
-		j, w.Error = json.Marshal(request)
+		var requestJson []byte
+		requestJson, w.Error = json.Marshal(request)
 		if w.Error != nil {
 			break
 		}
 
-		w.httpResponse, w.Error = http.Post(postUrl, "application/json", bytes.NewBuffer(j))
+		var reqData map[string]interface{}
+		w.Error = json.Unmarshal(requestJson, &reqData)
+		if w.Error != nil {
+			break
+		}
+
+		// queryDeviceRealTimeDataByPsKeys currently fails against the legacy endpoint
+		// contract for many accounts. Route it to queryDeviceList by deriving ps_id
+		// from ps_key_list, while keeping the public command shape stable.
+		if endpoint.GetName().String() == "queryDeviceRealTimeDataByPsKeys" {
+			rawPsKey := strings.TrimSpace(fmt.Sprintf("%v", reqData["ps_key_list"]))
+			if rawPsKey != "" && rawPsKey != "<nil>" {
+				psIdPart := strings.Split(rawPsKey, "_")[0]
+				if psIdPart != "" {
+					if parsed, perr := strconv.ParseInt(psIdPart, 10, 64); perr == nil {
+						reqData["ps_id"] = parsed
+					} else {
+						reqData["ps_id"] = psIdPart
+					}
+				}
+			}
+			delete(reqData, "ps_key_list")
+		}
+
+		tokenPlain := ""
+		// Match frontend behavior: omit empty optional auth fields from JSON body.
+		if tokenAny, ok := reqData["token"]; ok {
+			tokenPlain = strings.TrimSpace(fmt.Sprintf("%v", tokenAny))
+			if tokenPlain == "" || tokenPlain == "<nil>" {
+				delete(reqData, "token")
+				tokenPlain = ""
+			}
+		}
+		if userAny, ok := reqData["user_id"]; ok {
+			user := strings.TrimSpace(fmt.Sprintf("%v", userAny))
+			if user == "" || user == "<nil>" {
+				delete(reqData, "user_id")
+			}
+		}
+		if validAny, ok := reqData["valid_flag"]; ok {
+			valid := strings.TrimSpace(fmt.Sprintf("%v", validAny))
+			if valid == "" || valid == "<nil>" {
+				delete(reqData, "valid_flag")
+			}
+		}
+		lang := strings.TrimSpace(fmt.Sprintf("%v", reqData["lang"]))
+		if lang == "" || lang == "<nil>" {
+			reqData["lang"] = "_en_US"
+		}
+
+		appKey := strings.TrimSpace(fmt.Sprintf("%v", reqData["appkey"]))
+		if appKey == "" || appKey == "<nil>" {
+			appKey = defaultApiAppKey
+		}
+		reqData["appkey"] = appKey
+		reqData["sys_code"] = 200
+
+		nonce, err := randomWord(32)
+		if err != nil {
+			w.Error = err
+			break
+		}
+		reqData["api_key_param"] = map[string]interface{}{
+			"timestamp": w.requestTimestampMillis(),
+			"nonce":     nonce,
+		}
+
+		suffix, err := randomWord(29)
+		if err != nil {
+			w.Error = err
+			break
+		}
+		randomKey := "web" + suffix
+
+		compactBody, err := json.Marshal(reqData)
+		if err != nil {
+			w.Error = err
+			break
+		}
+
+		encryptedBody, err := encryptHex(string(compactBody), randomKey)
+		if err != nil {
+			w.Error = err
+			break
+		}
+
+		httpReq, err := http.NewRequest("POST", postUrl, bytes.NewBufferString(encryptedBody))
+		if err != nil {
+			w.Error = err
+			break
+		}
+		did := strings.TrimSpace(os.Getenv("GOSUNGROW_DID"))
+		if did == "" {
+			did, _ = randomDigits(16)
+		}
+		httpReq.Header.Set("accept", "application/json, text/plain, */*")
+		httpReq.Header.Set("accept-language", "en-US,en;q=0.9")
+		httpReq.Header.Set("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36")
+		httpReq.Header.Set("origin", "https://www.isolarcloud.com")
+		httpReq.Header.Set("referer", "https://www.isolarcloud.com/")
+		httpReq.Header.Set("content-type", "text/plain;charset=UTF-8")
+		httpReq.Header.Set("sys_code", "200")
+		httpReq.Header.Set("_pl", "js")
+		httpReq.Header.Set("_did", did)
+		httpReq.Header.Set("_global_new_web", "1")
+		httpReq.Header.Set("_vc", defaultWebClientVersion)
+		httpReq.Header.Set("_browser_brand", "chrome")
+		httpReq.Header.Set("_browser_version", "132.0")
+		httpReq.Header.Set("x-client-tz", currentGMTHeader())
+		httpReq.Header.Set("x-sign-code", "0")
+		httpReq.Header.Set("x-access-key", defaultAccessKey)
+
+		encryptedKey, err := rsaEncryptBase64(randomKey)
+		if err != nil {
+			w.Error = err
+			break
+		}
+		httpReq.Header.Set("x-random-secret-key", encryptedKey)
+
+		limitObjPlain := ""
+		limitObjSet := false
+		if tokenPlain != "" {
+			parts := strings.Split(tokenPlain, "_")
+			if len(parts) > 0 {
+				limitObjPlain = strings.TrimSpace(parts[0])
+				if limitObjPlain != "" {
+					limitObjSet = true
+				}
+			}
+		}
+		if envLimit, ok := os.LookupEnv("GOSUNGROW_LIMIT_OBJ"); ok {
+			if envLimit == "__EMPTY__" {
+				envLimit = ""
+			}
+			limitObjPlain = envLimit
+			limitObjSet = true
+		}
+		if limitObjSet {
+			limitObjEncrypted, encErr := rsaEncryptBase64(limitObjPlain)
+			if encErr == nil {
+				httpReq.Header.Set("x-limit-obj", limitObjEncrypted)
+			}
+		}
+
+		w.httpResponse, w.Error = http.DefaultClient.Do(httpReq)
 		if w.Error != nil {
 			break
 		}
@@ -152,6 +363,35 @@ func (w *Web) getApi(endpoint EndPoint) ([]byte, error) {
 		w.Body, w.Error = io.ReadAll(w.httpResponse.Body)
 		if w.Error != nil {
 			break
+		}
+
+		rawBody := append([]byte(nil), w.Body...)
+		decrypted, decErr := decryptHex(string(w.Body), randomKey)
+		if decErr == nil && json.Valid(decrypted) {
+			w.Body = decrypted
+		}
+		if os.Getenv("GOSUNGROW_TRACE_HTTP") != "" {
+			requestDump, _ := json.Marshal(reqData)
+			_, _ = fmt.Fprintf(os.Stderr, "[TRACE] POST %s\n", postUrl)
+			_, _ = fmt.Fprintf(os.Stderr, "[TRACE] req=%s\n", string(requestDump))
+			_, _ = fmt.Fprintf(os.Stderr, "[TRACE] respRaw=%s\n", string(rawBody))
+			if decErr != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "[TRACE] decryptErr=%v\n", decErr)
+			} else {
+				_, _ = fmt.Fprintf(os.Stderr, "[TRACE] respDec=%s\n", string(decrypted))
+			}
+		}
+
+		if w.isExpiredRequestResponse(rawBody, w.Body) {
+			shouldRetry := w.retry == 0
+			if shouldRetry {
+				w.retry++
+				_ = w.refreshTimeOffsetFromResponse()
+				return w.getApi(endpoint)
+			}
+			w.retry = 0
+		} else {
+			w.retry = 0
 		}
 	}
 

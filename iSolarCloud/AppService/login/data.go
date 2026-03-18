@@ -3,6 +3,7 @@ package login
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/MickMake/GoSungrow/iSolarCloud/api"
 	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct"
@@ -15,8 +16,13 @@ const Disabled = false
 const EndPointName = "AppService.login"
 
 type RequestData struct {
-	UserAccount  valueTypes.String `json:"user_account" required:"true"`
-	UserPassword valueTypes.String `json:"user_password" required:"true"`
+	UserAccount        valueTypes.String `json:"user_account" required:"true"`
+	UserPassword       valueTypes.String `json:"user_password" required:"true"`
+	LoginType          valueTypes.String `json:"login_type"`
+	StrongWeakPassword valueTypes.String `json:"strong_weak_password,omitempty"`
+	RememberMe         valueTypes.Bool   `json:"rememberMe,omitempty"`
+	SupportTotp        valueTypes.String `json:"supportTotp,omitempty"`
+	IsNamePassword     valueTypes.Bool   `json:"isNamePassword,omitempty"`
 }
 
 func (rd RequestData) IsValid() error {
@@ -144,6 +150,10 @@ func (e *ResultData) IsValid() error {
 			err = errors.New(fmt.Sprintf("Account does not exist '%s'", e.Msg))
 		case e.Msg.String() == fmt.Sprintf(`账号或密码输入错误，还剩%s次机会`, e.RemainTimes):
 			err = errors.New(fmt.Sprintf("The account number or password is entered incorrectly, there are %s chances left '%s'", e.RemainTimes, e.Msg))
+		case strings.EqualFold(e.Msg.String(), "Expired request"):
+			err = errors.New("request expired (clock skew)")
+		case strings.HasPrefix(e.Msg.String(), "Account or password wrong"):
+			err = errors.New(e.Msg.String())
 		case e.Msg.String() == "":
 			break
 		default:

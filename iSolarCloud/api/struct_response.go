@@ -1,23 +1,22 @@
 package api
 
 import (
-	"github.com/MickMake/GoUnify/Only"
 	"errors"
 	"fmt"
 	"strings"
-)
 
+	"github.com/MickMake/GoUnify/Only"
+)
 
 type Response struct {
 	ResponseCommon
 }
 
 type ResponseCommon struct {
-	ReqSerialNum string        `json:"req_serial_num"`
-	ResultCode   string        `json:"result_code"`
-	ResultMsg    string        `json:"result_msg"`
+	ReqSerialNum string `json:"req_serial_num"`
+	ResultCode   string `json:"result_code"`
+	ResultMsg    string `json:"result_msg"`
 }
-
 
 func (req ResponseCommon) IsValid() error {
 	var err error
@@ -36,11 +35,6 @@ func (req ResponseCommon) IsValid() error {
 		if err != nil {
 			break
 		}
-
-		// if req.ResultData == nil {
-		// 	err = errors.New("zero results")
-		// 	break
-		// }
 	}
 	return err
 }
@@ -49,12 +43,12 @@ func (req ResponseCommon) IsTokenValid() bool {
 	var ok bool
 	for range Only.Once {
 		switch {
-			case req.ResultMsg == "success":
-				ok = true
-			case req.ResultMsg == "er_token_login_invalid":
-				ok = false
-			default:
-				ok = false
+		case req.ResultMsg == "success":
+			ok = true
+		case req.ResultMsg == "er_token_login_invalid":
+			ok = false
+		default:
+			ok = false
 		}
 	}
 	return ok
@@ -78,16 +72,14 @@ func (req ResponseCommon) CheckResultCode() error {
 		switch req.ResultCode {
 		case "1":
 			err = nil
-		case "-1":
-			err = errors.New(fmt.Sprintf("error '%s'", req.ResultCode))
-		case "010":
-			err = errors.New(fmt.Sprintf("error '%s'", req.ResultCode))
-		case "000":
-			err = errors.New(fmt.Sprintf("error '%s'", req.ResultCode))
-		case "201":
+		case "-1", "010", "000", "201":
 			err = errors.New(fmt.Sprintf("error '%s'", req.ResultCode))
 		case "E00003":
 			err = errors.New(fmt.Sprintf("need to login again '%s'", req.ResultCode))
+		case "E914":
+			err = errors.New(fmt.Sprintf("login rejected by gateway '%s'", req.ResultCode))
+		case "E917":
+			err = errors.New(fmt.Sprintf("missing required request header '%s'", req.ResultCode))
 		default:
 			err = errors.New(fmt.Sprintf("unknown error '%s'", req.ResultCode))
 		}
@@ -101,8 +93,11 @@ func (req ResponseCommon) CheckResultMessage() error {
 		switch {
 		case req.ResultMsg == "success":
 			err = nil
-		case req.ResultMsg == `账号不存在`:
-			err = errors.New(fmt.Sprintf("Account does not exist '%s'", req.ResultMsg))
+		case req.ResultMsg == "":
+			// Some gateway responses only populate result_code.
+			err = nil
+		case strings.EqualFold(req.ResultMsg, "Expired request"):
+			err = errors.New("request expired (clock skew)")
 		case req.ResultMsg == "er_invalid_appkey":
 			err = errors.New(fmt.Sprintf("appkey is incorrect '%s'", req.ResultMsg))
 		case req.ResultMsg == "er_token_login_invalid":
