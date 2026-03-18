@@ -1,4 +1,4 @@
-# Home Assistant energy view for Sungrow systems
+# Home Assistant energy dashboard for Sungrow systems
 #
 # Recommended approach:
 # 1. Configure Home Assistant Energy first in Settings > Dashboards > Energy
@@ -8,62 +8,64 @@
 # Example: 5072099_14_1_1
 
 title: Sungrow Energy
-path: sungrow-energy
-icon: mdi:solar-power
-type: sections
-cards:
-  - type: energy-date-selection
-
-  - type: power-sankey
-    title: Live Power Flow
-    layout: horizontal
-
-  - type: grid
-    columns: 2
-    square: false
+views:
+  - title: Sungrow Energy
+    path: sungrow-energy
+    icon: mdi:solar-power
+    type: sections
     cards:
-      - type: power-sources-graph
-        title: Power Sources
+      - type: energy-date-selection
 
-      - type: energy-distribution
-        link_dashboard: true
+      - type: power-sankey
+        title: Live Power Flow
+        layout: horizontal
 
-      - type: energy-usage-graph
-        title: Home Usage
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+          - type: power-sources-graph
+            title: Power Sources
 
-      - type: energy-solar-graph
-        title: Solar Production
+          - type: energy-distribution
+            link_dashboard: true
 
-      - type: energy-sources-table
-        types:
-          - grid
-          - solar
-          - battery
+          - type: energy-usage-graph
+            title: Home Usage
 
-  - type: grid
-    columns: 2
-    square: false
-    cards:
-      - type: sensor
-        entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13141
-        name: Battery SOC
+          - type: energy-solar-graph
+            title: Solar Production
 
-      - type: sensor
-        entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13112
-        name: Daily PV Yield
+          - type: energy-sources-table
+            types:
+              - grid
+              - solar
+              - battery
 
-      - type: sensor
-        entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13116
-        name: PV Used By Loads Today
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+          - type: sensor
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13141
+            name: Battery SOC
 
-      - type: sensor
-        entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13174
-        name: PV To Battery Today
+          - type: sensor
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13112
+            name: Daily PV Yield
 
-      - type: sensor
-        entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13173
-        name: Feed-in Today (PV)
+          - type: sensor
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13116
+            name: PV Used By Loads Today
 
-      - type: sensor
-        entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13147
-        name: Grid Import Today
+          - type: sensor
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13174
+            name: PV To Battery Today
+
+          - type: sensor
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13173
+            name: Feed-in Today (PV)
+
+          - type: sensor
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13147
+            name: Grid Import Today
