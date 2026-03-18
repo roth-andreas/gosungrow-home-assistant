@@ -1,10 +1,45 @@
-# GoSungrow - iSolarCloud API written in GoLang.
+# GoSungrow - Home Assistant OS Add-on
 
-Note: The next major release, (v3.0.x), is here! Check out the [Latest releases here](https://github.com/MickMake/GoSungrow/releases).
+This repository is based on the original [MickMake/GoSungrow](https://github.com/MickMake/GoSungrow) project and is now maintained by Andreas Roth.
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/MickMake/GoSungrow.svg)](https://pkg.go.dev/github.com/MickMake/GoSungrow)
 
-Find this useful? [You can support development of this app](https://paypal.me/MickMake)
+## Current Purpose Of This Repo
+
+This repository is primarily used to run GoSungrow as a custom Home Assistant OS add-on.
+
+- Add-on config: `addon/gosungrow/config.yaml`
+- Add-on runtime: `addon/gosungrow/run.sh`
+- Add-on image build: `addon/gosungrow/Dockerfile`
+- CI/CD publishing: `.github/workflows/homeassistant-addon.yml`
+
+The old Raspberry Pi Docker sidecar deployment still exists in `deploy/homeassistant/README.md`, but it is no longer the main procedure in this repository.
+
+## Current Procedure
+
+1. Push this repository to GitHub.
+2. Let GitHub Actions build and publish:
+   - `ghcr.io/roth-andreas/gosungrow-addon-aarch64`
+   - `ghcr.io/roth-andreas/gosungrow-addon-amd64`
+3. If Home Assistant cannot pull the image, make the GHCR package public in GitHub package settings.
+4. In Home Assistant, add the custom add-on repository:
+   - `https://github.com/roth-andreas/gosungrow-home-assistant`
+5. Install the `GoSungrow` add-on.
+6. Configure:
+   - `gosungrow_user`
+   - `gosungrow_password`
+7. If you use the Mosquitto add-on, keep `use_homeassistant_mqtt: true`.
+8. Start the add-on.
+9. Devices and entities should appear through MQTT discovery.
+
+## Maintenance Note
+
+- Original codebase and API reverse engineering: MickMake
+- Home Assistant OS add-on packaging and maintenance in this repository: Andreas Roth
+
+## Legacy CLI / API Documentation
+
+The rest of this README is largely the original GoSungrow CLI and API documentation. It is kept here as a technical reference for direct binary usage and for understanding the underlying API behavior.
 
 ![image](https://github.com/MickMake/GoSungrow/assets/17118367/c015b207-9aed-4aab-b521-57408bba85f5)
 
