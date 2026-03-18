@@ -139,6 +139,10 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		return fmt.Errorf("SUPERVISOR_TOKEN is not set")
 	}
 
+	if err := cmds.Api.ApiLogin(true); err != nil {
+		return err
+	}
+
 	targets, err := c.discoverDashboardTargets(args)
 	if err != nil {
 		return err
