@@ -4,9 +4,9 @@ This add-on runs GoSungrow inside Home Assistant OS and publishes Sungrow iSolar
 
 ## What changed from the old Raspberry Pi Docker setup
 
-The old deployment used Docker Compose and `.env` values from `deploy/homeassistant/`.
+The old deployment used Docker Compose and `.env` values on Raspberry Pi OS.
 Home Assistant OS does not support arbitrary host Docker workloads, so this add-on replaces that setup.
-This add-on now pulls a prebuilt image from GHCR instead of building from a copied source snapshot inside the add-on folder.
+This add-on pulls a prebuilt image from GHCR instead of building from a copied source snapshot inside the add-on folder.
 
 ## Install
 
@@ -31,7 +31,7 @@ This add-on now pulls a prebuilt image from GHCR instead of building from a copi
 - `mqtt_host`, `mqtt_port`, `mqtt_user`, `mqtt_password`: Only needed if you are not using the Home Assistant MQTT service.
 - `gosungrow_host`: Defaults to `https://augateway.isolarcloud.com`.
 - `gosungrow_appkey`: Defaults to the app key currently used by this project.
-- `install_dashboard`: If enabled, the add-on copies the Sungrow flow images into `/config/www/gosungrow` and creates or updates a managed Lovelace dashboard without restarting Home Assistant.
+- `install_dashboard`: If enabled, the add-on creates or updates a managed Lovelace dashboard with embedded flow assets. No Home Assistant restart is required.
 - `dashboard_url_path`: URL path used for the managed dashboard.
 - `dashboard_title`: Sidebar title for the managed dashboard.
 - `dashboard_force_update`: Replace an existing dashboard at the same URL path even if it was edited outside GoSungrow.

@@ -4,9 +4,11 @@ WebAppService_*.json
 
 #*.txt
 /GoSungrow
+/GoSungrow.exe
 /data/
 /dist/
 /notgit/
 logfile
 /%USERPROFILE%/
+.idea/
 

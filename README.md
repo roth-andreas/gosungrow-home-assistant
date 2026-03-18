@@ -23,7 +23,7 @@ If you want the shortest path, do this:
    - `gosungrow_password`
 6. Leave `use_homeassistant_mqtt: true`.
 7. Start the add-on.
-8. The add-on automatically creates a `GoSungrow Flow` dashboard and copies the required image assets into Home Assistant. No Home Assistant restart is required.
+8. The add-on automatically creates a `GoSungrow Flow` dashboard. No Home Assistant restart is required.
 
 Detailed setup, troubleshooting, and maintainer notes are below.
 
@@ -77,20 +77,14 @@ That means this is not a native Home Assistant integration. MQTT is the transpor
 
 ## 📊 Visualizations
 
-This repository includes two ways to build Sungrow dashboards in Home Assistant:
+This repository includes two dashboard paths:
 
-- an automatically installed `GoSungrow Flow` dashboard that ships with the add-on
-- a modern setup based on Home Assistant's official energy cards
-- a custom Sungrow flow card using the included image assets
+- the automatically installed `GoSungrow Flow` dashboard that ships with the add-on
+- an optional setup based on Home Assistant's official energy cards
 
 Start here:
 
-- `docs/examples/home-assistant-energy-cards.yaml`
-- `docs/examples/home-assistant-sungrow-flow.yaml`
-
-Example dashboard from the original GoSungrow Lovelace setup:
-
-![Sungrow Home Assistant dashboard example](docs/SunGrowOnHASSIO1.png)
+- `examples/home-assistant-energy-cards.yaml`
 
 ## ✅ Supported Setup
 
@@ -177,10 +171,9 @@ On a healthy setup, the sequence is:
 
 1. the add-on starts
 2. it connects to iSolarCloud
-3. it copies the dashboard images to `/config/www/gosungrow`
-4. it creates or updates the managed `GoSungrow Flow` dashboard
-5. it connects to MQTT
-6. Home Assistant begins discovering entities
+3. it creates or updates the managed `GoSungrow Flow` dashboard
+4. it connects to MQTT
+5. Home Assistant begins discovering entities
 
 If entities do not appear immediately, check the add-on logs before changing configuration. The two most common causes are:
 
