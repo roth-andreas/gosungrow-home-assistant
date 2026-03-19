@@ -13,29 +13,23 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func TestRenderDashboardConfigInlinesAssetsAndTargets(t *testing.T) {
-	assetDir := t.TempDir()
-	templatePath := filepath.Join(assetDir, dashboardTemplateFile)
+func TestRenderDashboardConfigTargetsAndReplacesPsKeys(t *testing.T) {
+	templateDir := t.TempDir()
+	templatePath := filepath.Join(templateDir, dashboardTemplateFile)
 
 	template := `title: Template
 views:
   - title: Prototype
     path: prototype
     cards:
-      - type: picture-elements
-        image: /local/gosungrow/SungrowEnergy2.png
-        elements:
-          - type: state-label
-            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13112
+      - type: tile
+        entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13112
 `
 	if err := os.WriteFile(templatePath, []byte(template), 0600); err != nil {
 		t.Fatalf("write template: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(assetDir, "SungrowEnergy2.png"), []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}, 0600); err != nil {
-		t.Fatalf("write asset: %v", err)
-	}
 
-	config, err := renderDashboardConfig(templatePath, assetDir, "GoSungrow Flow", []haDashboardTarget{
+	config, err := renderDashboardConfig(templatePath, "GoSungrow Flow", []haDashboardTarget{
 		{PsID: "100", PsKey: "5072099_14_1_1", ViewTitle: "Roof", ViewPath: "roof"},
 		{PsID: "101", PsKey: "5080000_14_1_1", ViewTitle: "Garage", ViewPath: "garage"},
 	})
@@ -67,9 +61,6 @@ views:
 	}
 	if !strings.Contains(text, "sensor.gosungrow_virtual_5072099_14_1_1_p13112") {
 		t.Fatal("expected first ps key replacement in rendered config")
-	}
-	if !strings.Contains(text, "data:image/png;base64,") {
-		t.Fatal("expected image asset to be embedded as a data URI")
 	}
 }
 
@@ -221,7 +212,7 @@ func TestBundledDashboardTemplateRenders(t *testing.T) {
 	assetDir := filepath.Join("..", "addon", "gosungrow", "assets")
 	templatePath := filepath.Join(assetDir, dashboardTemplateFile)
 
-	config, err := renderDashboardConfig(templatePath, assetDir, "GoSungrow Flow", []haDashboardTarget{
+	config, err := renderDashboardConfig(templatePath, "GoSungrow Flow", []haDashboardTarget{
 		{PsID: "100", PsKey: "5072099_14_1_1", ViewTitle: "Roof", ViewPath: "roof"},
 	})
 	if err != nil {
@@ -234,19 +225,22 @@ func TestBundledDashboardTemplateRenders(t *testing.T) {
 	}
 
 	text := string(rendered)
+	if !strings.Contains(text, "\"type\":\"power-sankey\"") {
+		t.Fatal("expected native power-sankey card in bundled dashboard")
+	}
+	if !strings.Contains(text, "\"type\":\"energy-distribution\"") {
+		t.Fatal("expected native energy-distribution card in bundled dashboard")
+	}
+	if !strings.Contains(text, "\"type\":\"energy-sources-table\"") {
+		t.Fatal("expected native energy-sources-table card in bundled dashboard")
+	}
 	if !strings.Contains(text, "sensor.gosungrow_virtual_5072099_14_1_1_pv_to_grid_power") {
 		t.Fatal("expected pv_to_grid flow sensor in bundled dashboard")
 	}
 	if !strings.Contains(text, "sensor.gosungrow_virtual_5072099_14_1_1_grid_to_load_power") {
 		t.Fatal("expected grid_to_load flow sensor in bundled dashboard")
 	}
-	if !strings.Contains(text, "binary_sensor.gosungrow_virtual_5072099_14_1_1_pv_to_load_active") {
-		t.Fatal("expected pv_to_load active binary sensor in bundled dashboard")
-	}
-	if !strings.Contains(text, "binary_sensor.gosungrow_virtual_5072099_14_1_1_grid_to_load_active") {
-		t.Fatal("expected grid_to_load active binary sensor in bundled dashboard")
-	}
-	if !strings.Contains(text, "data:image/svg+xml;base64,") {
-		t.Fatal("expected bundled dashboard base SVG to be embedded as a data URI")
+	if !strings.Contains(text, "sensor.gosungrow_virtual_5072099_14_1_1_p13141") {
+		t.Fatal("expected battery soc sensor in bundled dashboard")
 	}
 }

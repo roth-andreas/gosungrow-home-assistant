@@ -4,11 +4,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -30,7 +28,6 @@ const (
 	defaultDashboardIcon       = "mdi:solar-power"
 	dashboardTemplateFile      = "home-assistant-sungrow-flow.yaml"
 	dashboardStateFileName     = "dashboard_state.json"
-	dashboardImageDirectory    = "gosungrow"
 )
 
 type haDashboardInstallOptions struct {
@@ -155,7 +152,7 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	}
 
 	templatePath := filepath.Join(opts.AssetDir, dashboardTemplateFile)
-	config, err := renderDashboardConfig(templatePath, opts.AssetDir, opts.DashboardTitle, targets)
+	config, err := renderDashboardConfig(templatePath, opts.DashboardTitle, targets)
 	if err != nil {
 		return err
 	}
@@ -338,7 +335,7 @@ func (c *CmdHa) discoverDashboardTargets(args []string) ([]haDashboardTarget, er
 	return ret, nil
 }
 
-func renderDashboardConfig(templatePath string, assetDir string, dashboardTitle string, targets []haDashboardTarget) (map[string]any, error) {
+func renderDashboardConfig(templatePath string, dashboardTitle string, targets []haDashboardTarget) (map[string]any, error) {
 	content, err := os.ReadFile(templatePath)
 	if err != nil {
 		return nil, err
@@ -354,14 +351,9 @@ func renderDashboardConfig(templatePath string, assetDir string, dashboardTitle 
 		return nil, fmt.Errorf("dashboard template %q does not contain any views", templatePath)
 	}
 
-	inlinedPrototype, err := inlineDashboardAssets(rawViews[0], assetDir)
-	if err != nil {
-		return nil, err
-	}
-
 	generatedViews := make([]any, 0, len(targets))
 	for _, target := range targets {
-		view, err := deepCopyJSONValue(inlinedPrototype)
+		view, err := deepCopyJSONValue(rawViews[0])
 		if err != nil {
 			return nil, err
 		}
@@ -378,52 +370,6 @@ func renderDashboardConfig(templatePath string, assetDir string, dashboardTitle 
 	template["title"] = dashboardTitle
 	template["views"] = generatedViews
 	return template, nil
-}
-
-func inlineDashboardAssets(value any, assetDir string) (any, error) {
-	switch v := value.(type) {
-	case map[string]any:
-		ret := make(map[string]any, len(v))
-		for key, inner := range v {
-			replaced, err := inlineDashboardAssets(inner, assetDir)
-			if err != nil {
-				return nil, err
-			}
-			ret[key] = replaced
-		}
-		return ret, nil
-	case []any:
-		ret := make([]any, len(v))
-		for i, inner := range v {
-			replaced, err := inlineDashboardAssets(inner, assetDir)
-			if err != nil {
-				return nil, err
-			}
-			ret[i] = replaced
-		}
-		return ret, nil
-	case string:
-		const prefix = "/local/" + dashboardImageDirectory + "/"
-		if !strings.HasPrefix(v, prefix) {
-			return v, nil
-		}
-		assetPath := filepath.Join(assetDir, filepath.Base(v))
-		return dashboardAssetDataURI(assetPath)
-	default:
-		return value, nil
-	}
-}
-
-func dashboardAssetDataURI(assetPath string) (string, error) {
-	data, err := os.ReadFile(assetPath)
-	if err != nil {
-		return "", err
-	}
-	mimeType := mime.TypeByExtension(filepath.Ext(assetPath))
-	if mimeType == "" {
-		mimeType = "application/octet-stream"
-	}
-	return fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(data)), nil
 }
 
 func targetPSKeys(targets []haDashboardTarget) []string {
