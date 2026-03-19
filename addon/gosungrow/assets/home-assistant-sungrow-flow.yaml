@@ -185,6 +185,81 @@ views:
               font-size: 15px
               font-weight: 700
 
+          - type: state-label
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_load_power
+            tap_action: none
+            style:
+              top: 44.12%
+              left: 29.06%
+              color: "#92400e"
+              background: "rgba(255, 247, 237, 0.96)"
+              border: "1px solid rgba(217, 119, 6, 0.16)"
+              border-radius: 999px
+              padding: 4px 9px
+              transform: translate(-50%, -50%)
+              font-size: 11px
+              font-weight: 700
+
+          - type: state-label
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_battery_power
+            tap_action: none
+            style:
+              top: 32.35%
+              left: 45%
+              color: "#92400e"
+              background: "rgba(255, 247, 237, 0.96)"
+              border: "1px solid rgba(217, 119, 6, 0.16)"
+              border-radius: 999px
+              padding: 4px 9px
+              transform: translate(-50%, -50%)
+              font-size: 11px
+              font-weight: 700
+
+          - type: state-label
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_grid_power
+            tap_action: none
+            style:
+              top: 61.76%
+              left: 45%
+              color: "#92400e"
+              background: "rgba(255, 247, 237, 0.96)"
+              border: "1px solid rgba(217, 119, 6, 0.16)"
+              border-radius: 999px
+              padding: 4px 9px
+              transform: translate(-50%, -50%)
+              font-size: 11px
+              font-weight: 700
+
+          - type: state-label
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_to_load_power
+            tap_action: none
+            style:
+              top: 36.76%
+              left: 63.13%
+              color: "#115e59"
+              background: "rgba(240, 253, 250, 0.96)"
+              border: "1px solid rgba(15, 118, 110, 0.16)"
+              border-radius: 999px
+              padding: 4px 9px
+              transform: translate(-50%, -50%)
+              font-size: 11px
+              font-weight: 700
+
+          - type: state-label
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_to_load_power
+            tap_action: none
+            style:
+              top: 63.24%
+              left: 63.13%
+              color: "#334155"
+              background: "rgba(248, 250, 252, 0.96)"
+              border: "1px solid rgba(71, 85, 105, 0.16)"
+              border-radius: 999px
+              padding: 4px 9px
+              transform: translate(-50%, -50%)
+              font-size: 11px
+              font-weight: 700
+
       - type: grid
         title: Today At A Glance
         columns: 2
