@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" role="img" aria-labelledby="title desc">
+  <title id="title">GoSungrow Power Flow</title>
+  <desc id="desc">Solar, battery, load, and grid overview with directional energy flows.</desc>
+  <defs>
+    <linearGradient id="panel" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f8fafc" />
+      <stop offset="100%" stop-color="#eef2f7" />
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#0f172a" flood-opacity="0.10" />
+    </filter>
+  </defs>
+
+  <rect x="14" y="14" width="972" height="732" rx="36" fill="url(#panel)" />
+
+  <g stroke-linecap="round" stroke="#cbd5e1" stroke-width="16" fill="none">
+    <path d="M 500 180 C 370 220 285 300 220 470" />
+    <path d="M 500 180 C 630 220 715 300 780 470" />
+    <line x1="500" y1="180" x2="500" y2="330" />
+    <line x1="250" y1="520" x2="430" y2="410" />
+    <line x1="570" y1="410" x2="750" y2="520" />
+  </g>
+
+  <g fill="#ffffff" filter="url(#shadow)">
+    <circle cx="500" cy="150" r="82" />
+    <circle cx="500" cy="390" r="88" />
+    <circle cx="190" cy="540" r="88" />
+    <circle cx="810" cy="540" r="88" />
+  </g>
+
+  <g fill="none" stroke-width="10">
+    <circle cx="500" cy="150" r="82" stroke="#f59e0b" />
+    <circle cx="500" cy="390" r="88" stroke="#2563eb" />
+    <circle cx="190" cy="540" r="88" stroke="#0f766e" />
+    <circle cx="810" cy="540" r="88" stroke="#475569" />
+  </g>
+
+  <g fill="#334155" font-family="'Avenir Next', 'Trebuchet MS', sans-serif" text-anchor="middle">
+    <text x="500" y="257" font-size="28" font-weight="700">SOLAR</text>
+    <text x="500" y="505" font-size="28" font-weight="700">LOAD</text>
+    <text x="190" y="658" font-size="28" font-weight="700">BATTERY</text>
+    <text x="810" y="658" font-size="28" font-weight="700">GRID</text>
+  </g>
+
+  <g fill="#64748b" font-family="'Avenir Next', 'Trebuchet MS', sans-serif" text-anchor="middle">
+    <text x="285" y="286" font-size="18" font-weight="700">PV to Battery</text>
+    <text x="500" y="288" font-size="18" font-weight="700">PV to Load</text>
+    <text x="715" y="286" font-size="18" font-weight="700">PV to Grid</text>
+    <text x="330" y="618" font-size="18" font-weight="700">Battery to Load</text>
+    <text x="670" y="618" font-size="18" font-weight="700">Grid to Load</text>
+  </g>
+</svg>

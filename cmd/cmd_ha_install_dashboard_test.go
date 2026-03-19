@@ -216,3 +216,31 @@ func TestHAWSClientDashboardCalls(t *testing.T) {
 		t.Fatalf("SaveConfig: %v", err)
 	}
 }
+
+func TestBundledDashboardTemplateRenders(t *testing.T) {
+	assetDir := filepath.Join("..", "addon", "gosungrow", "assets")
+	templatePath := filepath.Join(assetDir, dashboardTemplateFile)
+
+	config, err := renderDashboardConfig(templatePath, assetDir, "GoSungrow Flow", []haDashboardTarget{
+		{PsID: "100", PsKey: "5072099_14_1_1", ViewTitle: "Roof", ViewPath: "roof"},
+	})
+	if err != nil {
+		t.Fatalf("render bundled dashboard: %v", err)
+	}
+
+	rendered, err := json.Marshal(config)
+	if err != nil {
+		t.Fatalf("marshal bundled dashboard: %v", err)
+	}
+
+	text := string(rendered)
+	if !strings.Contains(text, "sensor.gosungrow_virtual_5072099_14_1_1_pv_to_grid_power") {
+		t.Fatal("expected pv_to_grid flow sensor in bundled dashboard")
+	}
+	if !strings.Contains(text, "sensor.gosungrow_virtual_5072099_14_1_1_grid_to_load_power") {
+		t.Fatal("expected grid_to_load flow sensor in bundled dashboard")
+	}
+	if !strings.Contains(text, "data:image/svg+xml;base64,") {
+		t.Fatal("expected bundled dashboard base SVG to be embedded as a data URI")
+	}
+}
