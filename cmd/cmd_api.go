@@ -20,7 +20,15 @@ const (
 	flagApiPassword  = "password"
 	flagApiAppKey    = "appkey"
 	flagApiLastLogin = "token-expiry"
+
+	oldLoginAppKey    = "A5C22A880B97303FCB902069C6B042AB"
+	legacyLoginAppKey = "93D72E60331ABDCDC7B39ADC2D1F32B3"
 )
+
+type loginAttempt struct {
+	host   string
+	appKey string
+}
 
 //goland:noinspection GoNameStartsWithPackageName
 type CmdApi struct {
@@ -168,62 +176,9 @@ func (c *CmdApi) ApiLogin(force bool) error {
 			c.Error = errors.New("sungrow instance not configured")
 			break
 		}
-		if c.AppKey == "" || c.AppKey == "93D72E60331ABDCDC7B39ADC2D1F32B3" {
-			c.AppKey = iSolarCloud.DefaultApiAppKey
-		}
 
-		type loginAttempt struct {
-			host   string
-			appKey string
-		}
-		appendUnique := func(list []loginAttempt, item loginAttempt) []loginAttempt {
-			host := strings.TrimSpace(item.host)
-			key := strings.TrimSpace(item.appKey)
-			if host == "" || key == "" {
-				return list
-			}
-			for _, e := range list {
-				if e.host == host && e.appKey == key {
-					return list
-				}
-			}
-			return append(list, loginAttempt{host: host, appKey: key})
-		}
-		shouldTryNext := func(err error) bool {
-			if err == nil {
-				return false
-			}
-			msg := strings.ToLower(err.Error())
-			return strings.Contains(msg, "login_state=-1") ||
-				strings.Contains(msg, "login rejected by gateway") ||
-				strings.Contains(msg, "appkey is incorrect") ||
-				strings.Contains(msg, "need to login again") ||
-				strings.Contains(msg, "er_token_login_invalid") ||
-				strings.Contains(msg, "cannot login")
-		}
-
-		candidates := make([]loginAttempt, 0)
-		defaultAppKey := iSolarCloud.DefaultApiAppKey
-		oldAppKey := "A5C22A880B97303FCB902069C6B042AB"
-		legacyAppKey := "93D72E60331ABDCDC7B39ADC2D1F32B3"
-		hosts := []string{
-			c.Url,
-			iSolarCloud.DefaultHost,
-			"https://gateway.isolarcloud.com",
-			"https://gateway.isolarcloud.eu",
-			"https://gateway.isolarcloud.com.cn",
-		}
-		appKeys := []string{
-			c.AppKey,
-			defaultAppKey,
-			oldAppKey,
-			legacyAppKey,
-		}
-		for _, host := range hosts {
-			for _, appKey := range appKeys {
-				candidates = appendUnique(candidates, loginAttempt{host: host, appKey: appKey})
-			}
-		}
+		c.AppKey = normalizeLoginAppKey(c.AppKey)
+		candidates := buildLoginAttempts(c.Url, c.AppKey)
 
 		cacheDir := c.SunGrow.ApiRoot.GetCacheDir()
 		var firstRetriableErr error
@@ -257,7 +212,7 @@ func (c *CmdApi) ApiLogin(force bool) error {
 				break
 			}
 			lastErr = c.Error
-			if !shouldTryNext(c.Error) {
+			if !shouldTryNextLoginAttempt(c.Error) {
 				exhaustedRetriable = false
 				break
 			}
@@ -283,4 +238,63 @@ func (c *CmdApi) ApiLogin(force bool) error {
 		}
 	}
 	return c.Error
+}
+
+func normalizeLoginAppKey(appKey string) string {
+	appKey = strings.TrimSpace(appKey)
+	if appKey == "" || appKey == legacyLoginAppKey {
+		return iSolarCloud.DefaultApiAppKey
+	}
+	return appKey
+}
+
+func appendUniqueLoginAttempt(list []loginAttempt, item loginAttempt) []loginAttempt {
+	host := strings.TrimSpace(item.host)
+	key := strings.TrimSpace(item.appKey)
+	if host == "" || key == "" {
+		return list
+	}
+	for _, existing := range list {
+		if existing.host == host && existing.appKey == key {
+			return list
+		}
+	}
+	return append(list, loginAttempt{host: host, appKey: key})
+}
+
+func buildLoginAttempts(host string, appKey string) []loginAttempt {
+	candidates := make([]loginAttempt, 0)
+	hosts := []string{
+		host,
+		iSolarCloud.DefaultHost,
+		"https://gateway.isolarcloud.com",
+		"https://gateway.isolarcloud.eu",
+		"https://gateway.isolarcloud.com.cn",
+	}
+	appKeys := []string{
+		normalizeLoginAppKey(appKey),
+		iSolarCloud.DefaultApiAppKey,
+		oldLoginAppKey,
+		legacyLoginAppKey,
+	}
+	for _, host := range hosts {
+		for _, appKey := range appKeys {
+			candidates = appendUniqueLoginAttempt(candidates, loginAttempt{host: host, appKey: appKey})
+		}
+	}
+	return candidates
+}
+
+func shouldTryNextLoginAttempt(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "login_state=-1") ||
+		strings.Contains(msg, "login rejected by gateway") ||
+		strings.Contains(msg, "appkey is incorrect") ||
+		strings.Contains(msg, "need to login again") ||
+		strings.Contains(msg, "er_token_login_invalid") ||
+		strings.Contains(msg, "cannot login")
 }

@@ -31,6 +31,10 @@ const (
 	flagMqttPort       = "mqtt-port"
 )
 
+var mqttApiLogin = func(force bool) error {
+	return cmds.Api.ApiLogin(force)
+}
+
 //goland:noinspection GoNameStartsWithPackageName
 type CmdMqtt struct {
 	CmdDefault
@@ -484,7 +488,7 @@ func (c *CmdMqtt) retryStartupTokenInvalid(step string, fn func() error) error {
 	}
 
 	c.log.Info("Token expired/invalid during %s. Re-authenticating...\n", step)
-	if err = cmds.Api.ApiLogin(true); err != nil {
+	if err = mqttApiLogin(true); err != nil {
 		return err
 	}
 

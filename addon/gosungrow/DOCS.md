@@ -1,54 +1,74 @@
 # Home Assistant Add-on: GoSungrow
 
-This add-on runs GoSungrow inside Home Assistant OS and publishes Sungrow iSolarCloud entities through MQTT discovery.
+This add-on logs in to Sungrow iSolarCloud, publishes MQTT discovery/state data for Home Assistant, and installs a managed dashboard for Sungrow energy flow.
 
-## What changed from the old Raspberry Pi Docker setup
+## Before you install
 
-The old deployment used Docker Compose and `.env` values on Raspberry Pi OS.
-Home Assistant OS does not support arbitrary host Docker workloads, so this add-on replaces that setup.
-This add-on pulls a prebuilt image from GHCR instead of building from a copied source snapshot inside the add-on folder.
+This add-on requires MQTT.
+
+Before installing `GoSungrow`, make sure Home Assistant already has:
+
+1. a running MQTT broker
+2. the `MQTT` integration under `Settings > Devices & services`
+
+For most users, that means installing and starting the `Mosquitto broker` add-on first.
 
 ## Install
 
-### Option 1: Local add-on on the Pi
+### Option 1: Add custom repository from GitHub
 
-1. Copy the folder `addon/gosungrow` to `/addons/gosungrow` on your Home Assistant OS device.
-2. Refresh the add-on store.
+1. Open the Home Assistant Add-on Store.
+2. Add this repository as a custom repository:
+   - `https://github.com/roth-andreas/gosungrow-home-assistant`
+3. Refresh the Add-on Store.
+4. Install `GoSungrow`.
+
+### Option 2: Local add-on on the Home Assistant box
+
+1. Copy `addon/gosungrow` to `/addons/gosungrow`.
+2. Refresh the Add-on Store.
 3. Install `GoSungrow`.
-4. Home Assistant will pull `ghcr.io/roth-andreas/gosungrow-addon-{arch}` for your architecture.
 
-### Option 2: Custom add-on repository from GitHub
+In both cases, Home Assistant will pull:
 
-1. Push this repo somewhere Home Assistant can reach.
-2. Add the repository URL in the Home Assistant add-on store.
-3. Install `GoSungrow` from that repository.
+- `ghcr.io/roth-andreas/gosungrow-addon-{arch}`
 
 ## Configuration
 
-- `gosungrow_user`: Your iSolarCloud username.
-- `gosungrow_password`: Your iSolarCloud password.
-- `use_homeassistant_mqtt`: Recommended. If enabled, the add-on reads MQTT settings from Home Assistant's MQTT service.
-- `mqtt_host`, `mqtt_port`, `mqtt_user`, `mqtt_password`: Only needed if you are not using the Home Assistant MQTT service.
-- `gosungrow_host`: Defaults to `https://augateway.isolarcloud.com`.
-- `gosungrow_appkey`: Defaults to the app key currently used by this project.
-- `install_dashboard`: If enabled, the add-on creates or updates a managed Lovelace dashboard with embedded flow assets. No Home Assistant restart is required.
-- `dashboard_url_path`: URL path used for the managed dashboard.
-- `dashboard_title`: Sidebar title for the managed dashboard.
-- `dashboard_force_update`: Replace an existing dashboard at the same URL path even if it was edited outside GoSungrow.
-- `debug`: Enables GoSungrow debug mode.
+Required:
 
-## Image publishing
+- `gosungrow_user`
+- `gosungrow_password`
 
-The production image is published by GitHub Actions from this repo:
+Recommended:
 
-- Workflow: `.github/workflows/homeassistant-addon.yml`
-- Image: `ghcr.io/roth-andreas/gosungrow-addon-{arch}`
+- `use_homeassistant_mqtt: true`
+- leave `mqtt_host`, `mqtt_port`, `mqtt_user`, and `mqtt_password` empty
 
-If you fork this repo, change the `image` field in `addon/gosungrow/config.yaml` to your own registry path.
+Other options:
 
-## Migration from the old `.env`
+- `gosungrow_host`: defaults to `https://augateway.isolarcloud.com`
+- `gosungrow_appkey`: application key used for login requests
+- `install_dashboard`: create or update the managed dashboard automatically
+- `dashboard_url_path`: URL path for the managed dashboard
+- `dashboard_title`: title shown in the Home Assistant sidebar
+- `dashboard_force_update`: replace an existing dashboard at the same URL path even if it was edited outside GoSungrow
+- `debug`: enable verbose logging
 
-Old `.env` key to new add-on option mapping:
+## What happens on startup
+
+On a healthy setup, the add-on:
+
+1. refreshes the iSolarCloud session
+2. installs or updates the managed dashboard
+3. connects to MQTT
+4. starts publishing entity discovery and state
+
+No Home Assistant restart is required for the managed dashboard.
+
+## Migration from the old Docker setup
+
+Old environment variable to add-on option mapping:
 
 - `GOSUNGROW_USER` -> `gosungrow_user`
 - `GOSUNGROW_PASSWORD` -> `gosungrow_password`
@@ -59,14 +79,20 @@ Old `.env` key to new add-on option mapping:
 - `GOSUNGROW_MQTT_USER` -> `mqtt_user`
 - `GOSUNGROW_MQTT_PASSWORD` -> `mqtt_password`
 
+Do not run the old Docker container against the same MQTT broker at the same time as this add-on.
+
 ## Persistence
 
-Runtime state is stored in `/data/.GoSungrow` inside the add-on data volume.
-Managed dashboard state is stored in `/data/.GoSungrow/dashboard_state.json`.
+Runtime state is stored in:
 
-## Notes
+- `/data/.GoSungrow`
 
-- Do not leave the old Docker container running against the same MQTT broker at the same time.
-- If you use Home Assistant's Mosquitto add-on, keep `use_homeassistant_mqtt: true` and leave the manual MQTT fields empty.
-- The add-on uses Home Assistant's websocket API to create a storage-mode dashboard, so a Home Assistant restart is not required.
-- For local development, build the image from the repo root with `docker build -f addon/gosungrow/Dockerfile .`.
+Managed dashboard state is stored in:
+
+- `/data/.GoSungrow/dashboard_state.json`
+
+## Troubleshooting
+
+- If no entities appear, verify MQTT is installed and working first.
+- If login fails, check your iSolarCloud credentials and outbound network access.
+- If Home Assistant cannot pull the add-on image, verify the GitHub Actions workflow finished and the GHCR image is available.

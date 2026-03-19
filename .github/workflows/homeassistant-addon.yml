@@ -68,6 +68,15 @@ jobs:
           go mod download
           go build .
 
+      - name: Run Go tests
+        env:
+          CGO_ENABLED: 0
+        run: go test ./...
+
+      - name: Validate add-on startup script
+        shell: bash
+        run: bash -n addon/gosungrow/run.sh
+
       - name: Build add-on image (amd64 smoke test)
         run: |
           docker build \

@@ -9,6 +9,22 @@ This repository is based on the original [MickMake/GoSungrow](https://github.com
 ![Architectures](https://img.shields.io/badge/Arch-aarch64%20%7C%20amd64-16A34A?logo=raspberrypi&logoColor=white)
 ![Maintained](https://img.shields.io/badge/Maintained%20by-Andreas%20Roth-2563EB)
 
+## ⚠️ Read This First
+
+> [!IMPORTANT]
+> Install and verify MQTT in Home Assistant before you install `GoSungrow`.
+
+This add-on is not a native Home Assistant integration. It publishes entities through MQTT discovery, so you need:
+
+1. a running MQTT broker
+2. the Home Assistant `MQTT` integration
+
+For most users that means:
+
+1. install and start the `Mosquitto broker` add-on
+2. confirm `MQTT` appears under `Settings > Devices & services`
+3. only then install `GoSungrow`
+
 ## ⚡ Quick Installation
 
 If you want the shortest path, do this:
@@ -23,66 +39,31 @@ If you want the shortest path, do this:
    - `gosungrow_password`
 6. Leave `use_homeassistant_mqtt: true`.
 7. Start the add-on.
-8. The add-on automatically creates a `GoSungrow Flow` dashboard. No Home Assistant restart is required.
+8. Open the automatically created `GoSungrow Flow` dashboard.
 
-Detailed setup, troubleshooting, and maintainer notes are below.
-
-## ⚠️ Read This First
-
-> [!IMPORTANT]
-> This add-on depends on MQTT. Install and verify MQTT in Home Assistant before you install `GoSungrow`.
-
-Before you install `GoSungrow`, you must already have these working in Home Assistant:
-
-1. an MQTT broker
-2. the Home Assistant `MQTT` integration
-
-For most users that means:
-
-1. install the `Mosquitto broker` add-on
-2. start it
-3. confirm Home Assistant shows `MQTT` under `Settings > Devices & services`
-4. only then install `GoSungrow`
-
-If MQTT is not installed first, this add-on has nowhere to publish its entities.
-
-## 🎯 What This Fork Is For
+## 🎯 What This Repository Is For
 
 Use this repository if you want to:
 
 - run GoSungrow directly on Home Assistant as a custom add-on
-- get Sungrow entities into Home Assistant through MQTT discovery
-- avoid maintaining a separate Docker container on another machine
+- publish Sungrow entities to Home Assistant through MQTT discovery
+- get an automatically managed Home Assistant dashboard for Sungrow energy flows
 
-This repository is intentionally centered on the Home Assistant add-on use case. It is not meant to be the full historical upstream CLI/API manual.
-
-## ✨ Why This Fork Exists
-
-The original GoSungrow project is the technical base. This fork packages it in a way that is practical for Home Assistant users today:
-
-- add-on definition for Home Assistant
-- GitHub Actions publishing to GHCR
-- current repository structure for custom add-on installation
-- active maintenance for the Home Assistant deployment path
+This repository is intentionally centered on the Home Assistant add-on use case. It is not trying to preserve the full historical upstream CLI/API surface.
 
 ## 🔄 How It Works
 
 1. The add-on logs in to Sungrow iSolarCloud.
-2. It reads your plant and device data.
-3. It publishes discovery and state messages to MQTT.
-4. It uses the Home Assistant websocket API to create or update a managed Lovelace dashboard.
-5. Home Assistant creates entities from those MQTT messages.
-
-That means this is not a native Home Assistant integration. MQTT is the transport layer between GoSungrow and Home Assistant.
+2. It discovers your plant and device metadata.
+3. It publishes MQTT discovery and state messages.
+4. It installs or updates a managed Home Assistant dashboard over the Home Assistant websocket API.
+5. Home Assistant creates the entities from MQTT.
 
 ## 📊 Visualizations
 
-This repository includes two dashboard paths:
+The add-on installs a managed `GoSungrow Flow` dashboard automatically.
 
-- the automatically installed `GoSungrow Flow` dashboard that ships with the add-on
-- an optional setup based on Home Assistant's official energy cards
-
-Start here:
+The repository also includes an optional example for Home Assistant's official energy cards:
 
 - `examples/home-assistant-energy-cards.yaml`
 
@@ -97,42 +78,8 @@ This repository is aimed at:
 You also need:
 
 - an iSolarCloud account
-- working network access from Home Assistant to iSolarCloud
-- MQTT working in Home Assistant before you start this add-on
-
-## 🚀 Installation
-
-### Recommended Path
-
-> [!TIP]
-> If you already use the `Mosquitto broker` add-on and Home Assistant already shows the `MQTT` integration, keep `use_homeassistant_mqtt: true` and leave the manual MQTT fields empty.
-
-1. In Home Assistant, install and start `Mosquitto broker` if you do not already have an MQTT broker.
-2. Confirm `MQTT` appears under `Settings > Devices & services`.
-3. Open the Add-on Store.
-4. Add this repository as a custom repository:
-   - `https://github.com/roth-andreas/gosungrow-home-assistant`
-5. Refresh the Add-on Store.
-6. Install `GoSungrow`.
-7. Open the add-on configuration.
-8. Set:
-   - `gosungrow_user`
-   - `gosungrow_password`
-9. Keep `use_homeassistant_mqtt: true` unless you intentionally use an external MQTT broker.
-10. Start the add-on.
-11. Open the automatically created `GoSungrow Flow` dashboard in the Home Assistant sidebar.
-
-### Local Add-on Installation
-
-If you want to install it from files instead of from GitHub:
-
-1. copy `addon/gosungrow` to `/addons/gosungrow`
-2. refresh the Add-on Store
-3. install the add-on
-4. configure credentials
-5. start it
-
-This add-on still pulls its container image from GHCR.
+- working outbound network access from Home Assistant to iSolarCloud
+- MQTT working in Home Assistant before the add-on starts
 
 ## ⚙️ Configuration
 
@@ -163,24 +110,19 @@ Available options:
 - `dashboard_force_update`: replace an existing dashboard at the same URL path even if it was edited outside GoSungrow
 - `debug`: verbose logging
 
-Use the manual MQTT fields only if you are not using Home Assistant's built-in MQTT service wiring.
-
 ## 👀 First Start: What To Expect
 
 On a healthy setup, the sequence is:
 
 1. the add-on starts
-2. it connects to iSolarCloud
-3. it creates or updates the managed `GoSungrow Flow` dashboard
+2. it refreshes the iSolarCloud session
+3. it installs or updates the managed dashboard
 4. it connects to MQTT
 5. Home Assistant begins discovering entities
 
-If entities do not appear immediately, check the add-on logs before changing configuration. The two most common causes are:
+If entities do not appear immediately, check the add-on logs before changing configuration.
 
-- MQTT was not installed first
-- iSolarCloud credentials are wrong
-
-## 🩺 Common Problems
+## 🩺 Troubleshooting
 
 ### The add-on starts but no entities appear
 
@@ -195,9 +137,9 @@ Check:
 
 Check:
 
-- you installed MQTT before GoSungrow
+- MQTT was installed before GoSungrow
 - Home Assistant has a working broker connection
-- you did not leave wrong manual MQTT values in the add-on config
+- you did not leave incorrect manual MQTT values in the add-on config
 
 ### The add-on shows iSolarCloud login errors
 
@@ -215,7 +157,7 @@ Check:
 - the GHCR package exists
 - the GHCR package visibility allows Home Assistant to pull it
 
-## 🔁 For Users Of The Old Docker Setup
+## 🔁 Migration From The Old Docker Setup
 
 If you previously ran GoSungrow as a separate Docker container on Raspberry Pi OS:
 
@@ -234,7 +176,31 @@ Environment variable mapping:
 - `GOSUNGROW_MQTT_USER` -> `mqtt_user`
 - `GOSUNGROW_MQTT_PASSWORD` -> `mqtt_password`
 
-## 🧰 For Maintainers And Forks
+## 🧪 Development And Validation
+
+Local validation commands:
+
+```bash
+go test ./...
+go build .
+bash -n addon/gosungrow/run.sh
+docker build \
+  --build-arg BUILD_FROM=ghcr.io/home-assistant/amd64-base:latest \
+  --build-arg BUILD_ARCH=amd64 \
+  --build-arg BUILD_VERSION=test \
+  -f addon/gosungrow/Dockerfile \
+  .
+```
+
+The GitHub Actions workflow runs the same checks before publishing images:
+
+- version alignment
+- `go build .`
+- `go test ./...`
+- `bash -n addon/gosungrow/run.sh`
+- add-on Docker smoke build
+
+## 🚀 Publishing And Release Flow
 
 Important files:
 
@@ -249,22 +215,7 @@ Published images:
 - `ghcr.io/roth-andreas/gosungrow-addon-aarch64`
 - `ghcr.io/roth-andreas/gosungrow-addon-amd64`
 
-If you fork this repository, update:
-
-- `addon/gosungrow/config.yaml`
-- `repository.yaml`
-- `addon/gosungrow/Dockerfile`
-
-The workflow already publishes to `ghcr.io/${github.repository_owner}/...`.
-
-## 🛠️ Development
-
-Local checks:
-
-```bash
-go build .
-docker build -f addon/gosungrow/Dockerfile .
-```
+When maintainers change runtime behavior, the add-on version in `addon/gosungrow/config.yaml` should be bumped so Home Assistant can pull a fresh image.
 
 ## 🔐 Security
 
