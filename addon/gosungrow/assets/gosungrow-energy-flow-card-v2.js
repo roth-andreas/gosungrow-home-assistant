@@ -35,7 +35,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
   }
 
   getCardSize() {
-    return 6;
+    return 5;
   }
 
   _render() {
@@ -70,14 +70,14 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         }
 
         .title {
-          padding: 12px 14px 0;
-          font-size: 0.96rem;
+          padding: 10px 12px 0;
+          font-size: 0.94rem;
           font-weight: 600;
           color: var(--primary-text-color);
         }
 
         .shell {
-          padding: 8px 10px 10px;
+          padding: 6px 8px 8px;
         }
 
         svg {
@@ -87,10 +87,10 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         }
 
         .stage {
-          border-radius: 18px;
+          border-radius: 16px;
           overflow: hidden;
           background:
-            radial-gradient(circle at 50% 16%, rgba(255,255,255,0.05), transparent 34%),
+            radial-gradient(circle at 50% 16%, rgba(255,255,255,0.04), transparent 32%),
             linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.01)),
             var(--card-background-color, #1f1f1f);
           box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
@@ -98,8 +98,8 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
 
         .edge-base {
           fill: none;
-          stroke: rgba(148, 163, 184, 0.22);
-          stroke-width: 5;
+          stroke: rgba(148, 163, 184, 0.18);
+          stroke-width: 4;
           stroke-linecap: round;
         }
 
@@ -144,7 +144,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
 
         .node-ring {
           fill: rgba(15, 23, 42, 0.18);
-          stroke-width: 2.5;
+          stroke-width: 2.2;
         }
 
         .node-fill {
@@ -189,13 +189,13 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
 
         .node-value {
           fill: var(--primary-text-color);
-          font-size: 15px;
+          font-size: 14px;
           font-weight: 700;
           text-anchor: middle;
         }
 
         .node-subvalue {
-          font-size: 11px;
+          font-size: 10px;
           font-weight: 700;
           text-anchor: middle;
         }
@@ -206,7 +206,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
 
         .node-label {
           fill: var(--secondary-text-color);
-          font-size: 13px;
+          font-size: 12px;
           font-weight: 500;
           text-anchor: middle;
         }
@@ -217,7 +217,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         }
 
         .route-pill text {
-          font-size: 10px;
+          font-size: 9px;
           font-weight: 700;
           text-anchor: middle;
           dominant-baseline: middle;
@@ -295,55 +295,55 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
   _layout() {
     return {
       width: 940,
-      height: 410,
-      radius: 42,
+      height: 320,
+      radius: 36,
       nodes: {
-        solar: { x: 470, y: 74, label: "PV", ringClass: "solar-ring" },
-        grid: { x: 238, y: 198, label: "Grid", ringClass: "grid-ring" },
-        home: { x: 702, y: 198, label: "Home", ringClass: "home-ring" },
-        battery: { x: 470, y: 324, label: "Battery", ringClass: "battery-ring" },
+        solar: { x: 470, y: 62, label: "PV", ringClass: "solar-ring" },
+        grid: { x: 272, y: 162, label: "Grid", ringClass: "grid-ring" },
+        home: { x: 668, y: 162, label: "Home", ringClass: "home-ring" },
+        battery: { x: 470, y: 248, label: "Battery", ringClass: "battery-ring" },
       },
       edges: {
         pv_to_grid_power: {
-          path: "M434 110 C374 126 313 148 275 172",
-          labelX: 364,
-          labelY: 142,
+          path: "M442 92 C401 105 354 123 305 148",
+          labelX: 376,
+          labelY: 122,
           edgeClass: "edge-solar-grid",
           pillClass: "pill-solar-grid",
           dotStartOffset: "6%",
           dotDur: "4.6s",
         },
         pv_to_load_power: {
-          path: "M506 110 C566 126 627 148 665 172",
-          labelX: 576,
-          labelY: 142,
+          path: "M498 92 C539 105 586 123 635 148",
+          labelX: 564,
+          labelY: 122,
           edgeClass: "edge-solar-home",
           pillClass: "pill-solar-home",
           dotStartOffset: "6%",
           dotDur: "4.2s",
         },
         pv_to_battery_power: {
-          path: "M470 118 C470 166 470 214 470 270",
+          path: "M470 98 C470 138 470 176 470 212",
           labelX: 470,
-          labelY: 178,
+          labelY: 150,
           edgeClass: "edge-solar-battery",
           pillClass: "pill-solar-battery",
           dotStartOffset: "6%",
           dotDur: "4.8s",
         },
         grid_to_load_power: {
-          path: "M292 198 C382 198 558 198 648 198",
+          path: "M314 162 C386 160 554 160 626 162",
           labelX: 470,
-          labelY: 226,
+          labelY: 186,
           edgeClass: "edge-grid-home",
           pillClass: "pill-grid-home",
           dotStartOffset: "6%",
           dotDur: "4.4s",
         },
         battery_to_load_power: {
-          path: "M506 292 C554 270 609 238 664 214",
-          labelX: 594,
-          labelY: 272,
+          path: "M498 220 C542 206 585 187 632 172",
+          labelX: 572,
+          labelY: 214,
           edgeClass: "edge-battery-home",
           pillClass: "pill-battery-home",
           dotStartOffset: "6%",
@@ -376,15 +376,15 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
   _renderEdge(edge, display) {
     const magnitude = Math.abs(display.numericValue);
     const active = magnitude > 0.01;
-    const width = active ? 4 + Math.min(magnitude, 6) * 1.6 : 3.5;
-    const opacity = active ? 1 : 0.14;
+    const width = active ? 3.4 + Math.min(magnitude, 6) * 1.2 : 2.4;
+    const opacity = active ? 0.96 : 0.12;
     const color = this._edgeColor(edge.edgeClass);
 
     return `
       <path class="edge-base" d="${edge.path}"></path>
       <path class="edge-active ${edge.edgeClass}" d="${edge.path}" style="stroke-width:${width};opacity:${opacity};"></path>
       <g class="edge-dot${active ? " active" : ""}">
-        <circle r="${Math.max(4, width * 0.6)}" fill="${color}">
+        <circle r="${Math.max(3, width * 0.52)}" fill="${color}">
           <animateMotion dur="${edge.dotDur || "4.5s"}" repeatCount="indefinite" rotate="auto" path="${edge.path}" keyPoints="0;1" keyTimes="0;1"></animateMotion>
         </circle>
       </g>
@@ -392,11 +392,14 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
   }
 
   _renderEdgeLabel(edge, display) {
-    const width = Math.max(62, display.formatted.length * 6.8);
     const active = Math.abs(display.numericValue) > 0.01;
+    if (!active) {
+      return "";
+    }
+    const width = Math.max(62, display.formatted.length * 6.8);
     return `
-      <g class="route-pill ${edge.pillClass}${active ? "" : " inactive"}" transform="translate(${edge.labelX} ${edge.labelY})">
-        <rect x="${-width / 2}" y="-12" width="${width}" height="24" rx="12"></rect>
+      <g class="route-pill ${edge.pillClass}" transform="translate(${edge.labelX} ${edge.labelY})">
+        <rect x="${-width / 2}" y="-11" width="${width}" height="22" rx="11"></rect>
         <text x="0" y="1">${this._escape(display.formatted)}</text>
       </g>
     `;
@@ -406,9 +409,9 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
     const radius = this._layout().radius;
     const entityId = this._entityIdForNode(key);
     const display = displays[key];
-    const labelY = node.y + radius + 20;
+    const labelY = node.y + radius + 16;
     const iconMarkup = this._renderIcon(key, node.x, node.y - 8);
-    const valueY = key === "battery" ? node.y + 12 : node.y + 14;
+    const valueY = key === "battery" ? node.y + 10 : node.y + 12;
     const batterySoc = displays.batterySoc;
     return `
       <g class="node-button" ${entityId ? `data-entity="${this._escape(entityId)}"` : `role="presentation"`}>
