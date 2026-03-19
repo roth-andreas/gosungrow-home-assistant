@@ -114,13 +114,16 @@ func TestInstallDashboardCardAssetWritesVersionedResource(t *testing.T) {
 		t.Fatalf("write card source: %v", err)
 	}
 
-	resourceURL, err := installDashboardCardAsset(assetDir, configDir)
+	resourceURL, version, err := installDashboardCardAsset(assetDir, configDir)
 	if err != nil {
 		t.Fatalf("installDashboardCardAsset: %v", err)
 	}
 
 	if !strings.HasPrefix(resourceURL, "/local/"+dashboardCardResourceDir+"/"+dashboardCardFileName+"?v=") {
 		t.Fatalf("unexpected resource URL: %q", resourceURL)
+	}
+	if strings.TrimSpace(version) == "" {
+		t.Fatal("expected non-empty asset version")
 	}
 
 	targetPath := filepath.Join(configDir, "www", dashboardCardResourceDir, dashboardCardFileName)
@@ -140,6 +143,16 @@ func TestUniqueNonEmptyStrings(t *testing.T) {
 	}
 	if values[0] != "/config" || values[1] != "/homeassistant" {
 		t.Fatalf("unexpected order/content: %#v", values)
+	}
+}
+
+func TestDashboardCardCDNURL(t *testing.T) {
+	url := dashboardCardCDNURL("abc123")
+	if !strings.Contains(url, "@main/addon/gosungrow/assets/"+dashboardCardFileName) {
+		t.Fatalf("unexpected CDN URL: %q", url)
+	}
+	if !strings.HasSuffix(url, "?v=abc123") {
+		t.Fatalf("unexpected CDN version suffix: %q", url)
 	}
 }
 

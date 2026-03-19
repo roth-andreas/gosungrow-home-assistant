@@ -7,7 +7,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -27,17 +29,20 @@ const (
 	defaultDashboardURLPath    = "gosungrow-flow"
 	defaultDashboardTitle      = "GoSungrow Flow"
 	defaultDashboardIcon       = "mdi:solar-power"
+	defaultSupervisorCoreURL   = "http://supervisor/core"
 	dashboardTemplateFile      = "home-assistant-sungrow-flow.yaml"
 	dashboardStateFileName     = "dashboard_state.json"
 	dashboardCardFileName      = "gosungrow-energy-flow-card.js"
 	dashboardCardResourceDir   = "gosungrow"
 	dashboardCardResourceType  = "module"
+	dashboardCardCDNBaseURL    = "https://cdn.jsdelivr.net/gh/roth-andreas/gosungrow-home-assistant@main/addon/gosungrow/assets"
 )
 
 type haDashboardInstallOptions struct {
 	AssetDir           string
 	HomeAssistantDir   string
 	HomeAssistantWSURL string
+	HomeAssistantURL   string
 	SupervisorToken    string
 	DashboardURLPath   string
 	DashboardTitle     string
@@ -108,6 +113,7 @@ func (c *CmdHa) newInstallDashboardCommand() *cobra.Command {
 		AssetDir:           defaultHADashboardAssetDir,
 		HomeAssistantDir:   defaultHAConfigDir,
 		HomeAssistantWSURL: defaultHAWebsocketURL,
+		HomeAssistantURL:   defaultSupervisorCoreURL,
 		SupervisorToken:    os.Getenv("SUPERVISOR_TOKEN"),
 		DashboardURLPath:   defaultDashboardURLPath,
 		DashboardTitle:     defaultDashboardTitle,
@@ -136,6 +142,7 @@ func (c *CmdHa) newInstallDashboardCommand() *cobra.Command {
 	cmd.Flags().StringVar(&opts.AssetDir, "asset-dir", opts.AssetDir, "Directory containing the dashboard template and image assets.")
 	cmd.Flags().StringVar(&opts.HomeAssistantDir, "ha-config-dir", opts.HomeAssistantDir, "Home Assistant config directory containing the www folder.")
 	cmd.Flags().StringVar(&opts.HomeAssistantWSURL, "ha-ws-url", opts.HomeAssistantWSURL, "Home Assistant websocket endpoint.")
+	cmd.Flags().StringVar(&opts.HomeAssistantURL, "ha-url", opts.HomeAssistantURL, "Home Assistant base URL used to verify custom card assets.")
 	cmd.Flags().StringVar(&opts.SupervisorToken, "supervisor-token", opts.SupervisorToken, "Supervisor token used to access the Home Assistant websocket.")
 	cmd.Flags().StringVar(&opts.DashboardURLPath, "url-path", opts.DashboardURLPath, "Dashboard URL path.")
 	cmd.Flags().StringVar(&opts.DashboardTitle, "title", opts.DashboardTitle, "Dashboard title.")
@@ -145,6 +152,7 @@ func (c *CmdHa) newInstallDashboardCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&opts.ForceUpdate, "force-update", opts.ForceUpdate, "Replace an existing dashboard even if it was modified outside GoSungrow.")
 	_ = cmd.Flags().MarkHidden("supervisor-token")
 	_ = cmd.Flags().MarkHidden("ha-config-dir")
+	_ = cmd.Flags().MarkHidden("ha-url")
 
 	return cmd
 }
@@ -172,9 +180,15 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		return err
 	}
 
-	resourceURL, err := installDashboardCardAsset(opts.AssetDir, opts.HomeAssistantDir)
+	localResourceURL, assetVersion, err := installDashboardCardAsset(opts.AssetDir, opts.HomeAssistantDir)
 	if err != nil {
 		return err
+	}
+	resourceURL := localResourceURL
+	ok, verifyErr := verifyDashboardCardResource(opts.HomeAssistantURL, opts.SupervisorToken, localResourceURL)
+	if verifyErr != nil || !ok {
+		resourceURL = dashboardCardCDNURL(assetVersion)
+		fmt.Printf("Managed GoSungrow custom card local asset unavailable; using CDN fallback resource.\n")
 	}
 
 	desiredHash, err := hashCanonicalJSON(config)
@@ -396,11 +410,11 @@ func renderDashboardConfig(templatePath string, dashboardTitle string, targets [
 	return template, nil
 }
 
-func installDashboardCardAsset(assetDir string, homeAssistantDir string) (string, error) {
+func installDashboardCardAsset(assetDir string, homeAssistantDir string) (string, string, error) {
 	sourcePath := filepath.Join(assetDir, dashboardCardFileName)
 	data, err := os.ReadFile(sourcePath)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	candidates := uniqueNonEmptyStrings([]string{homeAssistantDir, "/homeassistant", "/config"})
@@ -425,12 +439,12 @@ func installDashboardCardAsset(assetDir string, homeAssistantDir string) (string
 		if lastErr == nil {
 			lastErr = fmt.Errorf("home assistant config directory is empty")
 		}
-		return "", lastErr
+		return "", "", lastErr
 	}
 
 	sum := sha256.Sum256(data)
 	version := hex.EncodeToString(sum[:6])
-	return fmt.Sprintf("/local/%s/%s?v=%s", dashboardCardResourceDir, dashboardCardFileName, version), nil
+	return fmt.Sprintf("/local/%s/%s?v=%s", dashboardCardResourceDir, dashboardCardFileName, version), version, nil
 }
 
 func uniqueNonEmptyStrings(values []string) []string {
@@ -448,6 +462,44 @@ func uniqueNonEmptyStrings(values []string) []string {
 		ret = append(ret, value)
 	}
 	return ret
+}
+
+func verifyDashboardCardResource(homeAssistantURL string, supervisorToken string, resourceURL string) (bool, error) {
+	baseURL := strings.TrimRight(strings.TrimSpace(homeAssistantURL), "/")
+	if baseURL == "" {
+		return false, fmt.Errorf("home assistant url is empty")
+	}
+
+	parsed, err := url.Parse(resourceURL)
+	if err != nil {
+		return false, err
+	}
+
+	verifyURL := baseURL + parsed.Path
+	req, err := http.NewRequest(http.MethodGet, verifyURL, nil)
+	if err != nil {
+		return false, err
+	}
+	if strings.TrimSpace(supervisorToken) != "" {
+		req.Header.Set("Authorization", "Bearer "+supervisorToken)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return resp.StatusCode == http.StatusOK, nil
+}
+
+func dashboardCardCDNURL(version string) string {
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return fmt.Sprintf("%s/%s", dashboardCardCDNBaseURL, dashboardCardFileName)
+	}
+	return fmt.Sprintf("%s/%s?v=%s", dashboardCardCDNBaseURL, dashboardCardFileName, version)
 }
 
 func targetPSKeys(targets []haDashboardTarget) []string {
