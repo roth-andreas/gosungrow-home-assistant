@@ -12,8 +12,10 @@ import (
 	"github.com/roth-andreas/gosungrow-home-assistant/cmdHassio"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/WebAppService/getDevicePointAttrs"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/valueTypes"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -30,6 +32,40 @@ const (
 	flagMqttHost       = "mqtt-host"
 	flagMqttPort       = "mqtt-port"
 )
+
+type flowActivityDefinition struct {
+	EntitySuffix string
+	Name         string
+	Icon         string
+}
+
+var flowActivityDefinitions = map[string]flowActivityDefinition{
+	"pv_to_load_power": {
+		EntitySuffix: "pv_to_load_active",
+		Name:         "Flow - PV to Load Active",
+		Icon:         "mdi:solar-power-variant-outline",
+	},
+	"pv_to_battery_power": {
+		EntitySuffix: "pv_to_battery_active",
+		Name:         "Flow - PV to Battery Active",
+		Icon:         "mdi:battery-charging-medium",
+	},
+	"pv_to_grid_power": {
+		EntitySuffix: "pv_to_grid_active",
+		Name:         "Flow - PV to Grid Active",
+		Icon:         "mdi:upload-network-outline",
+	},
+	"battery_to_load_power": {
+		EntitySuffix: "battery_to_load_active",
+		Name:         "Flow - Battery to Load Active",
+		Icon:         "mdi:battery-arrow-down-outline",
+	},
+	"grid_to_load_power": {
+		EntitySuffix: "grid_to_load_active",
+		Name:         "Flow - Grid to Load Active",
+		Icon:         "mdi:transmission-tower-export",
+	},
+}
 
 var mqttApiLogin = func(force bool) error {
 	return cmds.Api.ApiLogin(force)
@@ -611,10 +647,70 @@ func (c *CmdMqtt) Update(endpoint string, data api.DataMap, newDay bool) error {
 			if c.Error != nil {
 				break
 			}
+
+			c.Error = c.publishDerivedFlowActivity(r, refreshConfig)
+			if c.Error != nil {
+				break
+			}
 		}
 		c.log.PlainInfo("\n")
 	}
 	return c.Error
+}
+
+func (c *CmdMqtt) publishDerivedFlowActivity(r *api.DataEntry, refreshConfig bool) error {
+	for suffix, def := range flowActivityDefinitions {
+		if !strings.HasSuffix(r.EndPoint, suffix) {
+			continue
+		}
+
+		active := false
+		if r.Value.Valid {
+			active = math.Abs(r.Value.Value()) > 0.01
+		}
+
+		value := valueTypes.UnitValue{}
+		value.SetBool(active)
+		value.SetUnit(cmdHassio.LabelBinarySensor)
+		value.SetType("Bool")
+
+		point := &api.Point{
+			Id:          def.EntitySuffix,
+			GroupName:   "Flow State",
+			Description: def.Name,
+			Unit:        cmdHassio.LabelBinarySensor,
+			UpdateFreq:  r.Point.UpdateFreq,
+			ValueType:   "Bool",
+			Valid:       true,
+		}
+
+		fullID := strings.TrimSuffix(r.EndPoint, suffix) + def.EntitySuffix
+		config := cmdHassio.EntityConfig{
+			Name:       def.Name,
+			SubName:    "",
+			ParentId:   r.Parent.Key,
+			ParentName: r.Parent.Key,
+			UniqueId:   fullID,
+			FullId:     fullID,
+			Units:      cmdHassio.LabelBinarySensor,
+			Value:      &value,
+			Point:      point,
+			Icon:       def.Icon,
+			UpdateFreq: r.Point.UpdateFreq,
+		}
+
+		config.FixConfig()
+
+		if refreshConfig {
+			if err := c.Client.BinarySensorPublishConfig(config); err != nil {
+				return err
+			}
+		}
+
+		return c.Client.BinarySensorPublishValue(config)
+	}
+
+	return nil
 }
 
 func (c *CmdMqtt) friendlyEntityName(r *api.DataEntry) string {

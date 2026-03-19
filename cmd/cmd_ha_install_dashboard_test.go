@@ -240,6 +240,12 @@ func TestBundledDashboardTemplateRenders(t *testing.T) {
 	if !strings.Contains(text, "sensor.gosungrow_virtual_5072099_14_1_1_grid_to_load_power") {
 		t.Fatal("expected grid_to_load flow sensor in bundled dashboard")
 	}
+	if !strings.Contains(text, "binary_sensor.gosungrow_virtual_5072099_14_1_1_pv_to_load_active") {
+		t.Fatal("expected pv_to_load active binary sensor in bundled dashboard")
+	}
+	if !strings.Contains(text, "binary_sensor.gosungrow_virtual_5072099_14_1_1_grid_to_load_active") {
+		t.Fatal("expected grid_to_load active binary sensor in bundled dashboard")
+	}
 	if !strings.Contains(text, "data:image/svg+xml;base64,") {
 		t.Fatal("expected bundled dashboard base SVG to be embedded as a data URI")
 	}

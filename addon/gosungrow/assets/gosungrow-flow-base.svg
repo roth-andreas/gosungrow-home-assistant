@@ -34,11 +34,4 @@
     <circle cx="1230" cy="200" r="82" stroke="#0f766e" />
     <circle cx="1230" cy="480" r="82" stroke="#475569" />
   </g>
-
-  <g fill="#334155" font-family="'Avenir Next', 'Trebuchet MS', sans-serif" text-anchor="middle">
-    <text x="230" y="472" font-size="24" font-weight="700">SOLAR</text>
-    <text x="700" y="472" font-size="24" font-weight="700">LOAD</text>
-    <text x="1230" y="334" font-size="24" font-weight="700">BATTERY</text>
-    <text x="1230" y="614" font-size="24" font-weight="700">GRID</text>
-  </g>
 </svg>

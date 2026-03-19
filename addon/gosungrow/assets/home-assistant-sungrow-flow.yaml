@@ -10,6 +10,66 @@ views:
         view_layout:
           position: main
         elements:
+          - type: image
+            entity: binary_sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_load_active
+            image: /local/gosungrow/gosungrow-flow-overlay-none.svg
+            state_image:
+              "on": /local/gosungrow/gosungrow-flow-overlay-pv-to-load.svg
+            tap_action: none
+            style:
+              top: 50%
+              left: 50%
+              width: 100%
+              transform: translate(-50%, -50%)
+
+          - type: image
+            entity: binary_sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_battery_active
+            image: /local/gosungrow/gosungrow-flow-overlay-none.svg
+            state_image:
+              "on": /local/gosungrow/gosungrow-flow-overlay-pv-to-battery.svg
+            tap_action: none
+            style:
+              top: 50%
+              left: 50%
+              width: 100%
+              transform: translate(-50%, -50%)
+
+          - type: image
+            entity: binary_sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_grid_active
+            image: /local/gosungrow/gosungrow-flow-overlay-none.svg
+            state_image:
+              "on": /local/gosungrow/gosungrow-flow-overlay-pv-to-grid.svg
+            tap_action: none
+            style:
+              top: 50%
+              left: 50%
+              width: 100%
+              transform: translate(-50%, -50%)
+
+          - type: image
+            entity: binary_sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_to_load_active
+            image: /local/gosungrow/gosungrow-flow-overlay-none.svg
+            state_image:
+              "on": /local/gosungrow/gosungrow-flow-overlay-battery-to-load.svg
+            tap_action: none
+            style:
+              top: 50%
+              left: 50%
+              width: 100%
+              transform: translate(-50%, -50%)
+
+          - type: image
+            entity: binary_sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_to_load_active
+            image: /local/gosungrow/gosungrow-flow-overlay-none.svg
+            state_image:
+              "on": /local/gosungrow/gosungrow-flow-overlay-grid-to-load.svg
+            tap_action: none
+            style:
+              top: 50%
+              left: 50%
+              width: 100%
+              transform: translate(-50%, -50%)
+
           - type: icon
             icon: mdi:solar-power-variant
             tap_action: none
@@ -130,7 +190,7 @@ views:
             tap_action: none
             style:
               top: 42.65%
-              left: 28.75%
+              left: 29.38%
               color: "#7c2d12"
               background: "rgba(255, 237, 213, 0.98)"
               border: "1px solid rgba(217, 119, 6, 0.18)"
@@ -144,8 +204,8 @@ views:
             entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_battery_power
             tap_action: none
             style:
-              top: 28.68%
-              left: 47.5%
+              top: 29.41%
+              left: 48.75%
               color: "#7c2d12"
               background: "rgba(255, 237, 213, 0.98)"
               border: "1px solid rgba(217, 119, 6, 0.18)"
@@ -159,8 +219,8 @@ views:
             entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_grid_power
             tap_action: none
             style:
-              top: 56.62%
-              left: 47.5%
+              top: 55.88%
+              left: 48.75%
               color: "#7c2d12"
               background: "rgba(255, 237, 213, 0.98)"
               border: "1px solid rgba(217, 119, 6, 0.18)"
@@ -174,8 +234,8 @@ views:
             entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_to_load_power
             tap_action: none
             style:
-              top: 35.29%
-              left: 63.75%
+              top: 36.03%
+              left: 63.13%
               color: "#134e4a"
               background: "rgba(204, 251, 241, 0.98)"
               border: "1px solid rgba(15, 118, 110, 0.18)"
@@ -189,8 +249,8 @@ views:
             entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_to_load_power
             tap_action: none
             style:
-              top: 64.71%
-              left: 63.75%
+              top: 63.97%
+              left: 63.13%
               color: "#334155"
               background: "rgba(226, 232, 240, 0.98)"
               border: "1px solid rgba(71, 85, 105, 0.18)"
