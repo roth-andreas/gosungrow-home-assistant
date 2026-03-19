@@ -182,22 +182,26 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         .node-icon {
           fill: none;
           stroke: rgba(255,255,255,0.92);
-          stroke-width: 2.4;
+          stroke-width: 2.1;
           stroke-linecap: round;
           stroke-linejoin: round;
         }
 
         .node-value {
           fill: var(--primary-text-color);
-          font-size: 14px;
+          font-size: 13px;
           font-weight: 700;
           text-anchor: middle;
+          dominant-baseline: middle;
+          font-variant-numeric: tabular-nums;
         }
 
         .node-subvalue {
           font-size: 10px;
           font-weight: 700;
           text-anchor: middle;
+          dominant-baseline: middle;
+          font-variant-numeric: tabular-nums;
         }
 
         .battery-soc {
@@ -410,8 +414,9 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
     const entityId = this._entityIdForNode(key);
     const display = displays[key];
     const labelY = node.y + radius + 16;
-    const iconMarkup = this._renderIcon(key, node.x, node.y - 8);
-    const valueY = key === "battery" ? node.y + 10 : node.y + 12;
+    const iconLayout = this._iconLayout(key, node);
+    const iconMarkup = this._renderIcon(key, iconLayout.x, iconLayout.y, iconLayout.scale);
+    const valueY = key === "battery" ? node.y + 12 : node.y + 14;
     const batterySoc = displays.batterySoc;
     return `
       <g class="node-button" ${entityId ? `data-entity="${this._escape(entityId)}"` : `role="presentation"`}>
@@ -420,17 +425,33 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         <circle class="node-fill" cx="${node.x}" cy="${node.y}" r="${radius - 2}"></circle>
         ${iconMarkup}
         <text class="node-value" x="${node.x}" y="${valueY}">${this._escape(display.formatted)}</text>
-        ${key === "battery" ? `<text class="node-subvalue battery-soc" x="${node.x}" y="${node.y + 25}">${this._escape(batterySoc.formatted)}</text>` : ""}
+        ${key === "battery" ? `<text class="node-subvalue battery-soc" x="${node.x}" y="${node.y + 28}">${this._escape(batterySoc.formatted)}</text>` : ""}
         <text class="node-label" x="${node.x}" y="${labelY}">${this._escape(node.label)}</text>
       </g>
     `;
   }
 
-  _renderIcon(key, x, y) {
+  _iconLayout(key, node) {
+    switch (key) {
+      case "solar":
+        return { x: node.x, y: node.y - 16, scale: 0.9 };
+      case "home":
+        return { x: node.x, y: node.y - 15, scale: 0.88 };
+      case "battery":
+        return { x: node.x, y: node.y - 16, scale: 0.86 };
+      case "grid":
+        return { x: node.x, y: node.y - 16, scale: 0.88 };
+      default:
+        return { x: node.x, y: node.y - 14, scale: 0.9 };
+    }
+  }
+
+  _renderIcon(key, x, y, scale = 1) {
+    const transform = `translate(${x} ${y}) scale(${scale})`;
     switch (key) {
       case "solar":
         return `
-          <g class="node-icon" transform="translate(${x} ${y})">
+          <g class="node-icon" transform="${transform}">
             <circle cx="0" cy="-14" r="5"></circle>
             <line x1="-10" y1="-14" x2="-15" y2="-14"></line>
             <line x1="10" y1="-14" x2="15" y2="-14"></line>
@@ -445,7 +466,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         `;
       case "home":
         return `
-          <g class="node-icon" transform="translate(${x} ${y})">
+          <g class="node-icon" transform="${transform}">
             <path d="M-18 1 L0 -14 L18 1"></path>
             <path d="M-13 1 V18 H13 V1"></path>
             <path d="M2 -4 L-3 7 H3 L-2 18"></path>
@@ -453,7 +474,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         `;
       case "battery":
         return `
-          <g class="node-icon" transform="translate(${x} ${y})">
+          <g class="node-icon" transform="${transform}">
             <rect x="-12" y="-18" width="24" height="36" rx="4"></rect>
             <rect x="-4" y="-24" width="8" height="6" rx="2"></rect>
             <rect x="-5" y="-4" width="10" height="14" rx="2"></rect>
@@ -461,7 +482,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         `;
       case "grid":
         return `
-          <g class="node-icon" transform="translate(${x} ${y})">
+          <g class="node-icon" transform="${transform}">
             <path d="M0 -22 L-12 18"></path>
             <path d="M0 -22 L12 18"></path>
             <path d="M-8 -6 H8"></path>
