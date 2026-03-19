@@ -1,10 +1,10 @@
 package cmdHassio
 
 import (
-	"github.com/MickMake/GoSungrow/iSolarCloud/AppService/getDeviceList"
-	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct/valueTypes"
 	"errors"
 	"fmt"
+	"github.com/MickMake/GoSungrow/iSolarCloud/AppService/getDeviceList"
+	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct/valueTypes"
 	"github.com/MickMake/GoUnify/Only"
 	"github.com/MickMake/GoUnify/cmdLog"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -13,15 +13,14 @@ import (
 	"time"
 )
 
-
 type Mqtt struct {
-	ClientId      string `json:"client_id"`
-	Username      string `json:"username"`
-	Password      string `json:"password"`
-	Host          string `json:"host"`
-	Port          string `json:"port"`
-	Timeout       time.Duration `json:"timeout"`
-	EntityPrefix  string `json:"entity_prefix"`
+	ClientId     string        `json:"client_id"`
+	Username     string        `json:"username"`
+	Password     string        `json:"password"`
+	Host         string        `json:"host"`
+	Port         string        `json:"port"`
+	Timeout      time.Duration `json:"timeout"`
+	EntityPrefix string        `json:"entity_prefix"`
 
 	url           *url.URL
 	client        mqtt.Client
@@ -43,13 +42,12 @@ type Mqtt struct {
 }
 
 const OptionLogLevel = "mqtt_loglevel"
-const OptionDebug    = "mqtt_debug"
 
 func New(req Mqtt) *Mqtt {
 	var ret Mqtt
 
 	for range Only.Once {
-		ret = Mqtt {
+		ret = Mqtt{
 			ClientId:       req.ClientId,
 			Username:       req.Username,
 			Password:       req.Password,
@@ -86,7 +84,6 @@ func New(req Mqtt) *Mqtt {
 
 	return &ret
 }
-
 
 func (m *Mqtt) IsFirstRun() bool {
 	return m.firstRun
@@ -149,36 +146,7 @@ func (m *Mqtt) setUrl() error {
 			u = m.Username + ":" + m.Password + "@" + m.Host + ":" + m.Port
 		}
 
-		// if (m.ClientCert != "") && (m.ClientKey != "") && (m.ServerCert != "") {
-		// 	// load the client certificate and its associated private key, which
-		// 	// are used to authenticate the client to the server
-		// 	// 				"certs/client.cert.pem", "certs/client.key.pem")
-		// 	m.clientKeyPair, m.err = tls.LoadX509KeyPair(m.ClientCert, m.ClientKey)
-		// 	if m.err != nil {
-		// 		fmt.Printf("failed to load client key pair: %v\n", m.err)
-		// 		break
-		// 	}
-		//
-		// 	// load either the server certificate or the certificate of the CA
-		// 	// (Certificate Authority) which signed the server certificate
-		// 	// "certs/server.cert.pem"
-		// 	m.serverCertPool, m.err = modbus.LoadCertPool(m.ServerCert)
-		// 	if m.err != nil {
-		// 		fmt.Printf("failed to load server certificate/CA: %v\n", m.err)
-		// 		break
-		// 	}
-		//
-		// 	// tcp+tls is the moniker for MBAPS (modbus/tcp encapsulated in TLS),
-		// 	// 802/tcp is the IANA-registered port for MBAPS.
-		// 	// set the client-side cert and key
-		// 	u = "tcp+tls://" + u
-		//
-		// 	m.config.TLSClientCert = &m.clientKeyPair
-		// 	// set the server/CA certificate
-		// 	m.config.TLSRootCAs = m.serverCertPool
-		// } else {
-			u = "tcp://" + u
-		// }
+		u = "tcp://" + u
 
 		m.url, m.err = url.Parse(u)
 		if m.err != nil {
@@ -226,12 +194,12 @@ func (m *Mqtt) Connect() error {
 			m.ClientId = "GoSungrow"
 		}
 
-		device := Config {
-			Entry:      JoinStringsForTopic(m.Prefix, LabelSensor, m.ClientId),	// m.servicePrefix
+		device := Config{
+			Entry:      JoinStringsForTopic(m.Prefix, LabelSensor, m.ClientId), // m.servicePrefix
 			Name:       m.ClientId,
-			UniqueId:   m.ClientId, 	// + "_Service",
-			StateTopic:   "~/state",
-			DeviceConfig: DeviceConfig {
+			UniqueId:   m.ClientId, // + "_Service",
+			StateTopic: "~/state",
+			DeviceConfig: DeviceConfig{
 				Identifiers:  []string{"GoSungrow"},
 				SwVersion:    "GoSungrow https://github.com/MickMake/GoSungrow",
 				Name:         m.ClientId + " Service",
@@ -358,56 +326,6 @@ func (m *Mqtt) Publish(topic string, qos byte, retained bool, payload string) er
 	return m.err
 }
 
-func (m *Mqtt) PublishValue(Type string, subtopic string, value string) error {
-	for range Only.Once {
-		topic := ""
-		switch Type {
-			case LabelSensor:
-				topic = JoinStringsForTopic(m.Prefix, LabelSensor, m.ClientId, subtopic, "state")
-				// state := MqttState {
-				// 	LastReset: "", // m.GetLastReset(point.PointId),
-				// 	Value:     value,
-				// }
-				// value = state.Json()
-
-			case "binary_sensor":
-				topic = JoinStringsForTopic(m.Prefix, LabelBinarySensor, m.ClientId, subtopic, "state")
-				// state := MqttState {
-				// 	LastReset: "", // m.GetLastReset(point.PointId),
-				// 	Value:     value,
-				// }
-				// value = state.Json()
-
-			case "lights":
-				topic = JoinStringsForTopic(m.Prefix, LabelLight, m.ClientId, subtopic, "state")
-				// state := MqttState {
-				// 	LastReset: "", // m.GetLastReset(point.PointId),
-				// 	Value:     value,
-				// }
-				// value = state.Json()
-
-			case LabelSwitch:
-				topic = JoinStringsForTopic(m.Prefix, LabelSwitch, m.ClientId, subtopic, "state")
-				// state := MqttState {
-				// 	LastReset: "", // m.GetLastReset(point.PointId),
-				// 	Value:     value,
-				// }
-				// value = state.Json()
-
-			default:
-				topic = JoinStringsForTopic(m.Prefix, LabelSensor, m.ClientId, subtopic, "state")
-		}
-
-		m.logger.Debug("PublishValue - topic: '%s'\tpayload: '%s'\n", topic, value)
-		t := m.client.Publish(topic, 0, true, value)
-		if !t.WaitTimeout(m.Timeout) {
-			m.err = t.Error()
-		}
-	}
-
-	return m.err
-}
-
 func (m *Mqtt) SetDeviceConfig(swname string, parentId string, id string, name string, model string, vendor string, area string) (Device, error) {
 	var ret Device
 
@@ -424,14 +342,14 @@ func (m *Mqtt) SetDeviceConfig(swname string, parentId string, id string, name s
 			}
 		}
 
-		ret = Device {
-			Connections:  c,
-			Identifiers:  []string{JoinStringsForId(m.EntityPrefix, id)},
-			Manufacturer: vendor,
-			Model:        model,
-			Name:         name,
-			SwVersion:    swname + " https://github.com/MickMake/" + swname,
-			ViaDevice:    swname,
+		ret = Device{
+			Connections:   c,
+			Identifiers:   []string{JoinStringsForId(m.EntityPrefix, id)},
+			Manufacturer:  vendor,
+			Model:         model,
+			Name:          name,
+			SwVersion:     swname + " https://github.com/MickMake/" + swname,
+			ViaDevice:     swname,
 			SuggestedArea: area,
 		}
 		m.MqttDevices[id] = ret

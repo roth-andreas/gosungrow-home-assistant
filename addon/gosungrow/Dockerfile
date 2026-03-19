@@ -10,7 +10,6 @@ WORKDIR /src/GoSungrow
 COPY go.mod go.sum main.go ./
 COPY cmd ./cmd
 COPY cmdHassio ./cmdHassio
-COPY cmdModbus ./cmdModbus
 COPY defaults ./defaults
 COPY iSolarCloud ./iSolarCloud
 COPY tablib ./tablib

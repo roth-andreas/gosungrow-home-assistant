@@ -8,14 +8,13 @@ import (
 )
 
 type Cmds struct {
-	Unify  *Unify.Unify
-	Api    *CmdApi
-	Data   *CmdData
-	Info   *CmdInfo
-	Show   *CmdShow
-	Mqtt   *CmdMqtt
-	Ha     *CmdHa
-	Modbus *CmdModbus
+	Unify *Unify.Unify
+	Api   *CmdApi
+	Data  *CmdData
+	Info  *CmdInfo
+	Show  *CmdShow
+	Mqtt  *CmdMqtt
+	Ha    *CmdHa
 
 	ConfigDir   string
 	CacheDir    string
@@ -75,10 +74,6 @@ func init() {
 		cmds.Mqtt = NewCmdMqtt("")
 		cmds.Mqtt.AttachCommand(cmdRoot)
 		cmds.Mqtt.AttachFlags(cmdRoot, cmds.Unify.GetViper())
-
-		cmds.Modbus = NewCmdModbus("")
-		cmds.Modbus.AttachCommand(cmdRoot)
-		cmds.Modbus.AttachFlags(cmdRoot, cmds.Unify.GetViper())
 
 		cmds.Ha = NewCmdHa()
 		cmds.Ha.AttachCommand(cmdRoot)
