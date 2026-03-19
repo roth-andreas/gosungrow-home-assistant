@@ -718,18 +718,18 @@ func (c *haWSClient) ListResources(_ context.Context) ([]haResourceMetadata, err
 
 func (c *haWSClient) CreateResource(_ context.Context, url string, resourceType string) error {
 	return c.call(map[string]any{
-		"type":          "lovelace/resources/create",
-		"url":           url,
-		"resource_type": resourceType,
+		"type":     "lovelace/resources/create",
+		"url":      url,
+		"res_type": resourceType,
 	}, nil)
 }
 
 func (c *haWSClient) UpdateResource(_ context.Context, resourceID any, url string, resourceType string) error {
 	return c.call(map[string]any{
-		"type":          "lovelace/resources/update",
-		"resource_id":   resourceID,
-		"url":           url,
-		"resource_type": resourceType,
+		"type":        "lovelace/resources/update",
+		"resource_id": resourceID,
+		"url":         url,
+		"res_type":    resourceType,
 	}, nil)
 }
 

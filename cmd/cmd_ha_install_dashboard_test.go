@@ -187,6 +187,14 @@ func TestHAWSClientDashboardCalls(t *testing.T) {
 					"url":  "/local/gosungrow/gosungrow-energy-flow-card.js?v=old",
 					"type": "module",
 				}}
+			case "lovelace/resources/create", "lovelace/resources/update":
+				if _, ok := request["res_type"]; !ok {
+					t.Fatalf("expected res_type in resource request: %#v", request)
+				}
+				if _, ok := request["resource_type"]; ok {
+					t.Fatalf("did not expect resource_type in resource request: %#v", request)
+				}
+				response["result"] = map[string]any{}
 			case "lovelace/config":
 				response["result"] = map[string]any{
 					"title": "GoSungrow Flow",
