@@ -2,234 +2,54 @@ package output
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
-	"github.com/MickMake/GoUnify/Only"
-	"io"
 	"os"
+	"path/filepath"
 )
 
-
-// FileRead Retrieves data from a local file.
-func FileRead(fn string, ref interface{}) error {
-	var err error
-
-	for range Only.Once {
-		if fn == "" {
-			err = errors.New("empty file")
-			break
-		}
-
-		var f *os.File
-		f, err = os.Open(fn)
-		if err != nil {
-			if os.IsNotExist(err) {
-				err = nil
-			}
-			break
-		}
-
-		//goland:noinspection GoUnhandledErrorResult,GoDeferInLoop
-		defer f.Close()
-
-		err = json.NewDecoder(f).Decode(&ref)
+func ensureParentDir(filename string) error {
+	dir := filepath.Dir(filename)
+	if dir == "." || dir == "" {
+		return nil
 	}
+	return os.MkdirAll(dir, 0o755)
+}
 
+func FileRead(filename string, ref interface{}) error {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, ref)
+}
+
+func FileWrite(filename string, ref interface{}, mode os.FileMode) error {
+	data, err := json.MarshalIndent(ref, "", "  ")
+	if err != nil {
+		return err
+	}
+	return PlainFileWrite(filename, data, mode)
+}
+
+func PlainFileRead(filename string) ([]byte, error) {
+	return os.ReadFile(filename)
+}
+
+func PlainFileWrite(filename string, data []byte, mode os.FileMode) error {
+	if err := ensureParentDir(filename); err != nil {
+		return err
+	}
+	return os.WriteFile(filename, data, mode)
+}
+
+func FileRemove(filename string) error {
+	err := os.Remove(filename)
+	if os.IsNotExist(err) {
+		return nil
+	}
 	return err
 }
 
-// FileWrite Saves data to a file path.
-func FileWrite(fn string, ref interface{}, perm os.FileMode) error {
-	var err error
-	for range Only.Once {
-		if fn == "" {
-			err = errors.New("empty file")
-			break
-		}
-
-		var f *os.File
-		f, err = os.OpenFile(fn, os.O_RDWR|os.O_CREATE|os.O_TRUNC, perm)
-		if err != nil {
-			err = errors.New(fmt.Sprintf("Unable to write to file %s - %v", fn, err))
-			break
-		}
-
-		//goland:noinspection GoUnhandledErrorResult,GoDeferInLoop
-		defer f.Close()
-		err = json.NewEncoder(f).Encode(ref)
-	}
-
-	return err
-}
-
-// PlainFileRead Retrieves data from a local file.
-func PlainFileRead(fn string) ([]byte, error) {
-	var data []byte
-	var err error
-	for range Only.Once {
-		if fn == "" {
-			err = errors.New("empty file")
-			break
-		}
-
-		var f *os.File
-		f, err = os.Open(fn)
-		if err != nil {
-			if os.IsNotExist(err) {
-				err = nil
-			}
-			break
-		}
-
-		//goland:noinspection GoUnhandledErrorResult,GoDeferInLoop
-		defer f.Close()
-
-		data, err = io.ReadAll(f)
-	}
-
-	return data, err
-}
-
-// PlainFileWrite Saves data to a file path.
-func PlainFileWrite(fn string, data []byte, perm os.FileMode) error {
-	var err error
-	for range Only.Once {
-		if fn == "" {
-			err = errors.New("empty file")
-			break
-		}
-
-		var f *os.File
-		f, err = os.OpenFile(fn, os.O_RDWR|os.O_CREATE|os.O_TRUNC, perm)
-		if err != nil {
-			err = errors.New(fmt.Sprintf("Unable to write to file %s - %v", fn, err))
-			break
-		}
-		//goland:noinspection GoUnhandledErrorResult,GoDeferInLoop
-		defer f.Close()
-
-		_, err = f.Write(data)
-	}
-
-	return err
-}
-
-// FileRemove Removes a file path.
-func FileRemove(fn string) error {
-	var err error
-	for range Only.Once {
-		if fn == "" {
-			err = errors.New("empty file")
-			break
-		}
-
-		var f os.FileInfo
-		f, err = os.Stat(fn)
-		if os.IsNotExist(err) {
-			err = nil
-			break
-		}
-		if err != nil {
-			break
-		}
-		if f.IsDir() {
-			err = errors.New("file is a directory")
-			break
-		}
-
-		err = os.Remove(fn)
-	}
-
-	return err
-}
-
-// FileExists - Checks if a file exists.
-func FileExists(fn string) bool {
-	var yes bool
-	for range Only.Once {
-		var err error
-		if fn == "" {
-			// err = errors.New("empty file")
-			break
-		}
-
-		var f os.FileInfo
-		f, err = os.Stat(fn)
-		if os.IsNotExist(err) {
-			break
-		}
-		if err != nil {
-			break
-		}
-		if f.IsDir() {
-			// err = errors.New("file is a directory")
-			break
-		}
-
-		yes = true
-	}
-
-	return yes
-}
-
-// DirExists - Checks if a directory exists.
-func DirExists(fn string) bool {
-	var yes bool
-	for range Only.Once {
-		var err error
-		if fn == "" {
-			// err = errors.New("empty file")
-			break
-		}
-
-		var f os.FileInfo
-		f, err = os.Stat(fn)
-		if os.IsNotExist(err) {
-			break
-		}
-		if err != nil {
-			break
-		}
-		if !f.IsDir() {
-			// err = errors.New("file is a directory")
-			break
-		}
-
-		yes = true
-	}
-
-	return yes
-}
-
-// Mkdir - Create dir.
-func Mkdir(fn string) bool {
-	var yes bool
-	for range Only.Once {
-		var err error
-		if fn == "" {
-			// err = errors.New("empty file")
-			break
-		}
-
-		var f os.FileInfo
-		f, err = os.Stat(fn)
-		if os.IsNotExist(err) {
-			err = os.MkdirAll(fn, 755)
-			if err != nil {
-				yes = true
-			}
-			break
-		}
-		if err != nil {
-			break
-		}
-		if !f.IsDir() {
-			// err = errors.New("file is a directory")
-			break
-		}
-
-		yes = true
-	}
-
-	return yes
+func FileExists(filename string) bool {
+	_, err := os.Stat(filename)
+	return err == nil
 }

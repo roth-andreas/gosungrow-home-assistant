@@ -10,9 +10,6 @@ import (
 type Cmds struct {
 	Unify *Unify.Unify
 	Api   *CmdApi
-	Data  *CmdData
-	Info  *CmdInfo
-	Show  *CmdShow
 	Mqtt  *CmdMqtt
 	Ha    *CmdHa
 
@@ -61,15 +58,6 @@ func init() {
 		cmds.Api = NewCmdApi()
 		cmds.Api.AttachCommand(cmdRoot)
 		cmds.Api.AttachFlags(cmdRoot, cmds.Unify.GetViper())
-
-		cmds.Data = NewCmdData()
-		cmds.Data.AttachCommand(cmdRoot)
-
-		cmds.Info = NewCmdInfo()
-		cmds.Info.AttachCommand(cmdRoot)
-
-		cmds.Show = NewCmdShow()
-		cmds.Show.AttachCommand(cmdRoot)
 
 		cmds.Mqtt = NewCmdMqtt("")
 		cmds.Mqtt.AttachCommand(cmdRoot)

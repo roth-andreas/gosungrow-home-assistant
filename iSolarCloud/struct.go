@@ -1,36 +1,37 @@
 package iSolarCloud
 
 import (
-	"github.com/MickMake/GoSungrow/iSolarCloud/AliSmsService"
-	"github.com/MickMake/GoSungrow/iSolarCloud/AppService"
-	"github.com/MickMake/GoSungrow/iSolarCloud/AppService/getUserList"
-	"github.com/MickMake/GoSungrow/iSolarCloud/AppService/login"
-	"github.com/MickMake/GoSungrow/iSolarCloud/MttvScreenService"
-	"github.com/MickMake/GoSungrow/iSolarCloud/NullArea"
-	"github.com/MickMake/GoSungrow/iSolarCloud/PowerPointService"
-	"github.com/MickMake/GoSungrow/iSolarCloud/WebAppService"
-	"github.com/MickMake/GoSungrow/iSolarCloud/WebIscmAppService"
-	"github.com/MickMake/GoSungrow/iSolarCloud/api"
-	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct/output"
 	"errors"
 	"fmt"
-	"github.com/MickMake/GoUnify/Only"
 	"os"
 	"strings"
 	"time"
-)
 
+	"github.com/MickMake/GoSungrow/iSolarCloud/AppService/getDeviceList"
+	"github.com/MickMake/GoSungrow/iSolarCloud/AppService/getPsDetail"
+	"github.com/MickMake/GoSungrow/iSolarCloud/AppService/getPsList"
+	"github.com/MickMake/GoSungrow/iSolarCloud/AppService/getUserList"
+	"github.com/MickMake/GoSungrow/iSolarCloud/AppService/login"
+	"github.com/MickMake/GoSungrow/iSolarCloud/AppService/queryDeviceList"
+	"github.com/MickMake/GoSungrow/iSolarCloud/AppService/queryDeviceRealTimeDataByPsKeys"
+	"github.com/MickMake/GoSungrow/iSolarCloud/NullArea/NullEndpoint"
+	"github.com/MickMake/GoSungrow/iSolarCloud/WebAppService/getDevicePointAttrs"
+	"github.com/MickMake/GoSungrow/iSolarCloud/WebIscmAppService/getPsTreeMenu"
+	"github.com/MickMake/GoSungrow/iSolarCloud/api"
+	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct/output"
+	"github.com/MickMake/GoUnify/Only"
+)
 
 const (
 	DefaultCacheTimeout = time.Minute * 5
 )
 
 type SunGrow struct {
-	ApiRoot    api.Web
-	Auth       login.EndPoint
-	Areas      api.Areas
-	Error      error
-	NeedLogin  bool
+	ApiRoot     api.Web
+	Auth        login.EndPoint
+	Areas       api.Areas
+	Error       error
+	NeedLogin   bool
 	AuthDetails *login.SunGrowAuth
 
 	Directory  string
@@ -38,11 +39,11 @@ type SunGrow struct {
 	SaveAsFile bool
 }
 
-func NewSunGro(baseUrl string, cacheDir string) *SunGrow {
+func NewSunGro(baseURL string, cacheDir string) *SunGrow {
 	var p SunGrow
 
 	for range Only.Once {
-		p.Error = p.ApiRoot.SetUrl(baseUrl)
+		p.Error = p.ApiRoot.SetUrl(baseURL)
 		if p.Error != nil {
 			break
 		}
@@ -57,32 +58,58 @@ func NewSunGro(baseUrl string, cacheDir string) *SunGrow {
 
 func (sg *SunGrow) Init() error {
 	for range Only.Once {
-		sg.Areas = make(api.Areas)
+		nullArea := api.GetArea(NullEndpoint.EndPoint{})
+		appArea := api.GetArea(login.EndPoint{})
+		webAppArea := api.GetArea(getDevicePointAttrs.EndPoint{})
+		webIscmArea := api.GetArea(getPsTreeMenu.EndPoint{})
 
-		sg.Areas[api.GetArea(NullArea.Area{})] = api.AreaStruct(NullArea.Init(sg.ApiRoot))
-		sg.Areas[api.GetArea(AliSmsService.Area{})] = api.AreaStruct(AliSmsService.Init(sg.ApiRoot))
-		sg.Areas[api.GetArea(AppService.Area{})] = api.AreaStruct(AppService.Init(sg.ApiRoot))
-		sg.Areas[api.GetArea(MttvScreenService.Area{})] = api.AreaStruct(MttvScreenService.Init(sg.ApiRoot))
-		sg.Areas[api.GetArea(PowerPointService.Area{})] = api.AreaStruct(PowerPointService.Init(sg.ApiRoot))
-		sg.Areas[api.GetArea(WebAppService.Area{})] = api.AreaStruct(WebAppService.Init(sg.ApiRoot))
-		sg.Areas[api.GetArea(WebIscmAppService.Area{})] = api.AreaStruct(WebIscmAppService.Init(sg.ApiRoot))
+		sg.Areas = api.Areas{
+			nullArea: {
+				ApiRoot: sg.ApiRoot,
+				Name:    nullArea,
+				EndPoints: api.TypeEndPoints{
+					api.GetName(NullEndpoint.EndPoint{}): NullEndpoint.Init(sg.ApiRoot),
+				},
+			},
+			appArea: {
+				ApiRoot: sg.ApiRoot,
+				Name:    appArea,
+				EndPoints: api.TypeEndPoints{
+					api.GetName(login.EndPoint{}):                           login.Init(sg.ApiRoot),
+					api.GetName(getUserList.EndPoint{}):                     getUserList.Init(sg.ApiRoot),
+					api.GetName(getPsList.EndPoint{}):                       getPsList.Init(sg.ApiRoot),
+					api.GetName(getPsDetail.EndPoint{}):                     getPsDetail.Init(sg.ApiRoot),
+					api.GetName(getDeviceList.EndPoint{}):                   getDeviceList.Init(sg.ApiRoot),
+					api.GetName(queryDeviceList.EndPoint{}):                 queryDeviceList.Init(sg.ApiRoot),
+					api.GetName(queryDeviceRealTimeDataByPsKeys.EndPoint{}): queryDeviceRealTimeDataByPsKeys.Init(sg.ApiRoot),
+				},
+			},
+			webAppArea: {
+				ApiRoot: sg.ApiRoot,
+				Name:    webAppArea,
+				EndPoints: api.TypeEndPoints{
+					api.GetName(getDevicePointAttrs.EndPoint{}): getDevicePointAttrs.Init(sg.ApiRoot),
+				},
+			},
+			webIscmArea: {
+				ApiRoot: sg.ApiRoot,
+				Name:    webIscmArea,
+				EndPoints: api.TypeEndPoints{
+					api.GetName(getPsTreeMenu.EndPoint{}): getPsTreeMenu.Init(sg.ApiRoot),
+				},
+			},
+		}
 	}
 
 	return sg.Error
 }
 
 func (sg *SunGrow) IsError() bool {
-	if sg.Error != nil {
-		return true
-	}
-	return false
+	return sg.Error != nil
 }
 
 func (sg *SunGrow) IsNotError() bool {
-	if sg.Error == nil {
-		return true
-	}
-	return false
+	return sg.Error == nil
 }
 
 func (sg *SunGrow) AppendUrl(endpoint string) api.EndPointUrl {
@@ -152,39 +179,32 @@ func (sg *SunGrow) GetByJson(endpoint string, request string) api.EndPoint {
 		}
 
 		switch {
-			case sg.OutputType.IsNone():
-				if sg.IsError() {
-					fmt.Println(ret.Help())
-					break
-				}
-
-			case sg.OutputType.IsRaw():
-				// if sg.Error != nil {
-				// 	fmt.Println(ret.Help())
-				// 	break
-				// }
-				if sg.SaveAsFile {
-					sg.Error = ret.WriteDataFile()
-					break
-				}
-				fmt.Println(ret.GetJsonData(true))
-
-			case sg.OutputType.IsJson():
-				if sg.IsError() {
-					fmt.Println(ret.Help())
-					break
-				}
-				if sg.SaveAsFile {
-					sg.Error = ret.WriteDataFile()
-					break
-				}
-				fmt.Println(ret.GetJsonData(false))
-
-			default:
-				if sg.IsError() {
-					fmt.Println(ret.Help())
-					break
-				}
+		case sg.OutputType.IsNone():
+			if sg.IsError() {
+				fmt.Println(ret.Help())
+				break
+			}
+		case sg.OutputType.IsRaw():
+			if sg.SaveAsFile {
+				sg.Error = ret.WriteDataFile()
+				break
+			}
+			fmt.Println(ret.GetJsonData(true))
+		case sg.OutputType.IsJson():
+			if sg.IsError() {
+				fmt.Println(ret.Help())
+				break
+			}
+			if sg.SaveAsFile {
+				sg.Error = ret.WriteDataFile()
+				break
+			}
+			fmt.Println(ret.GetJsonData(false))
+		default:
+			if sg.IsError() {
+				fmt.Println(ret.Help())
+				break
+			}
 		}
 	}
 	return ret
@@ -216,7 +236,6 @@ func (sg *SunGrow) GetByStruct(endpoint string, request interface{}, cache time.
 		}
 
 		ret = ret.SetCacheTimeout(cache)
-
 		ret = ret.Call()
 		if !ret.IsError() {
 			break
@@ -255,7 +274,6 @@ func (sg *SunGrow) RequestArgs(ae string) map[string]string {
 
 		ret = sg.Areas.RequestArgs(area, endpoint)
 	}
-
 	return ret
 }
 
@@ -266,31 +284,20 @@ func (sg *SunGrow) SplitEndPoint(ae string) (api.AreaName, api.EndPointName) {
 	for range Only.Once {
 		s := strings.Split(ae, ".")
 		switch len(s) {
-			case 0:
-				sg.Error = errors.New("empty endpoint")
-
-			case 1:
-				area = "AppService"
-				endpoint = api.EndPointName(s[0])
-
-			case 2:
-				area = api.AreaName(s[0])
-				endpoint = api.EndPointName(s[1])
-
-			default:
-				sg.Error = errors.New("too many delimiters defined, (only one '.' allowed)")
+		case 0:
+			sg.Error = errors.New("empty endpoint")
+		case 1:
+			area = api.GetArea(login.EndPoint{})
+			endpoint = api.EndPointName(s[0])
+		case 2:
+			area = api.AreaName(s[0])
+			endpoint = api.EndPointName(s[1])
+		default:
+			sg.Error = errors.New("too many delimiters defined, (only one '.' allowed)")
 		}
 	}
 
 	return area, endpoint
-}
-
-func (sg *SunGrow) ListEndpoints(area string) error {
-	return sg.Areas.ListEndpoints(area)
-}
-
-func (sg *SunGrow) ListAreas() {
-	sg.Areas.ListAreas()
 }
 
 func (sg *SunGrow) AreaExists(area string) bool {
@@ -306,7 +313,7 @@ func (sg *SunGrow) login() error {
 		if sg.AuthDetails == nil {
 			break
 		}
-		a := sg.GetEndpoint(AppService.GetAreaName() + ".login")
+		a := sg.GetEndpoint(login.EndPointName)
 		sg.Auth = login.Assert(a)
 
 		sg.Error = sg.Auth.Login(sg.AuthDetails)
@@ -324,9 +331,8 @@ func (sg *SunGrow) Login(auth login.SunGrowAuth) error {
 	for range Only.Once {
 		sg.AuthDetails = &auth
 
-		// Fetch a simple request.
 		for range Only.Twice {
-			sg.Error = nil	// Needed for looping twice.
+			sg.Error = nil
 			sg.Error = sg.login()
 			if sg.Error != nil {
 				break
@@ -342,8 +348,7 @@ func (sg *SunGrow) Login(auth login.SunGrowAuth) error {
 				break
 			}
 
-			_, _ = fmt.Fprintf(os.Stderr,"Logging in again\n")
-			// fmt.Printf("DEBUG: AppService.getUserList - error - %s\n", sg.Error)
+			_, _ = fmt.Fprintf(os.Stderr, "Logging in again\n")
 		}
 
 		if sg.NeedLogin {
@@ -367,7 +372,6 @@ func (sg *SunGrow) IsLoggedOut() bool {
 			break
 		}
 		if strings.Contains(sg.Error.Error(), "er_token_login_invalid") {
-			// sg.Error = nil
 			sg.NeedLogin = true
 			sg.Logout()
 		}
@@ -379,7 +383,6 @@ func (sg *SunGrow) Logout() {
 	for range Only.Once {
 		_ = sg.ApiRoot.WebCacheRemove(sg.Auth)
 		_ = sg.Auth.RemoveToken()
-		// _ = sg.Auth.ApiRemoveDataFile()
 	}
 }
 

@@ -1,12 +1,12 @@
 package cmd
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/MickMake/GoSungrow/cmdHassio"
 	"github.com/MickMake/GoSungrow/iSolarCloud/WebAppService/getDevicePointAttrs"
 	"github.com/MickMake/GoSungrow/iSolarCloud/api"
-	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct/output"
 	"github.com/MickMake/GoUnify/Only"
 	"github.com/MickMake/GoUnify/cmdHelp"
 	"github.com/MickMake/GoUnify/cmdLog"
@@ -14,6 +14,7 @@ import (
 	"github.com/go-co-op/gocron"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -636,14 +637,22 @@ func (c *CmdMqtt) friendlyEntityName(r *api.DataEntry) string {
 func (c *CmdMqtt) GetEndPoints() error {
 	for range Only.Once {
 		fn := filepath.Join(cmds.ConfigDir, "mqtt_endpoints.json")
-		if !output.FileExists(fn) {
-			c.Error = output.PlainFileWrite(fn, []byte(DefaultMqttFile), 0644)
+		if _, err := os.Stat(fn); errors.Is(err, os.ErrNotExist) {
+			c.Error = os.WriteFile(fn, []byte(DefaultMqttFile), 0644)
 			if c.Error != nil {
 				break
 			}
+		} else if err != nil {
+			c.Error = err
+			break
 		}
 
-		c.Error = output.FileRead(fn, &c.endpoints)
+		raw, err := os.ReadFile(fn)
+		if err != nil {
+			c.Error = err
+			break
+		}
+		c.Error = json.Unmarshal(raw, &c.endpoints)
 		if c.Error != nil {
 			break
 		}

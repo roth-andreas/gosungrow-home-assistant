@@ -12,7 +12,6 @@ COPY cmd ./cmd
 COPY cmdHassio ./cmdHassio
 COPY defaults ./defaults
 COPY iSolarCloud ./iSolarCloud
-COPY tablib ./tablib
 
 RUN go mod download
 
