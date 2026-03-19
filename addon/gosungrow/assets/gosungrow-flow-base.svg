@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 820" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 680" role="img" aria-labelledby="title desc">
   <title id="title">GoSungrow Power Flow</title>
   <desc id="desc">Solar, load, battery, and grid flow overview in a left-to-right layout.</desc>
   <defs>
@@ -11,42 +11,34 @@
     </filter>
   </defs>
 
-  <rect x="18" y="18" width="1564" height="784" rx="44" fill="url(#panel)" />
+  <rect x="18" y="18" width="1564" height="644" rx="36" fill="url(#panel)" />
 
-  <g stroke-linecap="round" stroke="#d7dee8" stroke-width="18" fill="none">
-    <line x1="352" y1="410" x2="678" y2="410" />
-    <path d="M 342 360 C 520 270 728 220 1198 226" />
-    <path d="M 342 460 C 520 550 728 600 1198 594" />
-    <path d="M 862 364 C 980 306 1080 256 1198 228" />
-    <path d="M 862 456 C 980 514 1080 564 1198 592" />
+  <g stroke-linecap="round" stroke="#d7dee8" stroke-width="14" fill="none">
+    <line x1="312" y1="340" x2="618" y2="340" />
+    <path d="M 308 300 C 470 232 716 188 1142 200" />
+    <path d="M 308 380 C 470 448 716 492 1142 480" />
+    <path d="M 782 302 C 890 250 998 214 1142 204" />
+    <path d="M 782 378 C 890 430 998 466 1142 476" />
   </g>
 
   <g fill="#ffffff" filter="url(#shadow)">
-    <circle cx="260" cy="410" r="94" />
-    <circle cx="770" cy="410" r="94" />
-    <circle cx="1290" cy="220" r="94" />
-    <circle cx="1290" cy="600" r="94" />
+    <circle cx="230" cy="340" r="82" />
+    <circle cx="700" cy="340" r="82" />
+    <circle cx="1230" cy="200" r="82" />
+    <circle cx="1230" cy="480" r="82" />
   </g>
 
   <g fill="none" stroke-width="10">
-    <circle cx="260" cy="410" r="94" stroke="#f59e0b" />
-    <circle cx="770" cy="410" r="94" stroke="#2563eb" />
-    <circle cx="1290" cy="220" r="94" stroke="#0f766e" />
-    <circle cx="1290" cy="600" r="94" stroke="#475569" />
+    <circle cx="230" cy="340" r="82" stroke="#f59e0b" />
+    <circle cx="700" cy="340" r="82" stroke="#2563eb" />
+    <circle cx="1230" cy="200" r="82" stroke="#0f766e" />
+    <circle cx="1230" cy="480" r="82" stroke="#475569" />
   </g>
 
   <g fill="#334155" font-family="'Avenir Next', 'Trebuchet MS', sans-serif" text-anchor="middle">
-    <text x="260" y="545" font-size="30" font-weight="700">SOLAR</text>
-    <text x="770" y="545" font-size="30" font-weight="700">LOAD</text>
-    <text x="1290" y="355" font-size="30" font-weight="700">BATTERY</text>
-    <text x="1290" y="735" font-size="30" font-weight="700">GRID</text>
-  </g>
-
-  <g fill="#64748b" font-family="'Avenir Next', 'Trebuchet MS', sans-serif" text-anchor="middle">
-    <text x="510" y="342" font-size="18" font-weight="700">PV to Load</text>
-    <text x="724" y="220" font-size="18" font-weight="700">PV to Battery</text>
-    <text x="724" y="620" font-size="18" font-weight="700">PV to Grid</text>
-    <text x="1010" y="286" font-size="18" font-weight="700">Battery to Load</text>
-    <text x="1010" y="556" font-size="18" font-weight="700">Grid to Load</text>
+    <text x="230" y="472" font-size="24" font-weight="700">SOLAR</text>
+    <text x="700" y="472" font-size="24" font-weight="700">LOAD</text>
+    <text x="1230" y="334" font-size="24" font-weight="700">BATTERY</text>
+    <text x="1230" y="614" font-size="24" font-weight="700">GRID</text>
   </g>
 </svg>
