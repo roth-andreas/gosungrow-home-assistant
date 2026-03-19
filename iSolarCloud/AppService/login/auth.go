@@ -3,6 +3,7 @@ package login
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -210,6 +211,10 @@ func (e *EndPoint) readTokenFile() error {
 
 		e.Error = output.FileRead(e.Auth.TokenFile, &e.Response)
 		if e.Error != nil {
+			if os.IsNotExist(e.Error) {
+				e.Auth.newToken = true
+				e.Error = nil
+			}
 			break
 		}
 
