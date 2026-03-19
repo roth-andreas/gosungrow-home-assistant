@@ -1,13 +1,13 @@
 package iSolarCloud
 
 import (
+	"errors"
 	"github.com/MickMake/GoSungrow/iSolarCloud/AppService/queryDeviceRealTimeDataByPsKeys"
 	"github.com/MickMake/GoSungrow/iSolarCloud/AppService/queryUnitList"
 	"github.com/MickMake/GoSungrow/iSolarCloud/WebAppService/getMqttConfigInfoByAppkey"
 	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct/valueTypes"
 	"github.com/MickMake/GoUnify/Only"
 )
-
 
 func (sg *SunGrow) MetaUnitList() error {
 	for range Only.Once {
@@ -81,38 +81,37 @@ func (sg *SunGrow) GetIsolarcloudMqtt(appKey string) error {
 func (sg *SunGrow) GetRealTimeData(psKey string) error {
 	for range Only.Once {
 		if psKey == "" {
-			// var psKeys []string
-			// psKeys, sg.Error = sg.GetPsKeys()
-			// if sg.IsError() {
-			// 	break
-			// }
-			// fmt.Printf("psKeys: %v\n", psKeys)
-			// psKey = strings.Join(psKeys, ",")
-		}
-		// fmt.Println("TO FIX")
-		// break
+			var psKeys valueTypes.PsKeys
+			psKeys, sg.Error = sg.GetPsKeys()
+			if sg.IsError() {
+				break
+			}
+			if psKeys.Length() == 0 {
+				sg.Error = errors.New("could not auto-detect ps_key")
+				break
+			}
 
-		ep := sg.GetByStruct(queryDeviceRealTimeDataByPsKeys.EndPointName,
-			queryDeviceRealTimeDataByPsKeys.RequestData{PsKeyList: valueTypes.SetStringValue(psKey)},
-			DefaultCacheTimeout,
-		)
-		if sg.IsError() {
+			// Prefer inverter keys for real-time power values.
+			for _, key := range psKeys.PsKeys {
+				if key.DeviceType == "14" {
+					psKey = key.String()
+					break
+				}
+			}
+			if psKey == "" {
+				psKey = psKeys.PsKeys[0].String()
+			}
+		}
+
+		data := sg.NewSunGrowData()
+		data.SetArgs("PsKeyList:" + psKey)
+		data.SetEndpoints(queryDeviceRealTimeDataByPsKeys.EndPointName)
+		sg.Error = data.GetData()
+		if sg.Error != nil {
 			break
 		}
 
-		data := queryDeviceRealTimeDataByPsKeys.Assert(ep)
-		table := data.GetEndPointResultTable()
-		if table.Error != nil {
-			sg.Error = table.Error
-			break
-		}
-
-		table.SetTitle("Real Time Data %s", psKey)
-		table.SetFilePrefix(data.SetFilenamePrefix(""))
-		table.SetGraphFilter("")
-		table.SetSaveFile(sg.SaveAsFile)
-		table.OutputType = sg.OutputType
-		sg.Error = table.Output()
+		sg.Error = data.OutputDataTables()
 		if sg.IsError() {
 			break
 		}

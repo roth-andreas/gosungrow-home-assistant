@@ -1,12 +1,12 @@
 package cmd
 
 import (
+	"errors"
+	"fmt"
 	"github.com/MickMake/GoSungrow/cmdHassio"
 	"github.com/MickMake/GoSungrow/iSolarCloud/WebAppService/getDevicePointAttrs"
 	"github.com/MickMake/GoSungrow/iSolarCloud/api"
 	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct/output"
-	"errors"
-	"fmt"
 	"github.com/MickMake/GoUnify/Only"
 	"github.com/MickMake/GoUnify/cmdHelp"
 	"github.com/MickMake/GoUnify/cmdLog"
@@ -20,7 +20,6 @@ import (
 	"time"
 )
 
-
 const (
 	DefaultServiceName = "GoSungrow"
 	DefaultServiceArea = "Roof"
@@ -30,7 +29,6 @@ const (
 	flagMqttHost       = "mqtt-host"
 	flagMqttPort       = "mqtt-port"
 )
-
 
 //goland:noinspection GoNameStartsWithPackageName
 type CmdMqtt struct {
@@ -42,10 +40,10 @@ type CmdMqtt struct {
 	Host     string
 	Port     string
 
-	Client         *cmdHassio.Mqtt
-	endpoints      MqttEndPoints
-	points         getDevicePointAttrs.PointsMap
-	previous       map[string]*api.DataEntries
+	Client    *cmdHassio.Mqtt
+	endpoints MqttEndPoints
+	points    getDevicePointAttrs.PointsMap
+	previous  map[string]*api.DataEntries
 
 	log                 cmdLog.Log
 	optionSleepDelay    time.Duration
@@ -60,15 +58,15 @@ func NewCmdMqtt(logLevel string) *CmdMqtt {
 			logLevel = cmdLog.LogLevelInfoStr
 		}
 
-		ret = &CmdMqtt {
-			CmdDefault: CmdDefault {
+		ret = &CmdMqtt{
+			CmdDefault: CmdDefault{
 				Error:   nil,
 				cmd:     nil,
 				SelfCmd: nil,
 			},
 
 			log:                 cmdLog.New(logLevel),
-			optionSleepDelay:    time.Second * 40,		// Takes up to 40 seconds for data to come in.
+			optionSleepDelay:    time.Second * 40, // Takes up to 40 seconds for data to come in.
 			optionFetchSchedule: time.Minute * 5,
 			previous:            make(map[string]*api.DataEntries, 0),
 		}
@@ -109,7 +107,7 @@ func (c *CmdMqtt) AttachCommand(cmd *cobra.Command) *cobra.Command {
 			Long:                  "One-off sync to a HASSIO broker.",
 			DisableFlagParsing:    false,
 			DisableFlagsInUseLine: false,
-			PreRunE:               func(cmd *cobra.Command, args []string) error {
+			PreRunE: func(cmd *cobra.Command, args []string) error {
 				cmds.Error = cmds.SunGrowArgs(cmd, args)
 				if cmds.Error != nil {
 					return cmds.Error
@@ -120,8 +118,8 @@ func (c *CmdMqtt) AttachCommand(cmd *cobra.Command) *cobra.Command {
 				}
 				return nil
 			},
-			RunE:                  cmds.Mqtt.CmdMqttRun,
-			Args:                  cobra.RangeArgs(0, 1),
+			RunE: cmds.Mqtt.CmdMqttRun,
+			Args: cobra.RangeArgs(0, 1),
 		}
 		cmdRoot.AddCommand(cmdMqttRun)
 		cmdMqttRun.Example = cmdHelp.PrintExamples(cmdMqttRun, "")
@@ -135,7 +133,7 @@ func (c *CmdMqtt) AttachCommand(cmd *cobra.Command) *cobra.Command {
 			Long:                  "Sync to a HASSIO MQTT broker.",
 			DisableFlagParsing:    false,
 			DisableFlagsInUseLine: false,
-			PreRunE:               func(cmd *cobra.Command, args []string) error {
+			PreRunE: func(cmd *cobra.Command, args []string) error {
 				cmds.Error = cmds.SunGrowArgs(cmd, args)
 				if cmds.Error != nil {
 					return cmds.Error
@@ -146,8 +144,8 @@ func (c *CmdMqtt) AttachCommand(cmd *cobra.Command) *cobra.Command {
 				}
 				return nil
 			},
-			RunE:                  cmds.Mqtt.CmdMqttSync,
-			Args:                  cobra.RangeArgs(0, 1),
+			RunE: cmds.Mqtt.CmdMqttSync,
+			Args: cobra.RangeArgs(0, 1),
 		}
 		cmdRoot.AddCommand(cmdMqttSync)
 		cmdMqttSync.Example = cmdHelp.PrintExamples(cmdMqttSync, "", "all")
@@ -171,7 +169,7 @@ func (c *CmdMqtt) AttachFlags(cmd *cobra.Command, viper *viper.Viper) {
 func (c *CmdMqtt) MqttArgs(_ *cobra.Command, _ []string) error {
 	for range Only.Once {
 		c.log.Info("Connecting to MQTT HASSIO Service...\n")
-		c.Client = cmdHassio.New(cmdHassio.Mqtt {
+		c.Client = cmdHassio.New(cmdHassio.Mqtt{
 			ClientId:     DefaultServiceName,
 			EntityPrefix: DefaultServiceName,
 			Username:     c.Username,
@@ -344,7 +342,6 @@ func (c *CmdMqtt) CmdMqttSync(_ *cobra.Command, args []string) error {
 
 	return c.Error
 }
-
 
 // -------------------------------------------------------------------------------- //
 
@@ -537,14 +534,10 @@ func (c *CmdMqtt) Update(endpoint string, data api.DataMap, newDay bool) error {
 			}
 
 			_ = c.UpdatePoint(r)
-			r.Value.UnitValueFix()	// @TODO - Fix this up properly
+			r.Value.UnitValueFix() // @TODO - Fix this up properly
 
 			id := r.EndPoint
-			name := r.EndPoint
-			if r.Point.GroupName != "" {
-				id = r.EndPoint
-				name = cmdHassio.JoinStringsForName(" - ", r.Parent.Key, r.Point.Id, r.Point.GroupName, r.Point.Description)
-			}
+			name := c.friendlyEntityName(r)
 
 			// if r.Point.Unit == "" {
 			// 	r.Point.Unit = r.Point.ValueType
@@ -556,16 +549,16 @@ func (c *CmdMqtt) Update(endpoint string, data api.DataMap, newDay bool) error {
 			// 	r.Point.Unit = mmHa.LabelBinarySensor
 			// }
 
-			re := cmdHassio.EntityConfig {
-				Name:        name,	// mmHa.JoinStringsForName(" - ", id), // r.Point.Name, // PointName,
-				SubName:     "",
-				ParentId:    r.EndPoint,
-				ParentName:  r.Parent.Key,
-				UniqueId:    r.Point.Id,
+			re := cmdHassio.EntityConfig{
+				Name:       name, // mmHa.JoinStringsForName(" - ", id), // r.Point.Name, // PointName,
+				SubName:    "",
+				ParentId:   r.EndPoint,
+				ParentName: r.Parent.Key,
+				UniqueId:   r.Point.Id,
 				// UniqueId:    r.Id,
 				FullId: id, // string(r.FullId),	// WAS r.Point.FullId
 				// FullName:    r.Point.Name,
-				Units:       r.Point.Unit,
+				Units: r.Point.Unit,
 				// ValueName:   r.Point.Description,
 				// ValueName:   r.Point.Id,
 				DeviceClass: "",
@@ -619,6 +612,27 @@ func (c *CmdMqtt) Update(endpoint string, data api.DataMap, newDay bool) error {
 	return c.Error
 }
 
+func (c *CmdMqtt) friendlyEntityName(r *api.DataEntry) string {
+	group := strings.TrimSpace(r.Point.GroupName)
+	desc := strings.TrimSpace(r.Point.Description)
+
+	switch {
+	case group != "" && desc != "":
+		if strings.EqualFold(group, desc) {
+			return cmdHassio.JoinStringsForName(" - ", group)
+		}
+		return cmdHassio.JoinStringsForName(" - ", group, desc)
+	case desc != "":
+		return cmdHassio.JoinStringsForName(" - ", desc)
+	case group != "":
+		return cmdHassio.JoinStringsForName(" - ", group)
+	case r.Point.Id != "":
+		return r.Point.Id
+	default:
+		return r.EndPoint
+	}
+}
+
 func (c *CmdMqtt) GetEndPoints() error {
 	for range Only.Once {
 		fn := filepath.Join(cmds.ConfigDir, "mqtt_endpoints.json")
@@ -640,7 +654,7 @@ func (c *CmdMqtt) GetEndPoints() error {
 		for name := range c.endpoints {
 			_, c.Error = c.Client.SetDeviceConfig(
 				DefaultServiceName, DefaultServiceName,
-				name, DefaultServiceName + "." + name, DefaultServiceName, DefaultVendor,
+				name, DefaultServiceName+"."+name, DefaultServiceName, DefaultVendor,
 				DefaultServiceArea,
 			)
 			if c.Error != nil {
@@ -731,7 +745,6 @@ func (c *CmdMqtt) UpdatePoint(entry *api.DataEntry) error {
 	return c.Error
 }
 
-
 const (
 	OptionLogLevel      = "loglevel"
 	OptionFetchSchedule = "fetchschedule"
@@ -788,17 +801,16 @@ func (c *CmdMqtt) Options() error {
 	return c.Error
 }
 
-
 func (c *CmdMqtt) optionFuncLogLevel(_ mqtt.Client, msg mqtt.Message) {
 	for range Only.Once {
 		request := strings.ToLower(string(msg.Payload()))
 		c.log.Info("Option[%s] set to '%s'\n", OptionLogLevel, request)
-		c.log.SetLogLevel(request)
 		c.Error = c.Client.SetOption(OptionLogLevel, request)
 		if c.Error != nil {
 			c.log.Error("%s\n", c.Error)
 			break
 		}
+		c.log.SetLogLevel(request)
 	}
 }
 
@@ -853,9 +865,9 @@ func (c *CmdMqtt) optionFuncServiceState(_ mqtt.Client, msg mqtt.Message) {
 		request := strings.ToLower(string(msg.Payload()))
 		c.log.Info("Option[%s] set to '%s'\n", OptionServiceState, request)
 		switch request {
-			case "Run":
-			case "Restart":
-			case "Stop":
+		case "Run":
+		case "Restart":
+		case "Stop":
 		}
 
 		c.Error = c.Client.SetOption(OptionServiceState, request)
@@ -866,7 +878,6 @@ func (c *CmdMqtt) optionFuncServiceState(_ mqtt.Client, msg mqtt.Message) {
 	}
 }
 
-
 // -------------------------------------------------------------------------------- //
 
 type MqttEndPoints map[string]MqttEndPoint
@@ -874,6 +885,7 @@ type MqttEndPoint struct {
 	Include []string `json:"include"`
 	Exclude []string `json:"exclude"`
 }
+
 func (c *MqttEndPoints) Names() []string {
 	var ret []string
 	for name := range *c {
