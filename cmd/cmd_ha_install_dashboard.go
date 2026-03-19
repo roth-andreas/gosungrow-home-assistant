@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -35,7 +36,6 @@ const (
 	dashboardCardFileName      = "gosungrow-energy-flow-card-v2.js"
 	dashboardCardResourceDir   = "gosungrow"
 	dashboardCardResourceType  = "module"
-	dashboardCardCDNBaseURL    = "https://cdn.jsdelivr.net/gh/roth-andreas/gosungrow-home-assistant@main/addon/gosungrow/assets"
 )
 
 type haDashboardInstallOptions struct {
@@ -187,8 +187,11 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	resourceURL := localResourceURL
 	ok, verifyErr := verifyDashboardCardResource(opts.HomeAssistantURL, opts.SupervisorToken, localResourceURL)
 	if verifyErr != nil || !ok {
-		resourceURL = dashboardCardCDNURL(assetVersion)
-		fmt.Printf("Managed GoSungrow custom card local asset unavailable; using CDN fallback resource.\n")
+		resourceURL, err = dashboardCardDataURI(filepath.Join(opts.AssetDir, dashboardCardFileName), assetVersion)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Managed GoSungrow custom card local asset unavailable; using embedded fallback resource.\n")
 	}
 
 	desiredHash, err := hashCanonicalJSON(config)
@@ -494,12 +497,18 @@ func verifyDashboardCardResource(homeAssistantURL string, supervisorToken string
 	return resp.StatusCode == http.StatusOK, nil
 }
 
-func dashboardCardCDNURL(version string) string {
+func dashboardCardDataURI(sourcePath string, version string) (string, error) {
+	data, err := os.ReadFile(sourcePath)
+	if err != nil {
+		return "", err
+	}
+
+	encoded := base64.StdEncoding.EncodeToString(data)
 	version = strings.TrimSpace(version)
 	if version == "" {
-		return fmt.Sprintf("%s/%s", dashboardCardCDNBaseURL, dashboardCardFileName)
+		return "data:text/javascript;base64," + encoded, nil
 	}
-	return fmt.Sprintf("%s/%s?v=%s", dashboardCardCDNBaseURL, dashboardCardFileName, version)
+	return fmt.Sprintf("data:text/javascript;base64,%s#v=%s", encoded, version), nil
 }
 
 func targetPSKeys(targets []haDashboardTarget) []string {
@@ -820,8 +829,10 @@ func (c *haWSClient) EnsureResource(ctx context.Context, url string, resourceTyp
 	}
 
 	targetBase := resourceURLBase(url)
+	isManagedDashboardCard := matchesManagedDashboardCardResource(url)
 	for _, resource := range resources {
-		if resourceURLBase(resource.URL) != targetBase {
+		resourceBase := resourceURLBase(resource.URL)
+		if resourceBase != targetBase && !(isManagedDashboardCard && matchesManagedDashboardCardResource(resource.URL)) {
 			continue
 		}
 		existingType := strings.TrimSpace(resource.ResourceType)
@@ -838,10 +849,21 @@ func (c *haWSClient) EnsureResource(ctx context.Context, url string, resourceTyp
 }
 
 func resourceURLBase(url string) string {
+	if strings.HasPrefix(url, "data:text/javascript;base64,") {
+		return "data:text/javascript;base64,"
+	}
 	if idx := strings.IndexAny(url, "?#"); idx >= 0 {
 		return url[:idx]
 	}
 	return url
+}
+
+func matchesManagedDashboardCardResource(url string) bool {
+	base := resourceURLBase(strings.TrimSpace(url))
+	if base == "data:text/javascript;base64," {
+		return true
+	}
+	return strings.Contains(base, "/"+dashboardCardResourceDir+"/"+dashboardCardFileName) || strings.Contains(base, dashboardCardFileName)
 }
 
 func (c *haWSClient) CreateDashboard(_ context.Context, opts haDashboardInstallOptions) error {

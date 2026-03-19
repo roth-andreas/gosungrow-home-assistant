@@ -146,18 +146,31 @@ func TestUniqueNonEmptyStrings(t *testing.T) {
 	}
 }
 
-func TestDashboardCardCDNURL(t *testing.T) {
-	url := dashboardCardCDNURL("abc123")
-	if !strings.Contains(url, "@main/addon/gosungrow/assets/"+dashboardCardFileName) {
-		t.Fatalf("unexpected CDN URL: %q", url)
+func TestDashboardCardDataURI(t *testing.T) {
+	sourcePath := filepath.Join(t.TempDir(), dashboardCardFileName)
+	if err := os.WriteFile(sourcePath, []byte("console.log('gosungrow');"), 0600); err != nil {
+		t.Fatalf("write source: %v", err)
 	}
-	if !strings.HasSuffix(url, "?v=abc123") {
-		t.Fatalf("unexpected CDN version suffix: %q", url)
+
+	resourceURL, err := dashboardCardDataURI(sourcePath, "abc123")
+	if err != nil {
+		t.Fatalf("dashboardCardDataURI: %v", err)
+	}
+
+	if !strings.HasPrefix(resourceURL, "data:text/javascript;base64,") {
+		t.Fatalf("unexpected data uri prefix: %q", resourceURL)
+	}
+	if !strings.HasSuffix(resourceURL, "#v=abc123") {
+		t.Fatalf("unexpected data uri version suffix: %q", resourceURL)
+	}
+	if got := resourceURLBase(resourceURL); got != "data:text/javascript;base64," {
+		t.Fatalf("unexpected normalized resource base: %q", got)
 	}
 }
 
 func TestHAWSClientDashboardCalls(t *testing.T) {
 	upgrader := websocket.Upgrader{}
+	sawResourceUpdate := false
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer supervisor-token" {
@@ -217,6 +230,9 @@ func TestHAWSClientDashboardCalls(t *testing.T) {
 				if _, ok := request["resource_type"]; ok {
 					t.Fatalf("did not expect resource_type in resource request: %#v", request)
 				}
+				if request["type"] == "lovelace/resources/update" {
+					sawResourceUpdate = true
+				}
 				response["result"] = map[string]any{}
 			case "lovelace/config":
 				response["result"] = map[string]any{
@@ -272,8 +288,11 @@ func TestHAWSClientDashboardCalls(t *testing.T) {
 	if err := client.SaveConfig(ctx, "gosungrow-flow", map[string]any{"title": "GoSungrow Flow", "views": []any{}}); err != nil {
 		t.Fatalf("SaveConfig: %v", err)
 	}
-	if err := client.EnsureResource(ctx, "/local/gosungrow/gosungrow-energy-flow-card-v2.js?v=new", dashboardCardResourceType); err != nil {
+	if err := client.EnsureResource(ctx, "data:text/javascript;base64,Zm9v#v=new", dashboardCardResourceType); err != nil {
 		t.Fatalf("EnsureResource: %v", err)
+	}
+	if !sawResourceUpdate {
+		t.Fatal("expected EnsureResource to update the existing managed dashboard card resource")
 	}
 }
 
