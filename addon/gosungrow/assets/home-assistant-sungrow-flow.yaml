@@ -185,81 +185,6 @@ views:
               font-size: 15px
               font-weight: 700
 
-          - type: state-label
-            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_load_power
-            tap_action: none
-            style:
-              top: 42.65%
-              left: 29.38%
-              color: "#7c2d12"
-              background: "rgba(255, 237, 213, 0.98)"
-              border: "1px solid rgba(217, 119, 6, 0.18)"
-              border-radius: 14px
-              padding: 4px 8px
-              transform: translate(-50%, -50%)
-              font-size: 11px
-              font-weight: 700
-
-          - type: state-label
-            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_battery_power
-            tap_action: none
-            style:
-              top: 29.41%
-              left: 48.75%
-              color: "#7c2d12"
-              background: "rgba(255, 237, 213, 0.98)"
-              border: "1px solid rgba(217, 119, 6, 0.18)"
-              border-radius: 14px
-              padding: 4px 8px
-              transform: translate(-50%, -50%)
-              font-size: 11px
-              font-weight: 700
-
-          - type: state-label
-            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_grid_power
-            tap_action: none
-            style:
-              top: 55.88%
-              left: 48.75%
-              color: "#7c2d12"
-              background: "rgba(255, 237, 213, 0.98)"
-              border: "1px solid rgba(217, 119, 6, 0.18)"
-              border-radius: 14px
-              padding: 4px 8px
-              transform: translate(-50%, -50%)
-              font-size: 11px
-              font-weight: 700
-
-          - type: state-label
-            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_to_load_power
-            tap_action: none
-            style:
-              top: 36.03%
-              left: 63.13%
-              color: "#134e4a"
-              background: "rgba(204, 251, 241, 0.98)"
-              border: "1px solid rgba(15, 118, 110, 0.18)"
-              border-radius: 14px
-              padding: 4px 8px
-              transform: translate(-50%, -50%)
-              font-size: 11px
-              font-weight: 700
-
-          - type: state-label
-            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_to_load_power
-            tap_action: none
-            style:
-              top: 63.97%
-              left: 63.13%
-              color: "#334155"
-              background: "rgba(226, 232, 240, 0.98)"
-              border: "1px solid rgba(71, 85, 105, 0.18)"
-              border-radius: 14px
-              padding: 4px 8px
-              transform: translate(-50%, -50%)
-              font-size: 11px
-              font-weight: 700
-
       - type: grid
         title: Today At A Glance
         columns: 2
@@ -292,23 +217,37 @@ views:
             name: Battery SOC
             icon: mdi:battery-medium
 
-      - type: history-graph
-        title: Energy Through Today
-        hours_to_show: 24
-        refresh_interval: 300
+      - type: grid
+        title: Route Power Now
+        columns: 2
+        square: false
         view_layout:
           position: sidebar
-        entities:
-          - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13112
-            name: PV Yield
-          - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13116
+        cards:
+          - type: tile
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_load_power
             name: PV To Load
-          - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13174
+            icon: mdi:solar-power-variant-outline
+          - type: tile
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_battery_power
             name: PV To Battery
-          - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13173
-            name: Feed-in
-          - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13147
-            name: Grid Import
+            icon: mdi:battery-charging-medium
+          - type: tile
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_grid_power
+            name: PV To Grid
+            icon: mdi:upload-network-outline
+          - type: tile
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_to_load_power
+            name: Battery To Load
+            icon: mdi:battery-arrow-down-outline
+          - type: tile
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_to_load_power
+            name: Grid To Load
+            icon: mdi:transmission-tower-export
+          - type: tile
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_power
+            name: Grid Net
+            icon: mdi:transmission-tower
 
       - type: history-graph
         title: Battery Level Today
@@ -339,17 +278,35 @@ views:
                 name: Battery
 
           - type: history-graph
-            title: Route Detail Today
+            title: Energy Through Today
             hours_to_show: 24
-            refresh_interval: 60
+            refresh_interval: 300
             entities:
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_load_power
-                name: PV to Load
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_battery_power
-                name: PV to Battery
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_grid_power
-                name: PV to Grid
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_to_load_power
-                name: Battery to Load
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_to_load_power
-                name: Grid to Load
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13112
+                name: PV Yield
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13116
+                name: PV To Load
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13174
+                name: PV To Battery
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13173
+                name: Feed-in
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13147
+                name: Grid Import
+
+      - type: history-graph
+        title: Route Detail Today
+        view_layout:
+          position: main
+        hours_to_show: 24
+        refresh_interval: 60
+        entities:
+          - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_load_power
+            name: PV to Load
+          - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_battery_power
+            name: PV to Battery
+          - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_grid_power
+            name: PV to Grid
+          - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_to_load_power
+            name: Battery to Load
+          - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_to_load_power
+            name: Grid to Load

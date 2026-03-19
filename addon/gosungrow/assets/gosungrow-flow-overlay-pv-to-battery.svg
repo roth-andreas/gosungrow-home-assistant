@@ -3,6 +3,9 @@
     <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
       <feDropShadow dx="0" dy="0" stdDeviation="10" flood-color="#f59e0b" flood-opacity="0.34" />
     </filter>
+    <marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="10" markerHeight="10" orient="auto-start-reverse">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#f59e0b" />
+    </marker>
   </defs>
-  <path d="M 308 300 C 470 232 716 188 1142 200" stroke="#f59e0b" stroke-width="18" stroke-linecap="round" fill="none" filter="url(#glow)" />
+  <path d="M 308 300 C 470 232 716 188 1142 200" stroke="#f59e0b" stroke-width="18" stroke-linecap="round" fill="none" filter="url(#glow)" marker-end="url(#arrow)" />
 </svg>
