@@ -3,10 +3,10 @@ package iSolarCloud
 import (
 	"time"
 
-	"github.com/MickMake/GoSungrow/iSolarCloud/AppService/getPsList"
-	"github.com/MickMake/GoSungrow/iSolarCloud/WebIscmAppService/getPsTreeMenu"
-	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct/valueTypes"
 	"github.com/MickMake/GoUnify/Only"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/getPsList"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/WebIscmAppService/getPsTreeMenu"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/valueTypes"
 )
 
 func (sg *SunGrow) SetPsIds(args ...string) valueTypes.PsIds {

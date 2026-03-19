@@ -5,10 +5,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MickMake/GoSungrow/iSolarCloud"
-	"github.com/MickMake/GoSungrow/iSolarCloud/AppService/login"
 	"github.com/MickMake/GoUnify/Only"
 	"github.com/MickMake/GoUnify/cmdHelp"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/login"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

@@ -1,11 +1,11 @@
 package getDevicePointAttrs
 
 import (
-	"github.com/MickMake/GoSungrow/iSolarCloud/api"
-	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct"
-	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct/valueTypes"
 	"encoding/json"
 	"github.com/MickMake/GoUnify/Only"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/valueTypes"
 
 	"fmt"
 )
@@ -37,15 +37,15 @@ func (e *ResultData) IsValid() error {
 }
 
 // powerDevicePointList
-// ┏━━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-// ┃ Device Type    ┃ Id     ┃ Period    ┃ Point Id    ┃ Name                                      ┃ Type Name                ┃
-// ┣━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━┫
-// ┃ 11             ┃ 29     ┃ 1         ┃ p83001      ┃ AC Power Normalization (Inverter)         ┃ Plant                    ┃
+// â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”“
+// â”ƒ Device Type    â”ƒ Id     â”ƒ Period    â”ƒ Point Id    â”ƒ Name                                      â”ƒ Type Name                â”ƒ
+// â”£â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”«
+// â”ƒ 11             â”ƒ 29     â”ƒ 1         â”ƒ p83001      â”ƒ AC Power Normalization (Inverter)         â”ƒ Plant                    â”ƒ
 //
-// ┏━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━┳━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━┓
-// ┃ Ps Id   ┃ Device Type ┃ Channel Id ┃ Station Name ┃ Station Short Name ┃ Is Parent  ┃ Device Model Id ┃ Device Name                 ┃ A Type ┃ Code Id ┃ C Type ┃ Id     ┃ Node Key ┃ Name                            ┃ Target Unit ┃ Unit   ┃ Unit Type ┃ Level ┃ Order Id ┃ Point Group Id ┃ Relate ┃
-// ┣━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━╇━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━┫
-// ┃ 1171348 ┃ 11          ┃ 0          ┃ MickMake42   ┃ A2281658237        ┃ false      ┃ 366316          ┃ Energy Storage System 02_01 ┃ 0      ┃ 0       ┃ 1      ┃ p83001 ┃ p83001   ┃ Inverter AC Power Normalization ┃ kW/kWp      ┃ kW/kWp ┃ 43        ┃ 4     ┃ 10021    ┃ 9999           ┃ 0      ┃
+// â”â”â”â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”³â”â”â”â”â”â”â”â”â”“
+// â”ƒ Ps Id   â”ƒ Device Type â”ƒ Channel Id â”ƒ Station Name â”ƒ Station Short Name â”ƒ Is Parent  â”ƒ Device Model Id â”ƒ Device Name                 â”ƒ A Type â”ƒ Code Id â”ƒ C Type â”ƒ Id     â”ƒ Node Key â”ƒ Name                            â”ƒ Target Unit â”ƒ Unit   â”ƒ Unit Type â”ƒ Level â”ƒ Order Id â”ƒ Point Group Id â”ƒ Relate â”ƒ
+// â”£â”â”â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â•‡â”â”â”â”â”â”â”â”â”«
+// â”ƒ 1171348 â”ƒ 11          â”ƒ 0          â”ƒ MickMake42   â”ƒ A2281658237        â”ƒ false      â”ƒ 366316          â”ƒ Energy Storage System 02_01 â”ƒ 0      â”ƒ 0       â”ƒ 1      â”ƒ p83001 â”ƒ p83001   â”ƒ Inverter AC Power Normalization â”ƒ kW/kWp      â”ƒ kW/kWp â”ƒ 43        â”ƒ 4     â”ƒ 10021    â”ƒ 9999           â”ƒ 0      â”ƒ
 
 type Point struct {
 	GoStruct.GoStructParent `json:"-" DataTable:"true" DataTableSortOn:"Id"`
@@ -124,98 +124,97 @@ func (m *PointsMap) Get(point string) *Point {
 	return nil
 }
 
-
 type UnitTypes map[string]string
 
-var unitTypes = UnitTypes {
-	"":       "Unknown",              //
-	"NULL":   "Unknown",              //
+var unitTypes = UnitTypes{
+	"":     "Unknown", //
+	"NULL": "Unknown", //
 
-	"%":      "Percent",              // 10
-	"%RH":    "Humidity",             // 12
+	"%":   "Percent",  // 10
+	"%RH": "Humidity", // 12
 
-	"A":      "Current",              //
-	"Ah":     "Current Capacity",     //
-	"mA":     "Current",              //
+	"A":  "Current",          //
+	"Ah": "Current Capacity", //
+	"mA": "Current",          //
 
-	"Bar":    "Pressure",             //
-	"hPa":    "Pressure",             // 19
+	"Bar": "Pressure", //
+	"hPa": "Pressure", // 19
 
-	"Day":    "Date/Time",            // 15
-	"H":      "Date/Time",            // 15
-	"Hour":   "Date/Time",            // 15
-	"h":      "Date/Time",            // 15
-	"Year":   "Date/Time",            // 15
-	"Min":    "Date/Time",            // 15
-	"Mon":    "Date/Time",            // 15
-	"min":    "Date/Time",            // 15
-	"s":      "Date/Time",            // 15
+	"Day":  "Date/Time", // 15
+	"H":    "Date/Time", // 15
+	"Hour": "Date/Time", // 15
+	"h":    "Date/Time", // 15
+	"Year": "Date/Time", // 15
+	"Min":  "Date/Time", // 15
+	"Mon":  "Date/Time", // 15
+	"min":  "Date/Time", // 15
+	"s":    "Date/Time", // 15
 
-	"Hz":     "Frequency",            //
+	"Hz": "Frequency", //
 
-	"KV":     "Voltage",              //
-	"kV ":    "Voltage",              //
-	"kV":     "Voltage",              //
-	"V":      "Voltage",              //
-	"mV":     "Voltage",              //
+	"KV":  "Voltage", //
+	"kV ": "Voltage", //
+	"kV":  "Voltage", //
+	"V":   "Voltage", //
+	"mV":  "Voltage", //
 
-	"MAh":    "Energy",               // 13
-	"MWh":    "Energy",               //
-	"MWp":    "Energy",               //
-	"Wh":     "Energy",               //
-	"kWh":    "Energy",               //
+	"MAh": "Energy", // 13
+	"MWh": "Energy", //
+	"MWp": "Energy", //
+	"Wh":  "Energy", //
+	"kWh": "Energy", //
 
-	"MW":     "Power",                //
-	"kW":     "Power",                // 0 / 21
-	"W":      "Power",                //
+	"MW": "Power", //
+	"kW": "Power", // 0 / 21
+	"W":  "Power", //
 
-	"Mvar":   "Reactive Power",       //
-	"kVar":   "Reactive Power",       //
-	"kvar":   "Reactive Power",       //
-	"Var":    "Reactive Power",       //
+	"Mvar": "Reactive Power", //
+	"kVar": "Reactive Power", //
+	"kvar": "Reactive Power", //
+	"Var":  "Reactive Power", //
 
-	"VA":     "Apparent Power",       // 21
-	"kVA":    "Apparent Power",       // 21
+	"VA":  "Apparent Power", // 21
+	"kVA": "Apparent Power", // 21
 
-	"kW/kWp": "Power Normalization",  //
+	"kW/kWp": "Power Normalization", //
 
-	"kVarh":  "Reactive Electricity", //
-	"kvarh":  "Reactive Electricity", //
+	"kVarh": "Reactive Electricity", //
+	"kvarh": "Reactive Electricity", //
 
-	"PCS":    "PCS",                  //
+	"PCS": "PCS", //
 
-	"V/mA":   "Output",               // 0
+	"V/mA": "Output", // 0
 
-	"W/㎡":    "Irradiation",          //
-	"Wh/㎡":   "Irradiation",          // 1
+	"W/ãŽ¡":  "Irradiation", //
+	"Wh/ãŽ¡": "Irradiation", // 1
 
-	"dec":    "dec",                  //
+	"dec": "dec", //
 
-	"g":      "Weight",               // 17
-	"kg":     "Weight",               // 17
+	"g":  "Weight", // 17
+	"kg": "Weight", // 17
 
-	"kΩ":     "Resistance",           //
+	"kÎ©": "Resistance", //
 
-	"m/s":    "Speed",                //
-	"r/min":  "Speed",                //
+	"m/s":   "Speed", //
+	"r/min": "Speed", //
 
-	"mm":     "Length",               //
+	"mm": "Length", //
 
-	"°":      "Angle",                //
+	"Â°": "Angle", //
 
-	"℃":      "Temperature",          // 2
+	"â„ƒ": "Temperature", // 2
 
-	"时":     "Date/Time",                   //  15
-	"分":     "Date/Time",                 // Operation Minutes
-	"台":     "Count",                   // Number of Online PCSs
-	"排":     "Count",                   //
-	"次":     "Count",                   // Discharging Count
+	"æ—¶": "Date/Time", //  15
+	"åˆ†": "Date/Time", // Operation Minutes
+	"å°": "Count",     // Number of Online PCSs
+	"æŽ’": "Count",     //
+	"æ¬¡": "Count",     // Discharging Count
 }
 
 // 21 = kW
 // 22 = kVarh
 // 22 = kvarh
-// 23 = kΩ
+// 23 = kÎ©
 // 25 = m/s
 // 28 = mm
 // 3 = kVA
@@ -225,18 +224,18 @@ var unitTypes = UnitTypes {
 // 32 = Mvar
 // 33 =
 // 33 = PCS
-// 33 = 分
-// 33 = 台
-// 33 = 排
-// 33 = 次
+// 33 = åˆ†
+// 33 = å°
+// 33 = æŽ’
+// 33 = æ¬¡
 // 37 = KV
 // 37 = kV
 // 39 = VA
 // 4 =
 // 4 = V
-// 40 = W/㎡
+// 40 = W/ãŽ¡
 // 43 = kW/kWp
-// 44 = °
+// 44 = Â°
 // 5 = A
 // 6 = Hz
 // 7 = kWh
@@ -268,12 +267,12 @@ var unitTypes = UnitTypes {
 // 999 = kW
 // 999 = kWh
 // 999 = kvar
-// 999 = kΩ
+// 999 = kÎ©
 // 999 = mA
 // 999 = mV
 // 999 = min
 // 999 = r/min
-// 999 = ℃
+// 999 = â„ƒ
 
 func (ut *UnitTypes) Get(name string) string {
 	if n, ok := (*ut)[name]; ok {
@@ -281,7 +280,6 @@ func (ut *UnitTypes) Get(name string) string {
 	}
 	return name
 }
-
 
 type PointGroupNames map[string]string
 

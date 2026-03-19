@@ -113,7 +113,6 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-
 var ForceFloats bool
 
 // commonInitialisms is a set of common initialisms.
@@ -214,22 +213,22 @@ func Generate(input io.Reader, parser Parser, structName, pkgName string, tags [
 	}
 
 	switch iresult := iresult.(type) {
-		case map[interface{}]interface{}:
-			result = convertKeysToStrings(iresult)
-		case map[string]interface{}:
-			result = iresult
-		case []interface{}:
-			src := fmt.Sprintf("package %s\n\ntype %s %s\n",
-				pkgName,
-				structName,
-				typeForValue(iresult, structName, tags, subStructMap, convertFloats))
-			formatted, err := format.Source([]byte(src))
-			if err != nil {
-				err = fmt.Errorf("error formatting: %s, was formatting\n%s", err, src)
-			}
-			return formatted, err
-		default:
-			return nil, fmt.Errorf("unexpected type: %T", iresult)
+	case map[interface{}]interface{}:
+		result = convertKeysToStrings(iresult)
+	case map[string]interface{}:
+		result = iresult
+	case []interface{}:
+		src := fmt.Sprintf("package %s\n\ntype %s %s\n",
+			pkgName,
+			structName,
+			typeForValue(iresult, structName, tags, subStructMap, convertFloats))
+		formatted, err := format.Source([]byte(src))
+		if err != nil {
+			err = fmt.Errorf("error formatting: %s, was formatting\n%s", err, src)
+		}
+		return formatted, err
+	default:
+		return nil, fmt.Errorf("unexpected type: %T", iresult)
 	}
 
 	src := fmt.Sprintf("package %s\ntype %s %s}",
@@ -283,61 +282,61 @@ func generateTypes(obj map[string]interface{}, structName string, tags []string,
 
 		// If a nested value, recurse
 		switch value := value.(type) {
-			case []interface{}:
-				if len(value) > 0 {
-					sub := ""
-					if v, ok := value[0].(map[interface{}]interface{}); ok {
-						sub = generateTypes(convertKeysToStrings(v), structName, tags, depth+1, subStructMap, convertFloats) + "}"
-					} else if v, ok := value[0].(map[string]interface{}); ok {
-						sub = generateTypes(v, structName, tags, depth+1, subStructMap, convertFloats) + "}"
-					}
+		case []interface{}:
+			if len(value) > 0 {
+				sub := ""
+				if v, ok := value[0].(map[interface{}]interface{}); ok {
+					sub = generateTypes(convertKeysToStrings(v), structName, tags, depth+1, subStructMap, convertFloats) + "}"
+				} else if v, ok := value[0].(map[string]interface{}); ok {
+					sub = generateTypes(v, structName, tags, depth+1, subStructMap, convertFloats) + "}"
+				}
 
-					if sub != "" {
-						subName := sub
+				if sub != "" {
+					subName := sub
 
-						if subStructMap != nil {
-							if val, ok := subStructMap[sub]; ok {
-								subName = val
-							} else {
-								subName = fmt.Sprintf("%v_sub%v", structName, len(subStructMap)+1)
-								subStructMap[sub] = subName
-							}
+					if subStructMap != nil {
+						if val, ok := subStructMap[sub]; ok {
+							subName = val
+						} else {
+							subName = fmt.Sprintf("%v_sub%v", structName, len(subStructMap)+1)
+							subStructMap[sub] = subName
 						}
-
-						valueType = "[]" + subName
 					}
+
+					valueType = "[]" + subName
 				}
+			}
 
-			case map[interface{}]interface{}:
-				sub := generateTypes(convertKeysToStrings(value), structName, tags, depth+1, subStructMap, convertFloats) + "}"
-				subName := sub
+		case map[interface{}]interface{}:
+			sub := generateTypes(convertKeysToStrings(value), structName, tags, depth+1, subStructMap, convertFloats) + "}"
+			subName := sub
 
-				if subStructMap != nil {
-					if val, ok := subStructMap[sub]; ok {
-						subName = val
-					} else {
-						subName = fmt.Sprintf("%v_sub%v", structName, len(subStructMap)+1)
+			if subStructMap != nil {
+				if val, ok := subStructMap[sub]; ok {
+					subName = val
+				} else {
+					subName = fmt.Sprintf("%v_sub%v", structName, len(subStructMap)+1)
 
-						subStructMap[sub] = subName
-					}
+					subStructMap[sub] = subName
 				}
-				valueType = subName
+			}
+			valueType = subName
 
-			case map[string]interface{}:
-				sub := generateTypes(value, structName, tags, depth+1, subStructMap, convertFloats) + "}"
-				subName := sub
+		case map[string]interface{}:
+			sub := generateTypes(value, structName, tags, depth+1, subStructMap, convertFloats) + "}"
+			subName := sub
 
-				if subStructMap != nil {
-					if val, ok := subStructMap[sub]; ok {
-						subName = val
-					} else {
-						subName = fmt.Sprintf("%v_sub%v", structName, len(subStructMap)+1)
+			if subStructMap != nil {
+				if val, ok := subStructMap[sub]; ok {
+					subName = val
+				} else {
+					subName = fmt.Sprintf("%v_sub%v", structName, len(subStructMap)+1)
 
-						subStructMap[sub] = subName
-					}
+					subStructMap[sub] = subName
 				}
+			}
 
-				valueType = subName
+			valueType = subName
 		}
 
 		fieldName := FmtFieldName(key)
@@ -358,37 +357,37 @@ func generateTypes(obj map[string]interface{}, structName string, tags []string,
 
 func TypeLookup(Type string) string {
 	switch Type {
-		case "string":
-			Type = "valueTypes.String"
+	case "string":
+		Type = "valueTypes.String"
 
-		case "bool":
-			Type = "valueTypes.Bool"
+	case "bool":
+		Type = "valueTypes.Bool"
 
-		case "int":
-			Type = "valueTypes.Integer"
-		case "int8":
-			Type = "valueTypes.Integer"
-		case "int16":
-			Type = "valueTypes.Integer"
-		case "int32":
-			Type = "valueTypes.Integer"
-		case "int64":
-			Type = "valueTypes.Integer"
-		case "uint":
-			Type = "valueTypes.Integer"
-		case "uint8":
-			Type = "valueTypes.Integer"
-		case "uint16":
-			Type = "valueTypes.Integer"
-		case "uint32":
-			Type = "valueTypes.Integer"
-		case "uint64":
-			Type = "valueTypes.Integer"
+	case "int":
+		Type = "valueTypes.Integer"
+	case "int8":
+		Type = "valueTypes.Integer"
+	case "int16":
+		Type = "valueTypes.Integer"
+	case "int32":
+		Type = "valueTypes.Integer"
+	case "int64":
+		Type = "valueTypes.Integer"
+	case "uint":
+		Type = "valueTypes.Integer"
+	case "uint8":
+		Type = "valueTypes.Integer"
+	case "uint16":
+		Type = "valueTypes.Integer"
+	case "uint32":
+		Type = "valueTypes.Integer"
+	case "uint64":
+		Type = "valueTypes.Integer"
 
-		case "float32":
-			Type = "valueTypes.Float"
-		case "float64":
-			Type = "valueTypes.Float"
+	case "float32":
+		Type = "valueTypes.Float"
+	case "float64":
+		Type = "valueTypes.Float"
 
 	}
 	return Type
@@ -553,8 +552,8 @@ func typeForValue(value interface{}, structName string, tags []string, subStruct
 }
 
 const (
-	NameFloat64 = "float64"
-	NameInterface = "interface{}"
+	NameFloat64        = "float64"
+	NameInterface      = "interface{}"
 	NameArrayInterface = "[]interface{}"
 )
 
@@ -585,17 +584,17 @@ func stringifyFirstChar(str string) string {
 
 func mergeElements(i interface{}) interface{} {
 	switch i := i.(type) {
-		default:
+	default:
+		return i
+	case []interface{}:
+		l := len(i)
+		if l == 0 {
 			return i
-		case []interface{}:
-			l := len(i)
-			if l == 0 {
-				return i
-			}
-			for j := 1; j < l; j++ {
-				i[0] = mergeObjects(i[0], i[j])
-			}
-			return i[0:1]
+		}
+		for j := 1; j < l; j++ {
+			i[0] = mergeObjects(i[0], i[j])
+		}
+		return i[0:1]
 	}
 }
 
@@ -613,29 +612,29 @@ func mergeObjects(o1, o2 interface{}) interface{} {
 	}
 
 	switch i := o1.(type) {
-		default:
-			return o1
+	default:
+		return o1
 
-		case []interface{}:
-			if i2, ok := o2.([]interface{}); ok {
-				i3 := append(i, i2...)
-				return mergeElements(i3)
-			}
-			return mergeElements(i)
+	case []interface{}:
+		if i2, ok := o2.([]interface{}); ok {
+			i3 := append(i, i2...)
+			return mergeElements(i3)
+		}
+		return mergeElements(i)
 
-		case map[string]interface{}:
-			if i2, ok := o2.(map[string]interface{}); ok {
-				for k, v := range i2 {
-					if v2, ok := i[k]; ok {
-						i[k] = mergeObjects(v2, v)
-					} else {
-						i[k] = v
-					}
+	case map[string]interface{}:
+		if i2, ok := o2.(map[string]interface{}); ok {
+			for k, v := range i2 {
+				if v2, ok := i[k]; ok {
+					i[k] = mergeObjects(v2, v)
+				} else {
+					i[k] = v
 				}
 			}
-			return i
+		}
+		return i
 
-		case map[interface{}]interface{}:
+	case map[interface{}]interface{}:
 		if i2, ok := o2.(map[interface{}]interface{}); ok {
 			for k, v := range i2 {
 				if v2, ok := i[k]; ok {

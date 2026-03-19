@@ -5,10 +5,9 @@ import (
 	"github.com/MickMake/GoUnify/Only"
 )
 
-
 type String struct {
 	string `json:"string,omitempty"`
-	Valid   bool `json:"valid"`
+	Valid  bool  `json:"valid"`
 	Error  error `json:"-"`
 }
 

@@ -48,7 +48,6 @@ import (
 	// . "github.com/ChimeraCoder/gojson"
 )
 
-
 // var (
 // 	name        = flag.String("name", "Foo", "the name of the struct")
 // 	pkg         = flag.String("pkg", "main", "the name of the package for the generated code")
@@ -60,12 +59,12 @@ import (
 // 	subStruct   = flag.Bool("subStruct", false, "create types for sub-structs (default is false)")
 // )
 
-var formatYaml = "yaml"	// true
-var formatJson = "json"	// false
+var formatYaml = "yaml" // true
+var formatJson = "json" // false
 
 type Options struct {
-	inputName     *string
-	outputName    *string
+	inputName  *string
+	outputName *string
 
 	saveOutput    bool
 	structureName *string
@@ -76,42 +75,41 @@ type Options struct {
 	subStructs    bool
 }
 
-func (o *Options) StructureName(name string)  {
+func (o *Options) StructureName(name string) {
 	o.structureName = &name
 }
 
-func (o *Options) PackageName(name string)  {
+func (o *Options) PackageName(name string) {
 	o.packageName = &name
 }
 
-func (o *Options) InputIsJson()  {
+func (o *Options) InputIsJson() {
 	o.format = formatJson
 }
 
-func (o *Options) InputIsYaml()  {
+func (o *Options) InputIsYaml() {
 	o.format = formatYaml
 }
 
-func (o *Options) Tags(names []string)  {
+func (o *Options) Tags(names []string) {
 	o.tags = names
 }
 
-func (o *Options) ForceFloats()  {
+func (o *Options) ForceFloats() {
 	o.forceFloats = true
 }
 
-func (o *Options) SubStructs()  {
+func (o *Options) SubStructs() {
 	o.subStructs = true
 }
 
-func (o *Options) SetOutput(name string)  {
+func (o *Options) SetOutput(name string) {
 	o.outputName = &name
 }
 
-func (o *Options) SaveOutput()  {
+func (o *Options) SaveOutput() {
 	o.saveOutput = true
 }
-
 
 func Parse(options Options, data []byte) (string, error) {
 	var ret string
@@ -170,11 +168,11 @@ func Parse(options Options, data []byte) (string, error) {
 		var convertFloats bool
 		var parser Parser
 		switch options.format {
-			case "json":
-				parser = ParseJson
-				convertFloats = true
-			case "yaml":
-				parser = ParseYaml
+		case "json":
+			parser = ParseJson
+			convertFloats = true
+		case "yaml":
+			parser = ParseYaml
 		}
 
 		var output []byte

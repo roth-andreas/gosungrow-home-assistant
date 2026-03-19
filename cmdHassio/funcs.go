@@ -5,7 +5,6 @@ import (
 	"strings"
 )
 
-
 func JoinStrings(args ...string) string {
 	return strings.TrimSpace(strings.Join(args, " "))
 }
@@ -58,7 +57,6 @@ func JoinStringsForTopic(args ...string) string {
 	// ret := strings.ReplaceAll(strings.Join(args, "/"), "//", "/")
 	// return ret
 }
-
 
 // const DiscoveryPrefix = "homeassistant"
 //

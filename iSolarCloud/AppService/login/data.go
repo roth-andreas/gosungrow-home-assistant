@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/MickMake/GoSungrow/iSolarCloud/api"
-	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct"
-	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct/valueTypes"
 	"github.com/MickMake/GoUnify/Only"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/valueTypes"
 )
 
 const Url = "/v1/userService/login"
@@ -146,9 +146,9 @@ func (e *ResultData) IsValid() error {
 	var err error
 	for range Only.Once {
 		switch {
-		case e.Msg.String() == `账号不存在`:
+		case e.Msg.String() == `è´¦å·ä¸å­˜åœ¨`:
 			err = errors.New(fmt.Sprintf("Account does not exist '%s'", e.Msg))
-		case e.Msg.String() == fmt.Sprintf(`账号或密码输入错误，还剩%s次机会`, e.RemainTimes):
+		case e.Msg.String() == fmt.Sprintf(`è´¦å·æˆ–å¯†ç è¾“å…¥é”™è¯¯ï¼Œè¿˜å‰©%sæ¬¡æœºä¼š`, e.RemainTimes):
 			err = errors.New(fmt.Sprintf("The account number or password is entered incorrectly, there are %s chances left '%s'", e.RemainTimes, e.Msg))
 		case strings.EqualFold(e.Msg.String(), "Expired request"):
 			err = errors.New("request expired (clock skew)")

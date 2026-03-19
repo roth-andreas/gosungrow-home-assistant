@@ -1,4 +1,4 @@
-module github.com/MickMake/GoSungrow
+module github.com/roth-andreas/gosungrow-home-assistant
 
 go 1.19
 

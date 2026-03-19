@@ -1,12 +1,11 @@
 package api
 
 import (
-	"github.com/MickMake/GoUnify/Only"
-	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct/valueTypes"
 	"fmt"
+	"github.com/MickMake/GoUnify/Only"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/valueTypes"
 	"strings"
 )
-
 
 type TemplatePoint struct {
 	Name    string
@@ -15,7 +14,6 @@ type TemplatePoint struct {
 	Unit    string
 }
 type TemplatePoints []TemplatePoint
-
 
 func (t *TemplatePoints) PrintKeys() string {
 	var ret string

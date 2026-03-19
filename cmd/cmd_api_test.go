@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/MickMake/GoSungrow/iSolarCloud"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud"
 )
 
 func TestNormalizeLoginAppKey(t *testing.T) {

@@ -6,7 +6,6 @@ import (
 	"strings"
 )
 
-
 const (
 	VirtualPsId = "virtual"
 )
@@ -25,7 +24,6 @@ func init() {
 type PointsMap struct {
 	Map map[string]*Point
 }
-
 
 func (pm *PointsMap) Resolve(point string) *Point {
 	if ret, ok := pm.Map[point]; ok {
@@ -202,7 +200,6 @@ func (p *Point) HasNotChanged(comp Point) bool {
 	return !p.HasChanged(comp)
 }
 
-
 // p1
 // p1001
 // p1002
@@ -261,8 +258,8 @@ func (p *Point) HasNotChanged(comp Point) bool {
 // p83532
 
 // Points Discovered points from the API
-var Points = PointsMap {
-	Map: map[string]*Point {
+var Points = PointsMap{
+	Map: map[string]*Point{
 
 		// Added manually
 		// "p83022y": { PsKey: "virtual", Id: "p83022", Name: "", Unit: "kWh", Type: PointTypeInstant },

@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	"github.com/MickMake/GoSungrow/defaults"
 	"github.com/MickMake/GoUnify/Only"
 	"github.com/MickMake/GoUnify/Unify"
+	"github.com/roth-andreas/gosungrow-home-assistant/defaults"
 	"github.com/spf13/cobra"
 )
 

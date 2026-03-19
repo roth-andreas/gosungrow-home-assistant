@@ -1,19 +1,18 @@
 package iSolarCloud
 
 import (
-	"github.com/MickMake/GoSungrow/iSolarCloud/api"
-	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct/output"
-	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct/valueTypes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/MickMake/GoUnify/Only"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/output"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/valueTypes"
 	"os"
 	"sort"
 	"strings"
 	"time"
 )
-
 
 // ****************************************************** //
 
@@ -28,12 +27,11 @@ func (sg *SunGrow) NewSunGrowData() SunGrowData {
 	return data
 }
 
-
 func SplitArg(arg string) []string {
 	var ret []string
 	for range Only.Once {
 		ret = []string{arg}
-		for _, s := range []string{ ",", "/", " "} {
+		for _, s := range []string{",", "/", " "} {
 			if strings.Contains(arg, s) {
 				ret = strings.Split(arg, s)
 				break
@@ -43,13 +41,11 @@ func SplitArg(arg string) []string {
 	return ret
 }
 
-
 type EndPoints map[string]EndPoint
 type EndPoint struct {
-	Func SunGrowDataFunction
+	Func    SunGrowDataFunction
 	HasArgs bool
 }
-
 
 type SunGrowData struct {
 	Args      []string
@@ -57,17 +53,19 @@ type SunGrowData struct {
 	Request   SunGrowDataRequest
 	Results   SunGrowDataResults
 
-	sunGrow      *SunGrow
+	sunGrow *SunGrow
 	// outputType   output.OutputType
 	// saveAsFile   bool
 	cacheTimeout time.Duration
 
-	Debug      bool
-	Error      error
+	Debug bool
+	Error error
 }
 
-func (sgd *SunGrowData) PrintDebug(format string, args ...interface{})  {
-	if sgd.Debug { _, _ = fmt.Fprintf(os.Stderr, format, args...) }
+func (sgd *SunGrowData) PrintDebug(format string, args ...interface{}) {
+	if sgd.Debug {
+		_, _ = fmt.Fprintf(os.Stderr, format, args...)
+	}
 }
 
 func (sgd *SunGrowData) New(ref *SunGrow) {
@@ -162,14 +160,14 @@ func (sgd *SunGrowData) CallEndpoint(endpoint api.EndPoint, request SunGrowDataR
 		hash := request.GetArgsHash(response.Data.EndPoint)
 		name := endpoint.GetArea().String() + "." + endpoint.GetName().String()
 		var title string
-		var file string		// + " - " + request.RequestAsFilePrefix(),
+		var file string // + " - " + request.RequestAsFilePrefix(),
 		key := request.GetPrimaryArg()
 		if key != "" {
 			title = key
 			file = key
 		}
 
-		response.Options = OutputOptions {
+		response.Options = OutputOptions{
 			Name:        name,
 			OutputType:  sgd.sunGrow.OutputType,
 			PrimaryKey:  key,
@@ -178,18 +176,18 @@ func (sgd *SunGrowData) CallEndpoint(endpoint api.EndPoint, request SunGrowDataR
 			FileSuffix:  file,
 			SaveAsFile:  sgd.sunGrow.SaveAsFile,
 			TitleSuffix: args,
-			GraphRequest: output.GraphRequest {
+			GraphRequest: output.GraphRequest{
 				Title:       title,
 				SubTitle:    args,
 				TimeColumn:  nil,
 				DataColumn:  nil,
 				UnitsColumn: nil,
 				NameColumn:  nil,
-				DataMin: nil,
-				DataMax: nil,
-				Width:   nil,
-				Height:  nil,
-				Error:   nil,
+				DataMin:     nil,
+				DataMax:     nil,
+				Width:       nil,
+				Height:      nil,
+				Error:       nil,
 			},
 		}
 		sgd.PrintDebug("OutputOptions: %v\n", response.Options)
@@ -284,7 +282,7 @@ func (sgd *SunGrowData) getDataSinglePsIdRequired(ep api.EndPoint) error {
 			if sgd.Error != nil {
 				break
 			}
-			sgd.Results[result.EndPointName.String() + "/" + psId.String()] = result
+			sgd.Results[result.EndPointName.String()+"/"+psId.String()] = result
 		}
 		if sgd.Error != nil {
 			break
@@ -362,7 +360,6 @@ func (sgd *SunGrowData) OutputDataTables() error {
 	return sgd.Error
 }
 
-
 type SunGrowDataResults map[string]SunGrowDataResult
 type SunGrowDataResult struct {
 	EndPointArea api.AreaName
@@ -371,7 +368,7 @@ type SunGrowDataResult struct {
 	Request      SunGrowDataRequest
 	Response     SunGrowDataResponse
 
-	Error        error
+	Error error
 }
 
 func (sgd *SunGrowDataResult) Process() error {
@@ -388,17 +385,16 @@ func (sgd *SunGrowDataResult) Print() {
 	fmt.Println(sgd.Response.Data.String())
 }
 
-
 type OutputOptions struct {
-	Name         string
-	TitleSuffix  string
-	PrimaryKey   string
+	Name        string
+	TitleSuffix string
+	PrimaryKey  string
 
-	OutputType   output.OutputType
-	Directory    string
-	SaveAsFile   bool
-	FileSuffix   string
-	FilePrefix   string
+	OutputType output.OutputType
+	Directory  string
+	SaveAsFile bool
+	FileSuffix string
+	FilePrefix string
 
 	GraphRequest output.GraphRequest
 }
@@ -406,9 +402,9 @@ type OutputOptions struct {
 type SunGrowDataResponses map[string]SunGrowDataResponse
 type SunGrowDataFunction func(request SunGrowDataRequest) SunGrowDataResponse
 type SunGrowDataResponse struct {
-	Data     api.DataMap
-	Options  OutputOptions
-	Error    error
+	Data    api.DataMap
+	Options OutputOptions
+	Error   error
 }
 
 func (sgd *SunGrowDataResponse) Output() error {
@@ -465,7 +461,7 @@ func (sgd *SunGrowDataResponse) OutputDataTables() error {
 				sgd.Options.TitleSuffix = data.Table.GetTitle()
 			}
 			data.Table.OutputType = sgd.Options.OutputType
-			data.Table.SetSaveFile(sgd.Options.SaveAsFile)	// sgd.Options.SaveAsFile
+			data.Table.SetSaveFile(sgd.Options.SaveAsFile) // sgd.Options.SaveAsFile
 
 			if sgd.Options.OutputType.IsGraph() {
 				if !data.IsValid {

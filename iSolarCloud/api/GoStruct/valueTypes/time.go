@@ -6,7 +6,6 @@ import (
 	"time"
 )
 
-
 var inputTimeLayout = []string{
 	TimeLayout,
 	TimeLayoutHourColon,

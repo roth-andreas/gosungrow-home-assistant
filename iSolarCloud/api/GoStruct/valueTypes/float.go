@@ -7,11 +7,10 @@ import (
 	"strconv"
 )
 
-
 type Float struct {
 	string  `json:"string,omitempty"`
 	float64 `json:"float,omitempty"`
-	Valid   bool `json:"valid"`
+	Valid   bool  `json:"valid"`
 	Error   error `json:"-"`
 }
 
@@ -143,5 +142,5 @@ func round(num float64) int {
 
 func SetPrecision(num float64, precision int) float64 {
 	output := math.Pow(10, float64(precision))
-	return float64(round(num * output)) / output
+	return float64(round(num*output)) / output
 }

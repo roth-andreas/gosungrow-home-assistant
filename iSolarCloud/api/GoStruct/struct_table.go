@@ -1,16 +1,15 @@
 package GoStruct
 
 import (
-	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct/output"
-	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct/valueTypes"
 	"errors"
 	"fmt"
 	"github.com/MickMake/GoUnify/Only"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/output"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/valueTypes"
 	"os"
 	"sort"
 	"strconv"
 )
-
 
 type StructTables map[string]*StructTable
 
@@ -26,11 +25,10 @@ func (sm *StructTables) GetTableNames() []string {
 	return ret
 }
 
-
 type StructTable struct {
-	Area       string
-	Name       string
-	Current    *Reflect
+	Area    string
+	Name    string
+	Current *Reflect
 
 	MapName    string
 	Reflects   ReflectArray
@@ -46,12 +44,14 @@ type StructTable struct {
 	ActualRows int
 	ActualCols int
 
-	Debug      bool
-	Error      error
+	Debug bool
+	Error error
 }
 
-func (ta *StructTable) PrintDebug(format string, args ...interface{})  {
-	if ta.Debug { _, _ = fmt.Fprintf(os.Stderr, format, args...) }
+func (ta *StructTable) PrintDebug(format string, args ...interface{}) {
+	if ta.Debug {
+		_, _ = fmt.Fprintf(os.Stderr, format, args...)
+	}
 }
 
 func (ta *StructTable) AddRow(refs ...*Reflect) {
@@ -100,7 +100,6 @@ func (ta *StructTable) Process(area string, name string, Current *Reflect) error
 		if ta.Current.DataStructure.DataTableIndexTitle != "" {
 			ta.IndexTitle = ta.Current.DataStructure.DataTableIndexTitle
 		}
-
 
 		ta.Rows, ta.Cols = ta.Current.CountChildren()
 		var isPivot bool
@@ -241,25 +240,25 @@ func (ta *StructTable) GetValues() StructValues {
 				valueKey = true
 			}
 			switch {
-				case pointName == true && deviceId == true && valueKey == true:
-					name = value.DeviceId() + "." + value.ValueKey()
-				case pointName == true && deviceId == true && valueKey == false:
-					name = value.DeviceId() + "." + sub.DataStructure.PointName
+			case pointName == true && deviceId == true && valueKey == true:
+				name = value.DeviceId() + "." + value.ValueKey()
+			case pointName == true && deviceId == true && valueKey == false:
+				name = value.DeviceId() + "." + sub.DataStructure.PointName
 
-				case pointName == true && deviceId == false && valueKey == true:
-					name = value.ValueKey()
-				case pointName == true && deviceId == false && valueKey == false:
-					name = sub.DataStructure.PointName
+			case pointName == true && deviceId == false && valueKey == true:
+				name = value.ValueKey()
+			case pointName == true && deviceId == false && valueKey == false:
+				name = sub.DataStructure.PointName
 
-				case pointName == false && deviceId == true && valueKey == true:
-					name = value.DeviceId() + "." + value.ValueKey()
-				case pointName == false && deviceId == true && valueKey == false:
-					name = "Column " + strconv.Itoa(length)
+			case pointName == false && deviceId == true && valueKey == true:
+				name = value.DeviceId() + "." + value.ValueKey()
+			case pointName == false && deviceId == true && valueKey == false:
+				name = "Column " + strconv.Itoa(length)
 
-				case pointName == false && deviceId == false && valueKey == true:
-					name = value.ValueKey()
-				case pointName == false && deviceId == false && valueKey == false:
-					name = "Column " + strconv.Itoa(length)
+			case pointName == false && deviceId == false && valueKey == true:
+				name = value.ValueKey()
+			case pointName == false && deviceId == false && valueKey == false:
+				name = "Column " + strconv.Itoa(length)
 			}
 
 			// if value.DeviceId() != "" {
@@ -290,12 +289,12 @@ func (ta *StructTable) GetValues() StructValues {
 			// 	name += " " + value.ValueKey()
 			// }
 			switch value.Unit() {
-				case "--":
-				case "":
-				default:
-					if !sub.DataStructure.PointVariableUnit {
-						name += " (" + value.Unit() + ")"
-					}
+			case "--":
+			case "":
+			default:
+				if !sub.DataStructure.PointVariableUnit {
+					name += " (" + value.Unit() + ")"
+				}
 			}
 			return name
 		}
@@ -375,7 +374,6 @@ func (ta *StructTable) GetValues() StructValues {
 			break
 		}
 
-
 		if len(ta.Reflects) == 1 {
 			// Probs an array of values - sw we want to pivot the data.
 			cm := make(map[string][]valueTypes.UnitValue)
@@ -388,10 +386,10 @@ func (ta *StructTable) GetValues() StructValues {
 				name := sub.DataStructure.PointName
 				if !sub.DataStructure.PointVariableUnit {
 					switch sub.Value.GetUnit() {
-						case "--":
-						case "":
-						default:
-							name += " (" + sub.Value.GetUnit() + ")"
+					case "--":
+					case "":
+					default:
+						name += " (" + sub.Value.GetUnit() + ")"
 					}
 					addCol(name)
 				} else {
@@ -435,7 +433,6 @@ func (ta *StructTable) GetValues() StructValues {
 			ta.Columns = sortMapByValues(colOrder)
 			break
 		}
-
 
 		if ta.ShowIndex {
 			addCol(ta.IndexTitle)
@@ -574,7 +571,7 @@ func (ta *StructTable) CreateTable() (output.Table, error) { // (output.Tables, 
 		ta.Table.SetJson(nil)
 		ta.Table.SetRaw(nil)
 
-		ta.Table.SetGraphFilter("")	// @TODO - Consider setting graph options here instead of iSolarCloud/data.go:487
+		ta.Table.SetGraphFilter("") // @TODO - Consider setting graph options here instead of iSolarCloud/data.go:487
 
 		// if sgd.Options.GraphRequest.TimeColumn == nil {
 		// 	for _, col := range table.GetHeaders() {
@@ -610,7 +607,6 @@ func (ta *StructTable) CreateTable() (output.Table, error) { // (output.Tables, 
 	return ta.Table, ta.Error
 }
 
-
 type ReflectArray []ReflectArrayRow
 type ReflectArrayRow []*Reflect
 
@@ -633,7 +629,6 @@ func (ta *ReflectArray) GetRow(row int) ReflectArrayRow {
 	}
 	return (*ta)[row]
 }
-
 
 type StructValuesMap map[string]StructValues
 type StructValue map[string]valueTypes.UnitValue
@@ -658,7 +653,6 @@ func (ta *StructValues) GetCell(row int, col string) valueTypes.UnitValue {
 	return ret
 }
 
-
 func sortMapByValues(data map[string]int) []string {
 	var ret []string
 	keys := make([]string, 0, len(data))
@@ -666,11 +660,11 @@ func sortMapByValues(data map[string]int) []string {
 	for key := range data {
 		keys = append(keys, key)
 	}
-	sort.SliceStable(keys, func(i, j int) bool{
+	sort.SliceStable(keys, func(i, j int) bool {
 		return data[keys[i]] < data[keys[j]]
 	})
 
-	for _, k := range keys{
+	for _, k := range keys {
 		ret = append(ret, k)
 	}
 	return ret

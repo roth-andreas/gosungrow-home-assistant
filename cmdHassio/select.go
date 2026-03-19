@@ -9,7 +9,6 @@ import (
 
 const LabelSelect = "select"
 
-
 func (m *Mqtt) SelectPublishConfig(config EntityConfig, fn mqtt.MessageHandler) error {
 
 	for range Only.Once {
@@ -25,10 +24,10 @@ func (m *Mqtt) SelectPublishConfig(config EntityConfig, fn mqtt.MessageHandler) 
 		id := JoinStringsForId(m.DeviceName, config.FullId)
 		cmdTopic := JoinStringsForTopic(m.Prefix, LabelSelect, m.ClientId, id, "cmd")
 
-		payload := Select {
-			Device:           newDevice,
-			Name:             String(JoinStrings(m.DeviceName, config.Name)),
-			StateTopic:       String(JoinStringsForTopic(m.Prefix, LabelSelect, m.ClientId, id, "state")),
+		payload := Select{
+			Device:     newDevice,
+			Name:       String(JoinStrings(m.DeviceName, config.Name)),
+			StateTopic: String(JoinStringsForTopic(m.Prefix, LabelSelect, m.ClientId, id, "state")),
 			// CommandTemplate:  Template(fmt.Sprintf(`"%s":"{{ value }}"`, config.FullId)),
 			// CommandTemplate:  Template(fmt.Sprintf(`{{ value_json.value }}`)),
 			CommandTemplate:  Template(fmt.Sprintf(`{{ value }}`)),

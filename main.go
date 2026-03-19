@@ -1,11 +1,10 @@
 package main
 
 import (
-	"github.com/MickMake/GoSungrow/cmd"
 	"fmt"
+	"github.com/roth-andreas/gosungrow-home-assistant/cmd"
 	"os"
 )
-
 
 func main() {
 	err := cmd.Execute()

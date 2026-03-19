@@ -3,9 +3,9 @@ package iSolarCloud
 import (
 	"time"
 
-	"github.com/MickMake/GoSungrow/iSolarCloud/WebAppService/getDevicePointAttrs"
-	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct/valueTypes"
 	"github.com/MickMake/GoUnify/Only"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/WebAppService/getDevicePointAttrs"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/valueTypes"
 )
 
 // DevicePointAttrs - Return all points associated with psIds and device_type filter.

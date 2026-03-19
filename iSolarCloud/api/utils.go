@@ -1,14 +1,13 @@
 package api
 
 import (
-	"github.com/MickMake/GoUnify/Only"
-	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct/reflection"
 	"fmt"
+	"github.com/MickMake/GoUnify/Only"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/reflection"
 	"net/url"
 	"reflect"
 	"strings"
 )
-
 
 type Api struct{}
 

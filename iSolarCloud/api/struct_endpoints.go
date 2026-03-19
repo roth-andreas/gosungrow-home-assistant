@@ -9,7 +9,6 @@ import (
 	"sort"
 )
 
-
 type TypeEndPoints map[EndPointName]EndPoint // Map of EndPoints by endpoint name.
 
 func (ps TypeEndPoints) Exists(name EndPointName) error {

@@ -1,13 +1,12 @@
 package NullEndpoint
 
 import (
-	"github.com/MickMake/GoSungrow/iSolarCloud/api"
-	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct"
 
 	"fmt"
 	"github.com/MickMake/GoUnify/Only"
 )
-
 
 const Url = "%URL%"
 const Disabled = false

@@ -6,7 +6,6 @@ import (
 	"github.com/MickMake/GoUnify/Only"
 )
 
-
 type AreaStruct struct {
 	ApiRoot   interface{} // *web.Web
 	Name      AreaName

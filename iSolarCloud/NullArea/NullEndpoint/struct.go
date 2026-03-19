@@ -5,16 +5,15 @@
 package NullEndpoint
 
 import (
-	"github.com/MickMake/GoUnify/Only"
-	"github.com/MickMake/GoSungrow/iSolarCloud/api"
-	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct/output"
-	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct/reflection"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/MickMake/GoUnify/Only"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/output"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/reflection"
 	"time"
 )
-
 
 // api.EndPoint - Import API endpoint interface
 var _ api.EndPoint = (*EndPoint)(nil)
@@ -22,8 +21,8 @@ var _ api.EndPoint = (*EndPoint)(nil)
 // EndPoint - Holds the request, response and web method structures.
 type EndPoint struct {
 	api.EndPointStruct
-	Request  Request
-	Response Response
+	Request     Request
+	Response    Response
 	RawResponse []byte
 }
 
@@ -53,7 +52,6 @@ func Init(apiRoot api.Web) EndPoint {
 		},
 	}
 }
-
 
 // ******************************************************************************** //
 
@@ -86,7 +84,6 @@ func Assert(e api.EndPoint) EndPoint {
 func AssertResultData(e api.EndPoint) ResultData {
 	return e.(EndPoint).Response.ResultData
 }
-
 
 // ******************************************************************************** //
 
@@ -168,7 +165,6 @@ func (e EndPoint) WriteDataFile() error {
 	return e.ApiWriteDataFile(e.Response.ResultData)
 }
 
-
 // ********************************************************************************
 
 // SetRequest - Save an interface reference as either api.RequestCommon or RequestData.
@@ -242,7 +238,6 @@ func (e EndPoint) IsRequestValid() error {
 	return e.Error
 }
 
-
 // ********************************************************************************
 
 // SetResponse - Save a JSON string to the Response structure.
@@ -298,7 +293,6 @@ func (e EndPoint) ResponseString() string {
 	return output.GetRequestString(e.Response)
 }
 
-
 // ********************************************************************************
 
 // MarshalJSON - Marshall the EndPoint.
@@ -321,7 +315,6 @@ func (e EndPoint) MarshalJSON() ([]byte, error) {
 	// 	Response: e.Response,
 	// })
 }
-
 
 // ********************************************************************************
 
@@ -362,7 +355,6 @@ func (e EndPoint) GetCacheTimeout() time.Duration {
 	return e.ApiRoot.GetCacheTimeout()
 }
 
-
 func (e EndPoint) GetEndPointData() api.DataMap {
 	return e.GetData()
 }
@@ -394,4 +386,3 @@ func (e EndPoint) ResultDataRef() ResultData {
 func (e EndPoint) IsDebug() bool {
 	return e.ApiIsDebug()
 }
-

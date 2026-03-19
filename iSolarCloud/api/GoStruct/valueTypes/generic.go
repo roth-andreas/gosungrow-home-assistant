@@ -6,13 +6,12 @@ import (
 	"strconv"
 )
 
-
 type Generic struct {
-	float64     `json:"value_float,omitempty"`
-	string      `json:"value_string,omitempty"`
+	float64 `json:"value_float,omitempty"`
+	string  `json:"value_string,omitempty"`
 
-	Valid   bool `json:"valid"`
-	Error   error `json:"-"`
+	Valid bool  `json:"valid"`
+	Error error `json:"-"`
 }
 
 // UnmarshalJSON - Convert JSON to value

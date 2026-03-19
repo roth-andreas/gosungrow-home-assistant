@@ -1,10 +1,10 @@
 package api
 
 import (
-	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct/output"
+	"crypto/rand"
 	"github.com/MickMake/GoUnify/Only"
 	"github.com/MickMake/GoUnify/cmdPath"
-	"crypto/rand"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/output"
 	"io"
 	"os"
 	"path/filepath"
@@ -18,7 +18,6 @@ import (
 	"strconv"
 	"strings"
 )
-
 
 type Web struct {
 	ServerUrl EndPointUrl
@@ -101,7 +100,6 @@ func (w *Web) isExpiredRequestResponse(raw []byte, decrypted []byte) bool {
 	return strings.Contains(check, "expired request")
 }
 
-
 func (w *Web) SetUrl(u string) error {
 	w.ServerUrl = SetUrl(u)
 	return w.Error
@@ -125,7 +123,6 @@ func (w *Web) Get(endpoint EndPoint) EndPoint {
 			isCached = true
 		}
 
-
 		if isCached {
 			w.Body, w.Error = w.WebCacheRead(endpoint)
 			if w.Error != nil {
@@ -138,7 +135,6 @@ func (w *Web) Get(endpoint EndPoint) EndPoint {
 				break
 			}
 		}
-
 
 		if len(w.Body) == 0 {
 			w.Error = errors.New("empty http response")
@@ -504,7 +500,6 @@ func (w *Web) WebCacheWrite(endpoint EndPoint, data []byte) error {
 	fn := filepath.Join(w.cacheDir, endpoint.CacheFilename())
 	return output.PlainFileWrite(fn, data, output.DefaultFileMode)
 }
-
 
 // PointCacheCheck Retrieves cache data from a local file.
 func (w *Web) PointCacheCheck(data DataMap) bool {

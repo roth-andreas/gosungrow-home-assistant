@@ -3,15 +3,26 @@ package cmdHassio
 import (
 	"errors"
 	"fmt"
-	"github.com/MickMake/GoSungrow/iSolarCloud/AppService/getDeviceList"
-	"github.com/MickMake/GoSungrow/iSolarCloud/api/GoStruct/valueTypes"
 	"github.com/MickMake/GoUnify/Only"
 	"github.com/MickMake/GoUnify/cmdLog"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/roth-andreas/gosungrow-home-assistant/defaults"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/getDeviceList"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/valueTypes"
 	"net/url"
 	"strings"
 	"time"
 )
+
+const projectManufacturer = "Andreas Roth"
+
+func projectSoftwareVersion(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = defaults.BinaryName
+	}
+	return fmt.Sprintf("%s https://%s", name, defaults.SourceRepo)
+}
 
 type Mqtt struct {
 	ClientId     string        `json:"client_id"`
@@ -201,9 +212,9 @@ func (m *Mqtt) Connect() error {
 			StateTopic: "~/state",
 			DeviceConfig: DeviceConfig{
 				Identifiers:  []string{"GoSungrow"},
-				SwVersion:    "GoSungrow https://github.com/MickMake/GoSungrow",
+				SwVersion:    projectSoftwareVersion(defaults.BinaryName),
 				Name:         m.ClientId + " Service",
-				Manufacturer: "MickMake",
+				Manufacturer: projectManufacturer,
 				Model:        "SunGrow",
 			},
 		}
@@ -348,7 +359,7 @@ func (m *Mqtt) SetDeviceConfig(swname string, parentId string, id string, name s
 			Manufacturer:  vendor,
 			Model:         model,
 			Name:          name,
-			SwVersion:     swname + " https://github.com/MickMake/" + swname,
+			SwVersion:     projectSoftwareVersion(swname),
 			ViaDevice:     swname,
 			SuggestedArea: area,
 		}
