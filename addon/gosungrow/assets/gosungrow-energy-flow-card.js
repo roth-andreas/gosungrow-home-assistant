@@ -39,25 +39,24 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
   }
 
   _render() {
-    if (!this._config || !this.shadowRoot) {
+    if (!this.shadowRoot || !this._config) {
       return;
     }
 
-    const compact = this.offsetWidth > 0 && this.offsetWidth < 760;
-    const layout = compact ? this._compactLayout() : this._wideLayout();
-    const nodeValues = this._buildNodeValues();
-    const flowValues = this._buildFlowValues();
+    const layout = this._layout();
+    const nodes = this._nodeDisplays();
+    const flows = this._flowDisplays();
 
     const edgeMarkup = Object.entries(layout.edges)
-      .map(([key, edge]) => this._renderEdge(key, edge, flowValues[key]))
+      .map(([key, edge]) => this._renderEdge(edge, flows[key]))
+      .join("");
+
+    const edgeLabels = Object.entries(layout.edges)
+      .map(([key, edge]) => this._renderEdgeLabel(edge, flows[key]))
       .join("");
 
     const nodeMarkup = Object.entries(layout.nodes)
-      .map(([key, node]) => this._renderNode(key, node, nodeValues[key], nodeValues.batterySoc, compact))
-      .join("");
-
-    const labelMarkup = Object.entries(layout.edges)
-      .map(([key, edge]) => this._renderEdgeLabel(key, edge, flowValues[key]))
+      .map(([key, node]) => this._renderNode(key, node, nodes))
       .join("");
 
     this.shadowRoot.innerHTML = `
@@ -70,229 +69,209 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
           overflow: hidden;
         }
 
-        .card-header {
+        .title {
           padding: 18px 20px 0;
-          font-size: 1.15rem;
+          font-size: 1rem;
           font-weight: 600;
           color: var(--primary-text-color);
         }
 
+        .shell {
+          padding: 10px 14px 14px;
+        }
+
+        svg {
+          display: block;
+          width: 100%;
+          height: auto;
+        }
+
         .stage {
-          position: relative;
-          margin: 14px 16px 18px;
-          aspect-ratio: ${layout.width} / ${layout.height};
-          border-radius: 22px;
+          border-radius: 20px;
           overflow: hidden;
           background:
-            radial-gradient(circle at 50% 16%, rgba(255,255,255,0.08), transparent 38%),
-            linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01)),
+            radial-gradient(circle at 50% 16%, rgba(255,255,255,0.05), transparent 34%),
+            linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.01)),
             var(--card-background-color, #1f1f1f);
           box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
         }
 
-        .links {
-          position: absolute;
-          inset: 0;
-          width: 100%;
-          height: 100%;
-        }
-
         .edge-base {
           fill: none;
-          stroke: rgba(148, 163, 184, 0.26);
-          stroke-width: 11;
+          stroke: rgba(148, 163, 184, 0.22);
+          stroke-width: 5;
           stroke-linecap: round;
         }
 
         .edge-active {
           fill: none;
           stroke-linecap: round;
+          opacity: 0.95;
           transition: stroke-width 180ms ease, opacity 180ms ease;
-          filter: drop-shadow(0 0 10px rgba(255,255,255,0.06));
         }
 
-        .node {
-          position: absolute;
-          transform: translate(-50%, -50%);
-          background: transparent;
-          border: 0;
-          padding: 0;
-          cursor: pointer;
-          font: inherit;
-          color: inherit;
-        }
-
-        .node[disabled] {
-          cursor: default;
-        }
-
-        .node-shell {
-          width: ${compact ? 116 : 128}px;
-          height: ${compact ? 116 : 128}px;
-          border-radius: 999px;
-          border: 4px solid currentColor;
-          background: rgba(15, 23, 42, 0.10);
-          backdrop-filter: blur(2px);
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          box-shadow:
-            0 18px 40px rgba(15, 23, 42, 0.16),
-            inset 0 1px 0 rgba(255,255,255,0.08);
-        }
-
-        .node.compact .node-shell {
-          width: 104px;
-          height: 104px;
-        }
-
-        .node ha-icon {
-          --mdc-icon-size: ${compact ? 34 : 38}px;
-        }
-
-        .node-value {
-          font-size: ${compact ? "1rem" : "1.05rem"};
-          line-height: 1;
-          font-weight: 700;
-          letter-spacing: -0.02em;
-        }
-
-        .node-label {
-          margin-top: 10px;
-          text-align: center;
-          font-size: ${compact ? "0.86rem" : "0.92rem"};
-          font-weight: 500;
-          color: var(--secondary-text-color);
-        }
-
-        .soc-pill {
-          position: absolute;
-          left: 50%;
-          top: calc(100% - 14px);
-          transform: translate(-50%, 0);
-          min-width: 70px;
-          padding: 7px 10px;
-          border-radius: 999px;
-          background: rgba(204, 251, 241, 0.96);
-          border: 1px solid rgba(15, 118, 110, 0.22);
-          color: #134e4a;
-          font-size: 0.88rem;
-          font-weight: 700;
-          text-align: center;
-          box-shadow: 0 8px 20px rgba(20, 184, 166, 0.18);
-        }
-
-        .edge-label {
-          position: absolute;
-          transform: translate(-50%, -50%);
-          min-width: 74px;
-          padding: 7px 10px;
-          border-radius: 999px;
-          text-align: center;
-          font-size: ${compact ? "0.76rem" : "0.82rem"};
-          font-weight: 700;
-          line-height: 1;
-          letter-spacing: -0.01em;
-          border: 1px solid rgba(255,255,255,0.08);
-          box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
-          backdrop-filter: blur(8px);
-          transition: opacity 180ms ease;
-        }
-
-        .edge-label.inactive {
-          opacity: 0.42;
-        }
-
-        .solar {
-          color: #f59e0b;
-        }
-
-        .home {
-          color: #3b82f6;
-        }
-
-        .battery {
-          color: #14b8a6;
-        }
-
-        .grid {
-          color: #64748b;
-        }
-
-        .edge-solar {
+        .edge-solar-home {
           stroke: #f59e0b;
         }
 
-        .edge-battery {
+        .edge-solar-grid {
+          stroke: #8b5cf6;
+        }
+
+        .edge-solar-battery {
+          stroke: #ec4899;
+        }
+
+        .edge-battery-home {
           stroke: #14b8a6;
         }
 
-        .edge-grid {
-          stroke: #64748b;
+        .edge-grid-home {
+          stroke: #cbd5e1;
         }
 
-        .label-solar {
-          background: rgba(245, 158, 11, 0.16);
-          color: #a16207;
+        .node-ring {
+          fill: rgba(15, 23, 42, 0.18);
+          stroke-width: 3;
         }
 
-        .label-battery {
-          background: rgba(20, 184, 166, 0.16);
-          color: #0f766e;
+        .node-fill {
+          fill: rgba(15, 23, 42, 0.55);
         }
 
-        .label-grid {
-          background: rgba(100, 116, 139, 0.16);
-          color: #475569;
+        .node-button {
+          cursor: pointer;
         }
 
-        .label-home {
-          background: rgba(59, 130, 246, 0.16);
-          color: #1d4ed8;
+        .node-button[role="presentation"] {
+          cursor: default;
         }
 
-        @media (prefers-color-scheme: dark) {
-          .stage {
-            background:
-              radial-gradient(circle at 50% 12%, rgba(255,255,255,0.06), transparent 34%),
-              linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01)),
-              var(--card-background-color, #111827);
-          }
+        .node-hit {
+          fill: transparent;
+        }
 
-          .label-solar {
-            color: #fbbf24;
-          }
+        .solar-ring {
+          stroke: #f59e0b;
+        }
 
-          .label-battery {
-            color: #5eead4;
-          }
+        .home-ring {
+          stroke: #f59e0b;
+        }
 
-          .label-grid {
-            color: #cbd5e1;
-          }
+        .battery-ring {
+          stroke: #ec4899;
+        }
 
-          .label-home {
-            color: #93c5fd;
-          }
+        .grid-ring {
+          stroke: #60a5fa;
+        }
+
+        .node-icon {
+          fill: none;
+          stroke: rgba(255,255,255,0.92);
+          stroke-width: 2.4;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+        }
+
+        .node-value {
+          fill: var(--primary-text-color);
+          font-size: 16px;
+          font-weight: 700;
+          text-anchor: middle;
+        }
+
+        .node-subvalue {
+          font-size: 12px;
+          font-weight: 700;
+          text-anchor: middle;
+        }
+
+        .battery-soc {
+          fill: #5eead4;
+        }
+
+        .node-label {
+          fill: var(--secondary-text-color);
+          font-size: 14px;
+          font-weight: 500;
+          text-anchor: middle;
+        }
+
+        .route-pill rect {
+          stroke: rgba(255,255,255,0.08);
+          stroke-width: 1;
+        }
+
+        .route-pill text {
+          font-size: 11px;
+          font-weight: 700;
+          text-anchor: middle;
+          dominant-baseline: middle;
+        }
+
+        .route-pill.inactive {
+          opacity: 0.38;
+        }
+
+        .pill-solar-home rect {
+          fill: rgba(245, 158, 11, 0.18);
+        }
+
+        .pill-solar-home text {
+          fill: #fbbf24;
+        }
+
+        .pill-solar-grid rect {
+          fill: rgba(139, 92, 246, 0.18);
+        }
+
+        .pill-solar-grid text {
+          fill: #c4b5fd;
+        }
+
+        .pill-solar-battery rect {
+          fill: rgba(236, 72, 153, 0.18);
+        }
+
+        .pill-solar-battery text {
+          fill: #f9a8d4;
+        }
+
+        .pill-battery-home rect {
+          fill: rgba(20, 184, 166, 0.18);
+        }
+
+        .pill-battery-home text {
+          fill: #99f6e4;
+        }
+
+        .pill-grid-home rect {
+          fill: rgba(148, 163, 184, 0.16);
+        }
+
+        .pill-grid-home text {
+          fill: #e2e8f0;
         }
       </style>
       <ha-card>
-        ${this._config.title ? `<div class="card-header">${this._escape(this._config.title)}</div>` : ""}
-        <div class="stage">
-          <svg class="links" viewBox="0 0 ${layout.width} ${layout.height}" preserveAspectRatio="xMidYMid meet">
-            ${edgeMarkup}
-          </svg>
-          ${labelMarkup}
-          ${nodeMarkup}
+        ${this._config.title ? `<div class="title">${this._escape(this._config.title)}</div>` : ""}
+        <div class="shell">
+          <div class="stage">
+            <svg viewBox="0 0 ${layout.width} ${layout.height}" preserveAspectRatio="xMidYMid meet">
+              ${edgeMarkup}
+              ${edgeLabels}
+              ${nodeMarkup}
+            </svg>
+          </div>
         </div>
       </ha-card>
     `;
 
-    this.shadowRoot.querySelectorAll(".node[data-entity]").forEach((node) => {
-      node.addEventListener("click", (event) => {
-        const entityId = event.currentTarget.getAttribute("data-entity");
+    this.shadowRoot.querySelectorAll(".node-button[data-entity]").forEach((node) => {
+      node.addEventListener("click", () => {
+        const entityId = node.getAttribute("data-entity");
         if (!entityId) {
           return;
         }
@@ -301,213 +280,199 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
     });
   }
 
-  _wideLayout() {
+  _layout() {
     return {
       width: 1000,
-      height: 640,
+      height: 590,
+      radius: 58,
       nodes: {
-        solar: { x: 500, y: 120, label: "PV" },
-        home: { x: 500, y: 312, label: "Home" },
-        battery: { x: 278, y: 510, label: "Battery" },
-        grid: { x: 722, y: 510, label: "Grid" },
+        solar: { x: 500, y: 105, label: "PV", ringClass: "solar-ring" },
+        grid: { x: 260, y: 290, label: "Grid", ringClass: "grid-ring" },
+        home: { x: 740, y: 290, label: "Home", ringClass: "home-ring" },
+        battery: { x: 500, y: 465, label: "Battery", ringClass: "battery-ring" },
       },
       edges: {
+        pv_to_grid_power: {
+          path: "M456 154 C393 176 330 210 294 246",
+          labelX: 394,
+          labelY: 202,
+          edgeClass: "edge-solar-grid",
+          pillClass: "pill-solar-grid",
+        },
         pv_to_load_power: {
-          path: "M500 184 C500 216 500 248 500 280",
+          path: "M544 154 C607 176 670 210 706 246",
+          labelX: 606,
+          labelY: 202,
+          edgeClass: "edge-solar-home",
+          pillClass: "pill-solar-home",
+        },
+        pv_to_battery_power: {
+          path: "M500 164 C500 230 500 300 500 404",
           labelX: 500,
-          labelY: 228,
-          colorClass: "edge-solar",
-          labelClass: "label-solar",
-        },
-        pv_to_battery_power: {
-          path: "M452 164 C388 198 326 290 294 432",
-          labelX: 380,
-          labelY: 244,
-          colorClass: "edge-solar",
-          labelClass: "label-solar",
-        },
-        pv_to_grid_power: {
-          path: "M548 164 C612 198 674 290 706 432",
-          labelX: 620,
-          labelY: 244,
-          colorClass: "edge-solar",
-          labelClass: "label-solar",
-        },
-        battery_to_load_power: {
-          path: "M334 462 C390 404 430 360 464 334",
-          labelX: 388,
-          labelY: 402,
-          colorClass: "edge-battery",
-          labelClass: "label-battery",
+          labelY: 248,
+          edgeClass: "edge-solar-battery",
+          pillClass: "pill-solar-battery",
         },
         grid_to_load_power: {
-          path: "M666 462 C610 404 570 360 536 334",
-          labelX: 612,
-          labelY: 402,
-          colorClass: "edge-grid",
-          labelClass: "label-grid",
+          path: "M324 290 C415 290 585 290 676 290",
+          labelX: 500,
+          labelY: 322,
+          edgeClass: "edge-grid-home",
+          pillClass: "pill-grid-home",
+        },
+        battery_to_load_power: {
+          path: "M544 423 C584 392 648 346 700 314",
+          labelX: 627,
+          labelY: 382,
+          edgeClass: "edge-battery-home",
+          pillClass: "pill-battery-home",
         },
       },
     };
   }
 
-  _compactLayout() {
+  _nodeDisplays() {
     return {
-      width: 760,
-      height: 760,
-      nodes: {
-        solar: { x: 380, y: 120, label: "PV" },
-        home: { x: 380, y: 330, label: "Home" },
-        battery: { x: 182, y: 574, label: "Battery" },
-        grid: { x: 578, y: 574, label: "Grid" },
-      },
-      edges: {
-        pv_to_load_power: {
-          path: "M380 188 C380 228 380 258 380 296",
-          labelX: 380,
-          labelY: 240,
-          colorClass: "edge-solar",
-          labelClass: "label-solar",
-        },
-        pv_to_battery_power: {
-          path: "M332 172 C260 214 210 318 194 480",
-          labelX: 266,
-          labelY: 276,
-          colorClass: "edge-solar",
-          labelClass: "label-solar",
-        },
-        pv_to_grid_power: {
-          path: "M428 172 C500 214 550 318 566 480",
-          labelX: 494,
-          labelY: 276,
-          colorClass: "edge-solar",
-          labelClass: "label-solar",
-        },
-        battery_to_load_power: {
-          path: "M238 528 C282 464 324 400 350 354",
-          labelX: 288,
-          labelY: 448,
-          colorClass: "edge-battery",
-          labelClass: "label-battery",
-        },
-        grid_to_load_power: {
-          path: "M522 528 C478 464 436 400 410 354",
-          labelX: 472,
-          labelY: 448,
-          colorClass: "edge-grid",
-          labelClass: "label-grid",
-        },
-      },
-    };
-  }
-
-  _buildNodeValues() {
-    return {
-      solar: this._entityDisplay("solar_power", "mdi:solar-power-variant"),
-      home: this._entityDisplay("load_power", "mdi:home-lightning-bolt-outline"),
-      battery: this._entityDisplay("battery_power", "mdi:battery-high"),
-      grid: this._entityDisplay("grid_power", "mdi:transmission-tower"),
+      solar: this._entityDisplay("solar_power"),
+      grid: this._entityDisplay("grid_power"),
+      home: this._entityDisplay("load_power"),
+      battery: this._entityDisplay("battery_power"),
       batterySoc: this._entityDisplay("battery_soc"),
     };
   }
 
-  _buildFlowValues() {
+  _flowDisplays() {
     return {
+      pv_to_grid_power: this._entityDisplay("pv_to_grid_power"),
       pv_to_load_power: this._entityDisplay("pv_to_load_power"),
       pv_to_battery_power: this._entityDisplay("pv_to_battery_power"),
-      pv_to_grid_power: this._entityDisplay("pv_to_grid_power"),
-      battery_to_load_power: this._entityDisplay("battery_to_load_power"),
       grid_to_load_power: this._entityDisplay("grid_to_load_power"),
+      battery_to_load_power: this._entityDisplay("battery_to_load_power"),
     };
   }
 
-  _renderEdge(key, edge, display) {
-    const active = Math.abs(display.numericValue) > 0.01;
-    const strokeWidth = active ? this._scaledStroke(display.numericValue) : 8;
-    const opacity = active ? 1 : 0.18;
+  _renderEdge(edge, display) {
+    const magnitude = Math.abs(display.numericValue);
+    const active = magnitude > 0.01;
+    const width = active ? 4 + Math.min(magnitude, 6) * 1.6 : 3.5;
+    const opacity = active ? 1 : 0.14;
+
     return `
       <path class="edge-base" d="${edge.path}"></path>
-      <path class="edge-active ${edge.colorClass}" d="${edge.path}" style="stroke-width:${strokeWidth};opacity:${opacity};"></path>
+      <path class="edge-active ${edge.edgeClass}" d="${edge.path}" style="stroke-width:${width};opacity:${opacity};"></path>
     `;
   }
 
-  _renderEdgeLabel(_key, edge, display) {
+  _renderEdgeLabel(edge, display) {
+    const width = Math.max(70, display.formatted.length * 7.2);
     const active = Math.abs(display.numericValue) > 0.01;
     return `
-      <div
-        class="edge-label ${edge.labelClass}${active ? "" : " inactive"}"
-        style="left:${edge.labelX}px;top:${edge.labelY}px;"
-      >
-        ${this._escape(display.formatted)}
-      </div>
+      <g class="route-pill ${edge.pillClass}${active ? "" : " inactive"}" transform="translate(${edge.labelX} ${edge.labelY})">
+        <rect x="${-width / 2}" y="-12" width="${width}" height="24" rx="12"></rect>
+        <text x="0" y="1">${this._escape(display.formatted)}</text>
+      </g>
     `;
   }
 
-  _renderNode(key, node, display, batterySoc, compact) {
-    const icon = this._escape(display.icon || "mdi:flash");
-    const entityId = this._entityIdForKey(key);
-    const isBattery = key === "battery";
-
+  _renderNode(key, node, displays) {
+    const radius = this._layout().radius;
+    const entityId = this._entityIdForNode(key);
+    const display = displays[key];
+    const labelY = node.y + radius + 24;
+    const iconMarkup = this._renderIcon(key, node.x, node.y - 12);
+    const valueY = key === "battery" ? node.y + 18 : node.y + 20;
+    const batterySoc = displays.batterySoc;
     return `
-      <button
-        class="node ${key}${compact ? " compact" : ""}"
-        style="left:${node.x}px;top:${node.y}px;"
-        ${entityId ? `data-entity="${this._escape(entityId)}"` : "disabled"}
-      >
-        <div class="node-shell">
-          <ha-icon icon="${icon}"></ha-icon>
-          <div class="node-value">${this._escape(display.formatted)}</div>
-        </div>
-        <div class="node-label">${this._escape(node.label)}</div>
-        ${isBattery ? `<div class="soc-pill">${this._escape(batterySoc.formatted)}</div>` : ""}
-      </button>
+      <g class="node-button" ${entityId ? `data-entity="${this._escape(entityId)}"` : `role="presentation"`}>
+        <circle class="node-hit" cx="${node.x}" cy="${node.y}" r="${radius + 18}"></circle>
+        <circle class="node-ring ${node.ringClass}" cx="${node.x}" cy="${node.y}" r="${radius}"></circle>
+        <circle class="node-fill" cx="${node.x}" cy="${node.y}" r="${radius - 2}"></circle>
+        ${iconMarkup}
+        <text class="node-value" x="${node.x}" y="${valueY}">${this._escape(display.formatted)}</text>
+        ${key === "battery" ? `<text class="node-subvalue battery-soc" x="${node.x}" y="${node.y + 36}">${this._escape(batterySoc.formatted)}</text>` : ""}
+        <text class="node-label" x="${node.x}" y="${labelY}">${this._escape(node.label)}</text>
+      </g>
     `;
   }
 
-  _entityIdForKey(key) {
+  _renderIcon(key, x, y) {
+    switch (key) {
+      case "solar":
+        return `
+          <g class="node-icon" transform="translate(${x} ${y})">
+            <circle cx="0" cy="-14" r="5"></circle>
+            <line x1="-10" y1="-14" x2="-15" y2="-14"></line>
+            <line x1="10" y1="-14" x2="15" y2="-14"></line>
+            <line x1="0" y1="-24" x2="0" y2="-19"></line>
+            <path d="M-18 12 L-10 -8 H10 L18 12 Z"></path>
+            <line x1="-10" y1="-1" x2="10" y2="-1"></line>
+            <line x1="-14" y1="5" x2="14" y2="5"></line>
+            <line x1="-7" y1="-8" x2="-7" y2="11"></line>
+            <line x1="0" y1="-8" x2="0" y2="11"></line>
+            <line x1="7" y1="-8" x2="7" y2="11"></line>
+          </g>
+        `;
+      case "home":
+        return `
+          <g class="node-icon" transform="translate(${x} ${y})">
+            <path d="M-18 1 L0 -14 L18 1"></path>
+            <path d="M-13 1 V18 H13 V1"></path>
+            <path d="M2 -4 L-3 7 H3 L-2 18"></path>
+          </g>
+        `;
+      case "battery":
+        return `
+          <g class="node-icon" transform="translate(${x} ${y})">
+            <rect x="-12" y="-18" width="24" height="36" rx="4"></rect>
+            <rect x="-4" y="-24" width="8" height="6" rx="2"></rect>
+            <rect x="-5" y="-4" width="10" height="14" rx="2"></rect>
+          </g>
+        `;
+      case "grid":
+        return `
+          <g class="node-icon" transform="translate(${x} ${y})">
+            <path d="M0 -22 L-12 18"></path>
+            <path d="M0 -22 L12 18"></path>
+            <path d="M-8 -6 H8"></path>
+            <path d="M-10 6 H10"></path>
+            <path d="M-4 18 H4"></path>
+            <path d="M-12 18 H12"></path>
+            <path d="M-9 0 L0 -10 L9 0"></path>
+          </g>
+        `;
+      default:
+        return "";
+    }
+  }
+
+  _entityIdForNode(key) {
     const mapping = {
       solar: "solar_power",
+      grid: "grid_power",
       home: "load_power",
       battery: "battery_power",
-      grid: "grid_power",
     };
-    const entityKey = mapping[key] || key;
-    return this._config?.entities?.[entityKey] || "";
+    return this._config?.entities?.[mapping[key]] || "";
   }
 
-  _entityDisplay(key, fallbackIcon = "") {
+  _entityDisplay(key) {
     const entityId = this._config?.entities?.[key];
     const stateObj = entityId && this._hass ? this._hass.states[entityId] : null;
     const unit = stateObj?.attributes?.unit_of_measurement || "";
-    const icon = fallbackIcon || stateObj?.attributes?.icon || "mdi:flash";
 
     if (!stateObj) {
-      return {
-        formatted: "--",
-        numericValue: 0,
-        icon,
-      };
+      return { formatted: "--", numericValue: 0 };
     }
 
     const numericValue = Number.parseFloat(stateObj.state);
     if (!Number.isFinite(numericValue)) {
-      return {
-        formatted: stateObj.state,
-        numericValue: 0,
-        icon,
-      };
+      return { formatted: stateObj.state, numericValue: 0 };
     }
 
     return {
       formatted: this._formatNumber(numericValue, unit),
       numericValue,
-      icon,
     };
-  }
-
-  _scaledStroke(value) {
-    const magnitude = Math.min(Math.abs(value), 6);
-    return 7 + magnitude * 3;
   }
 
   _formatNumber(value, unit) {
@@ -518,10 +483,9 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
       }).format(value)} ${unit}`;
     }
 
-    const digits = Math.abs(value) >= 10 ? 1 : 2;
     return `${new Intl.NumberFormat(this._locale(), {
-      minimumFractionDigits: digits,
-      maximumFractionDigits: digits,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(value)}${unit ? ` ${unit}` : ""}`;
   }
 
@@ -555,5 +519,5 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "gosungrow-energy-flow-card",
   name: "GoSungrow Energy Flow Card",
-  description: "Custom Sungrow energy flow card with power routes and battery SOC.",
+  description: "Custom Sungrow energy flow card with Energy dashboard-inspired layout.",
 });
