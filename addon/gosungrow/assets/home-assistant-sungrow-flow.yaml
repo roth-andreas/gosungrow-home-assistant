@@ -5,9 +5,83 @@ views:
     icon: mdi:solar-power
     type: sidebar
     cards:
-      - type: energy-date-selection
+      - type: custom:gosungrow-energy-flow-card
+        title: Live Energy Flow
         view_layout:
-          position: sidebar
+          position: main
+        entities:
+          solar_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_power
+          load_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_load_power
+          battery_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_power
+          battery_soc: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13141
+          grid_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_power
+          pv_to_load_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_load_power
+          pv_to_battery_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_battery_power
+          pv_to_grid_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_grid_power
+          battery_to_load_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_to_load_power
+          grid_to_load_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_to_load_power
+
+      - type: horizontal-stack
+        view_layout:
+          position: main
+        cards:
+          - type: history-graph
+            title: Power Balance Today
+            hours_to_show: 24
+            refresh_interval: 60
+            entities:
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_power
+                name: PV
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_load_power
+                name: Load
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_power
+                name: Grid
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_power
+                name: Battery
+
+          - type: history-graph
+            title: Route Detail Today
+            hours_to_show: 24
+            refresh_interval: 60
+            entities:
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_load_power
+                name: PV to Load
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_battery_power
+                name: PV to Battery
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_grid_power
+                name: PV to Grid
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_to_load_power
+                name: Battery to Load
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_to_load_power
+                name: Grid to Load
+
+      - type: horizontal-stack
+        view_layout:
+          position: main
+        cards:
+          - type: history-graph
+            title: Daily Energy Accumulation
+            hours_to_show: 24
+            refresh_interval: 300
+            entities:
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13112
+                name: PV Yield
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13116
+                name: PV To Load
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13174
+                name: PV To Battery
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13173
+                name: Feed-in
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13147
+                name: Grid Import
+
+          - type: history-graph
+            title: Battery Level Today
+            hours_to_show: 24
+            refresh_interval: 120
+            entities:
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13141
+                name: Battery SOC
 
       - type: grid
         title: Today At A Glance
@@ -41,27 +115,6 @@ views:
             name: Battery SOC
             icon: mdi:battery-medium
 
-      - type: energy-sources-table
-        title: Energy Sources
-        types:
-          - grid
-          - solar
-          - battery
-        view_layout:
-          position: sidebar
-
-      - type: energy-grid-neutrality-gauge
-        view_layout:
-          position: sidebar
-
-      - type: energy-self-sufficiency-gauge
-        view_layout:
-          position: sidebar
-
-      - type: energy-solar-consumed-gauge
-        view_layout:
-          position: sidebar
-
       - type: grid
         title: Route Power Now
         columns: 2
@@ -93,55 +146,3 @@ views:
             entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_power
             name: Grid Net
             icon: mdi:transmission-tower
-
-      - type: power-sankey
-        title: Power Flow Now
-        layout: horizontal
-        view_layout:
-          position: main
-
-      - type: energy-distribution
-        title: Energy Distribution
-        view_layout:
-          position: main
-
-      - type: horizontal-stack
-        view_layout:
-          position: main
-        cards:
-          - type: power-sources-graph
-            title: Power Sources
-          - type: energy-usage-graph
-            title: Energy Usage
-
-      - type: horizontal-stack
-        view_layout:
-          position: main
-        cards:
-          - type: energy-solar-graph
-            title: Solar Production
-          - type: history-graph
-            title: Battery Level Today
-            hours_to_show: 24
-            refresh_interval: 120
-            entities:
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13141
-                name: Battery SOC
-
-      - type: history-graph
-        title: Route Detail Today
-        view_layout:
-          position: main
-        hours_to_show: 24
-        refresh_interval: 60
-        entities:
-          - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_load_power
-            name: PV to Load
-          - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_battery_power
-            name: PV to Battery
-          - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_grid_power
-            name: PV to Grid
-          - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_to_load_power
-            name: Battery to Load
-          - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_to_load_power
-            name: Grid to Load

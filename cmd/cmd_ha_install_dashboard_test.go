@@ -104,6 +104,35 @@ func TestDashboardStateRoundTripAndCanonicalHash(t *testing.T) {
 	}
 }
 
+func TestInstallDashboardCardAssetWritesVersionedResource(t *testing.T) {
+	assetDir := t.TempDir()
+	configDir := t.TempDir()
+	cardSource := filepath.Join(assetDir, dashboardCardFileName)
+	cardBody := []byte("console.log('gosungrow card');")
+
+	if err := os.WriteFile(cardSource, cardBody, 0600); err != nil {
+		t.Fatalf("write card source: %v", err)
+	}
+
+	resourceURL, err := installDashboardCardAsset(assetDir, configDir)
+	if err != nil {
+		t.Fatalf("installDashboardCardAsset: %v", err)
+	}
+
+	if !strings.HasPrefix(resourceURL, "/local/"+dashboardCardResourceDir+"/"+dashboardCardFileName+"?v=") {
+		t.Fatalf("unexpected resource URL: %q", resourceURL)
+	}
+
+	targetPath := filepath.Join(configDir, "www", dashboardCardResourceDir, dashboardCardFileName)
+	targetBody, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatalf("read installed card: %v", err)
+	}
+	if string(targetBody) != string(cardBody) {
+		t.Fatalf("unexpected installed card content: %q", string(targetBody))
+	}
+}
+
 func TestHAWSClientDashboardCalls(t *testing.T) {
 	upgrader := websocket.Upgrader{}
 
@@ -151,6 +180,12 @@ func TestHAWSClientDashboardCalls(t *testing.T) {
 					"id":       "dashboard-id",
 					"url_path": "gosungrow-flow",
 					"title":    "GoSungrow Flow",
+				}}
+			case "lovelace/resources":
+				response["result"] = []map[string]any{{
+					"id":   "resource-id",
+					"url":  "/local/gosungrow/gosungrow-energy-flow-card.js?v=old",
+					"type": "module",
 				}}
 			case "lovelace/config":
 				response["result"] = map[string]any{
@@ -206,6 +241,9 @@ func TestHAWSClientDashboardCalls(t *testing.T) {
 	if err := client.SaveConfig(ctx, "gosungrow-flow", map[string]any{"title": "GoSungrow Flow", "views": []any{}}); err != nil {
 		t.Fatalf("SaveConfig: %v", err)
 	}
+	if err := client.EnsureResource(ctx, "/local/gosungrow/gosungrow-energy-flow-card.js?v=new", dashboardCardResourceType); err != nil {
+		t.Fatalf("EnsureResource: %v", err)
+	}
 }
 
 func TestBundledDashboardTemplateRenders(t *testing.T) {
@@ -225,14 +263,8 @@ func TestBundledDashboardTemplateRenders(t *testing.T) {
 	}
 
 	text := string(rendered)
-	if !strings.Contains(text, "\"type\":\"power-sankey\"") {
-		t.Fatal("expected native power-sankey card in bundled dashboard")
-	}
-	if !strings.Contains(text, "\"type\":\"energy-distribution\"") {
-		t.Fatal("expected native energy-distribution card in bundled dashboard")
-	}
-	if !strings.Contains(text, "\"type\":\"energy-sources-table\"") {
-		t.Fatal("expected native energy-sources-table card in bundled dashboard")
+	if !strings.Contains(text, "\"type\":\"custom:gosungrow-energy-flow-card\"") {
+		t.Fatal("expected custom GoSungrow flow card in bundled dashboard")
 	}
 	if !strings.Contains(text, "sensor.gosungrow_virtual_5072099_14_1_1_pv_to_grid_power") {
 		t.Fatal("expected pv_to_grid flow sensor in bundled dashboard")
@@ -242,5 +274,8 @@ func TestBundledDashboardTemplateRenders(t *testing.T) {
 	}
 	if !strings.Contains(text, "sensor.gosungrow_virtual_5072099_14_1_1_p13141") {
 		t.Fatal("expected battery soc sensor in bundled dashboard")
+	}
+	if !strings.Contains(text, "sensor.gosungrow_virtual_5072099_14_1_1_p13112") {
+		t.Fatal("expected daily PV yield sensor in bundled dashboard")
 	}
 }

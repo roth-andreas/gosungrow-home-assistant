@@ -23,15 +23,20 @@ import (
 const (
 	defaultHADashboardAssetDir = "/opt/gosungrow/assets"
 	defaultHAWebsocketURL      = "ws://supervisor/core/websocket"
+	defaultHAConfigDir         = "/homeassistant"
 	defaultDashboardURLPath    = "gosungrow-flow"
 	defaultDashboardTitle      = "GoSungrow Flow"
 	defaultDashboardIcon       = "mdi:solar-power"
 	dashboardTemplateFile      = "home-assistant-sungrow-flow.yaml"
 	dashboardStateFileName     = "dashboard_state.json"
+	dashboardCardFileName      = "gosungrow-energy-flow-card.js"
+	dashboardCardResourceDir   = "gosungrow"
+	dashboardCardResourceType  = "module"
 )
 
 type haDashboardInstallOptions struct {
 	AssetDir           string
+	HomeAssistantDir   string
 	HomeAssistantWSURL string
 	SupervisorToken    string
 	DashboardURLPath   string
@@ -60,6 +65,13 @@ type haDashboardMetadata struct {
 	ID      string `json:"id"`
 	URLPath string `json:"url_path"`
 	Title   string `json:"title"`
+}
+
+type haResourceMetadata struct {
+	ID           any    `json:"id"`
+	URL          string `json:"url"`
+	ResourceType string `json:"type,omitempty"`
+	ResType      string `json:"res_type,omitempty"`
 }
 
 type haWSCallError struct {
@@ -94,6 +106,7 @@ type haWSClient struct {
 func (c *CmdHa) newInstallDashboardCommand() *cobra.Command {
 	opts := haDashboardInstallOptions{
 		AssetDir:           defaultHADashboardAssetDir,
+		HomeAssistantDir:   defaultHAConfigDir,
 		HomeAssistantWSURL: defaultHAWebsocketURL,
 		SupervisorToken:    os.Getenv("SUPERVISOR_TOKEN"),
 		DashboardURLPath:   defaultDashboardURLPath,
@@ -121,6 +134,7 @@ func (c *CmdHa) newInstallDashboardCommand() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&opts.AssetDir, "asset-dir", opts.AssetDir, "Directory containing the dashboard template and image assets.")
+	cmd.Flags().StringVar(&opts.HomeAssistantDir, "ha-config-dir", opts.HomeAssistantDir, "Home Assistant config directory containing the www folder.")
 	cmd.Flags().StringVar(&opts.HomeAssistantWSURL, "ha-ws-url", opts.HomeAssistantWSURL, "Home Assistant websocket endpoint.")
 	cmd.Flags().StringVar(&opts.SupervisorToken, "supervisor-token", opts.SupervisorToken, "Supervisor token used to access the Home Assistant websocket.")
 	cmd.Flags().StringVar(&opts.DashboardURLPath, "url-path", opts.DashboardURLPath, "Dashboard URL path.")
@@ -130,6 +144,7 @@ func (c *CmdHa) newInstallDashboardCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&opts.RequireAdmin, "require-admin", opts.RequireAdmin, "Restrict dashboard access to Home Assistant administrators.")
 	cmd.Flags().BoolVar(&opts.ForceUpdate, "force-update", opts.ForceUpdate, "Replace an existing dashboard even if it was modified outside GoSungrow.")
 	_ = cmd.Flags().MarkHidden("supervisor-token")
+	_ = cmd.Flags().MarkHidden("ha-config-dir")
 
 	return cmd
 }
@@ -157,6 +172,11 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		return err
 	}
 
+	resourceURL, err := installDashboardCardAsset(opts.AssetDir, opts.HomeAssistantDir)
+	if err != nil {
+		return err
+	}
+
 	desiredHash, err := hashCanonicalJSON(config)
 	if err != nil {
 		return err
@@ -176,6 +196,10 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		return err
 	}
 	defer client.Close()
+
+	if err := client.EnsureResource(ctx, resourceURL, dashboardCardResourceType); err != nil {
+		return err
+	}
 
 	metadata, err := client.ListDashboards(ctx)
 	if err != nil {
@@ -370,6 +394,32 @@ func renderDashboardConfig(templatePath string, dashboardTitle string, targets [
 	template["title"] = dashboardTitle
 	template["views"] = generatedViews
 	return template, nil
+}
+
+func installDashboardCardAsset(assetDir string, homeAssistantDir string) (string, error) {
+	if strings.TrimSpace(homeAssistantDir) == "" {
+		return "", fmt.Errorf("home assistant config directory is empty")
+	}
+
+	sourcePath := filepath.Join(assetDir, dashboardCardFileName)
+	data, err := os.ReadFile(sourcePath)
+	if err != nil {
+		return "", err
+	}
+
+	targetDir := filepath.Join(homeAssistantDir, "www", dashboardCardResourceDir)
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return "", err
+	}
+
+	targetPath := filepath.Join(targetDir, dashboardCardFileName)
+	if err := os.WriteFile(targetPath, data, 0644); err != nil {
+		return "", err
+	}
+
+	sum := sha256.Sum256(data)
+	version := hex.EncodeToString(sum[:6])
+	return fmt.Sprintf("/local/%s/%s?v=%s", dashboardCardResourceDir, dashboardCardFileName, version), nil
 }
 
 func targetPSKeys(targets []haDashboardTarget) []string {
@@ -656,6 +706,62 @@ func (c *haWSClient) ListDashboards(_ context.Context) ([]haDashboardMetadata, e
 		return nil, err
 	}
 	return dashboards, nil
+}
+
+func (c *haWSClient) ListResources(_ context.Context) ([]haResourceMetadata, error) {
+	var resources []haResourceMetadata
+	if err := c.call(map[string]any{"type": "lovelace/resources"}, &resources); err != nil {
+		return nil, err
+	}
+	return resources, nil
+}
+
+func (c *haWSClient) CreateResource(_ context.Context, url string, resourceType string) error {
+	return c.call(map[string]any{
+		"type":          "lovelace/resources/create",
+		"url":           url,
+		"resource_type": resourceType,
+	}, nil)
+}
+
+func (c *haWSClient) UpdateResource(_ context.Context, resourceID any, url string, resourceType string) error {
+	return c.call(map[string]any{
+		"type":          "lovelace/resources/update",
+		"resource_id":   resourceID,
+		"url":           url,
+		"resource_type": resourceType,
+	}, nil)
+}
+
+func (c *haWSClient) EnsureResource(ctx context.Context, url string, resourceType string) error {
+	resources, err := c.ListResources(ctx)
+	if err != nil {
+		return err
+	}
+
+	targetBase := resourceURLBase(url)
+	for _, resource := range resources {
+		if resourceURLBase(resource.URL) != targetBase {
+			continue
+		}
+		existingType := strings.TrimSpace(resource.ResourceType)
+		if existingType == "" {
+			existingType = strings.TrimSpace(resource.ResType)
+		}
+		if resource.URL == url && existingType == resourceType {
+			return nil
+		}
+		return c.UpdateResource(ctx, resource.ID, url, resourceType)
+	}
+
+	return c.CreateResource(ctx, url, resourceType)
+}
+
+func resourceURLBase(url string) string {
+	if idx := strings.IndexAny(url, "?#"); idx >= 0 {
+		return url[:idx]
+	}
+	return url
 }
 
 func (c *haWSClient) CreateDashboard(_ context.Context, opts haDashboardInstallOptions) error {
