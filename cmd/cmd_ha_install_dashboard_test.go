@@ -133,6 +133,16 @@ func TestInstallDashboardCardAssetWritesVersionedResource(t *testing.T) {
 	}
 }
 
+func TestUniqueNonEmptyStrings(t *testing.T) {
+	values := uniqueNonEmptyStrings([]string{"", "/config", " /config ", "/homeassistant", "/config"})
+	if len(values) != 2 {
+		t.Fatalf("unexpected unique values: %#v", values)
+	}
+	if values[0] != "/config" || values[1] != "/homeassistant" {
+		t.Fatalf("unexpected order/content: %#v", values)
+	}
+}
+
 func TestHAWSClientDashboardCalls(t *testing.T) {
 	upgrader := websocket.Upgrader{}
 

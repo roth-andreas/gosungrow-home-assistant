@@ -23,7 +23,7 @@ import (
 const (
 	defaultHADashboardAssetDir = "/opt/gosungrow/assets"
 	defaultHAWebsocketURL      = "ws://supervisor/core/websocket"
-	defaultHAConfigDir         = "/homeassistant"
+	defaultHAConfigDir         = "/config"
 	defaultDashboardURLPath    = "gosungrow-flow"
 	defaultDashboardTitle      = "GoSungrow Flow"
 	defaultDashboardIcon       = "mdi:solar-power"
@@ -397,29 +397,57 @@ func renderDashboardConfig(templatePath string, dashboardTitle string, targets [
 }
 
 func installDashboardCardAsset(assetDir string, homeAssistantDir string) (string, error) {
-	if strings.TrimSpace(homeAssistantDir) == "" {
-		return "", fmt.Errorf("home assistant config directory is empty")
-	}
-
 	sourcePath := filepath.Join(assetDir, dashboardCardFileName)
 	data, err := os.ReadFile(sourcePath)
 	if err != nil {
 		return "", err
 	}
 
-	targetDir := filepath.Join(homeAssistantDir, "www", dashboardCardResourceDir)
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
-		return "", err
-	}
+	candidates := uniqueNonEmptyStrings([]string{homeAssistantDir, "/config", "/homeassistant"})
+	var lastErr error
+	var wrote bool
+	for _, dir := range candidates {
+		targetDir := filepath.Join(dir, "www", dashboardCardResourceDir)
+		if err := os.MkdirAll(targetDir, 0755); err != nil {
+			lastErr = err
+			continue
+		}
 
-	targetPath := filepath.Join(targetDir, dashboardCardFileName)
-	if err := os.WriteFile(targetPath, data, 0644); err != nil {
-		return "", err
+		targetPath := filepath.Join(targetDir, dashboardCardFileName)
+		if err := os.WriteFile(targetPath, data, 0644); err != nil {
+			lastErr = err
+			continue
+		}
+
+		wrote = true
+	}
+	if !wrote {
+		if lastErr == nil {
+			lastErr = fmt.Errorf("home assistant config directory is empty")
+		}
+		return "", lastErr
 	}
 
 	sum := sha256.Sum256(data)
 	version := hex.EncodeToString(sum[:6])
 	return fmt.Sprintf("/local/%s/%s?v=%s", dashboardCardResourceDir, dashboardCardFileName, version), nil
+}
+
+func uniqueNonEmptyStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	ret := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		ret = append(ret, value)
+	}
+	return ret
 }
 
 func targetPSKeys(targets []haDashboardTarget) []string {

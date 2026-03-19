@@ -1,5 +1,5 @@
 name: GoSungrow
-version: 3.0.7-haos31
+version: 3.0.7-haos32
 slug: gosungrow
 url: https://github.com/roth-andreas/gosungrow-home-assistant
 image: ghcr.io/roth-andreas/gosungrow-addon-{arch}
@@ -13,7 +13,7 @@ services:
   - mqtt:want
 map:
   - type: homeassistant_config
-    path: /homeassistant
+    path: /config
     read_only: false
 arch:
   - aarch64
