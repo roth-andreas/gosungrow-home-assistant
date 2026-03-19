@@ -23,7 +23,7 @@ import (
 const (
 	defaultHADashboardAssetDir = "/opt/gosungrow/assets"
 	defaultHAWebsocketURL      = "ws://supervisor/core/websocket"
-	defaultHAConfigDir         = "/config"
+	defaultHAConfigDir         = "/homeassistant"
 	defaultDashboardURLPath    = "gosungrow-flow"
 	defaultDashboardTitle      = "GoSungrow Flow"
 	defaultDashboardIcon       = "mdi:solar-power"
@@ -403,7 +403,7 @@ func installDashboardCardAsset(assetDir string, homeAssistantDir string) (string
 		return "", err
 	}
 
-	candidates := uniqueNonEmptyStrings([]string{homeAssistantDir, "/config", "/homeassistant"})
+	candidates := uniqueNonEmptyStrings([]string{homeAssistantDir, "/homeassistant", "/config"})
 	var lastErr error
 	var wrote bool
 	for _, dir := range candidates {
