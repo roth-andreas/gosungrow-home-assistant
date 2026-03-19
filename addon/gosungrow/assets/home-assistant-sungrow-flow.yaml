@@ -5,209 +5,209 @@ views:
     icon: mdi:solar-power
     badges: []
     cards:
+      - type: picture-elements
+        image: /local/gosungrow/gosungrow-flow-base.svg
+        elements:
+          - type: icon
+            icon: mdi:solar-power-variant
+            tap_action: none
+            style:
+              top: 18%
+              left: 50%
+              color: "#d97706"
+              "--mdc-icon-size": 58px
+
+          - type: state-label
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_power
+            tap_action: none
+            style:
+              top: 8.5%
+              left: 50%
+              color: white
+              background: "rgba(217, 119, 6, 0.95)"
+              border-radius: 999px
+              padding: 6px 14px
+              box-shadow: "0 10px 24px rgba(217, 119, 6, 0.28)"
+              transform: translate(-50%, -50%)
+              font-size: 16px
+              font-weight: 700
+
+          - type: icon
+            icon: mdi:battery-high
+            tap_action: none
+            style:
+              top: 66%
+              left: 18%
+              color: "#0f766e"
+              "--mdc-icon-size": 52px
+
+          - type: state-label
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_power
+            tap_action: none
+            style:
+              top: 79%
+              left: 18%
+              color: white
+              background: "rgba(15, 118, 110, 0.95)"
+              border-radius: 999px
+              padding: 6px 12px
+              box-shadow: "0 10px 24px rgba(15, 118, 110, 0.24)"
+              transform: translate(-50%, -50%)
+              font-size: 15px
+              font-weight: 700
+
+          - type: state-label
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13141
+            tap_action: none
+            style:
+              top: 88.5%
+              left: 18%
+              color: "#134e4a"
+              background: "rgba(204, 251, 241, 0.98)"
+              border-radius: 999px
+              padding: 4px 10px
+              border: "1px solid rgba(15, 118, 110, 0.20)"
+              transform: translate(-50%, -50%)
+              font-size: 12px
+              font-weight: 700
+
+          - type: icon
+            icon: mdi:home-lightning-bolt-outline
+            tap_action: none
+            style:
+              top: 66%
+              left: 50%
+              color: "#2563eb"
+              "--mdc-icon-size": 54px
+
+          - type: state-label
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_load_power
+            tap_action: none
+            style:
+              top: 54%
+              left: 50%
+              color: white
+              background: "rgba(37, 99, 235, 0.95)"
+              border-radius: 999px
+              padding: 6px 12px
+              box-shadow: "0 10px 24px rgba(37, 99, 235, 0.28)"
+              transform: translate(-50%, -50%)
+              font-size: 15px
+              font-weight: 700
+
+          - type: icon
+            icon: mdi:transmission-tower
+            tap_action: none
+            style:
+              top: 66%
+              left: 82%
+              color: "#475569"
+              "--mdc-icon-size": 52px
+
+          - type: state-label
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_power
+            tap_action: none
+            style:
+              top: 79%
+              left: 82%
+              color: white
+              background: "rgba(71, 85, 105, 0.95)"
+              border-radius: 999px
+              padding: 6px 12px
+              box-shadow: "0 10px 24px rgba(71, 85, 105, 0.24)"
+              transform: translate(-50%, -50%)
+              font-size: 15px
+              font-weight: 700
+
+          - type: state-label
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_battery_power
+            tap_action: none
+            style:
+              top: 31%
+              left: 31%
+              color: "#7c2d12"
+              background: "rgba(255, 237, 213, 0.98)"
+              border-radius: 999px
+              padding: 4px 10px
+              border: "1px solid rgba(217, 119, 6, 0.18)"
+              transform: translate(-50%, -50%)
+              font-size: 12px
+              font-weight: 700
+
+          - type: state-label
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_load_power
+            tap_action: none
+            style:
+              top: 34%
+              left: 50%
+              color: "#7c2d12"
+              background: "rgba(255, 237, 213, 0.98)"
+              border-radius: 999px
+              padding: 4px 10px
+              border: "1px solid rgba(217, 119, 6, 0.18)"
+              transform: translate(-50%, -50%)
+              font-size: 12px
+              font-weight: 700
+
+          - type: state-label
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_grid_power
+            tap_action: none
+            style:
+              top: 31%
+              left: 69%
+              color: "#7c2d12"
+              background: "rgba(255, 237, 213, 0.98)"
+              border-radius: 999px
+              padding: 4px 10px
+              border: "1px solid rgba(217, 119, 6, 0.18)"
+              transform: translate(-50%, -50%)
+              font-size: 12px
+              font-weight: 700
+
+          - type: state-label
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_to_load_power
+            tap_action: none
+            style:
+              top: 59%
+              left: 35%
+              color: "#134e4a"
+              background: "rgba(204, 251, 241, 0.98)"
+              border-radius: 999px
+              padding: 4px 10px
+              border: "1px solid rgba(15, 118, 110, 0.18)"
+              transform: translate(-50%, -50%)
+              font-size: 12px
+              font-weight: 700
+
+          - type: state-label
+            entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_to_load_power
+            tap_action: none
+            style:
+              top: 59%
+              left: 65%
+              color: "#334155"
+              background: "rgba(226, 232, 240, 0.98)"
+              border-radius: 999px
+              padding: 4px 10px
+              border: "1px solid rgba(71, 85, 105, 0.18)"
+              transform: translate(-50%, -50%)
+              font-size: 12px
+              font-weight: 700
+
       - type: vertical-stack
         cards:
-          - type: picture-elements
-            image: /local/gosungrow/gosungrow-flow-base.svg
-            elements:
-              - type: icon
-                icon: mdi:solar-power-variant
-                tap_action: none
-                style:
-                  top: 17.5%
-                  left: 50%
-                  color: "#d97706"
-                  "--mdc-icon-size": 58px
-
-              - type: state-label
-                entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_power
-                tap_action: none
-                style:
-                  top: 8%
-                  left: 50%
-                  color: white
-                  background: "rgba(217, 119, 6, 0.95)"
-                  border-radius: 999px
-                  padding: 6px 12px
-                  box-shadow: "0 10px 24px rgba(217, 119, 6, 0.28)"
-                  transform: translate(-50%, -50%)
-                  font-size: 16px
-                  font-weight: 700
-
-              - type: icon
-                icon: mdi:home-lightning-bolt-outline
-                tap_action: none
-                style:
-                  top: 49%
-                  left: 50%
-                  color: "#2563eb"
-                  "--mdc-icon-size": 56px
-
-              - type: state-label
-                entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_load_power
-                tap_action: none
-                style:
-                  top: 58%
-                  left: 50%
-                  color: white
-                  background: "rgba(37, 99, 235, 0.95)"
-                  border-radius: 999px
-                  padding: 6px 12px
-                  box-shadow: "0 10px 24px rgba(37, 99, 235, 0.28)"
-                  transform: translate(-50%, -50%)
-                  font-size: 16px
-                  font-weight: 700
-
-              - type: icon
-                icon: mdi:battery-high
-                tap_action: none
-                style:
-                  top: 78%
-                  left: 19%
-                  color: "#0f766e"
-                  "--mdc-icon-size": 54px
-
-              - type: state-label
-                entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_power
-                tap_action: none
-                style:
-                  top: 86%
-                  left: 19%
-                  color: white
-                  background: "rgba(15, 118, 110, 0.95)"
-                  border-radius: 999px
-                  padding: 6px 12px
-                  box-shadow: "0 10px 24px rgba(15, 118, 110, 0.24)"
-                  transform: translate(-50%, -50%)
-                  font-size: 16px
-                  font-weight: 700
-
-              - type: state-label
-                entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13141
-                tap_action: none
-                style:
-                  top: 93%
-                  left: 19%
-                  color: "#134e4a"
-                  background: "rgba(204, 251, 241, 0.98)"
-                  border-radius: 999px
-                  padding: 4px 10px
-                  border: "1px solid rgba(15, 118, 110, 0.20)"
-                  transform: translate(-50%, -50%)
-                  font-size: 12px
-                  font-weight: 700
-
-              - type: icon
-                icon: mdi:transmission-tower
-                tap_action: none
-                style:
-                  top: 78%
-                  left: 81%
-                  color: "#475569"
-                  "--mdc-icon-size": 54px
-
-              - type: state-label
-                entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_power
-                tap_action: none
-                style:
-                  top: 86%
-                  left: 81%
-                  color: white
-                  background: "rgba(71, 85, 105, 0.95)"
-                  border-radius: 999px
-                  padding: 6px 12px
-                  box-shadow: "0 10px 24px rgba(71, 85, 105, 0.24)"
-                  transform: translate(-50%, -50%)
-                  font-size: 16px
-                  font-weight: 700
-
-              - type: state-label
-                entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_battery_power
-                tap_action: none
-                style:
-                  top: 29%
-                  left: 29%
-                  color: "#7c2d12"
-                  background: "rgba(255, 237, 213, 0.98)"
-                  border-radius: 999px
-                  padding: 4px 9px
-                  border: "1px solid rgba(217, 119, 6, 0.18)"
-                  transform: translate(-50%, -50%)
-                  font-size: 12px
-                  font-weight: 700
-
-              - type: state-label
-                entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_load_power
-                tap_action: none
-                style:
-                  top: 30%
-                  left: 50%
-                  color: "#7c2d12"
-                  background: "rgba(255, 237, 213, 0.98)"
-                  border-radius: 999px
-                  padding: 4px 9px
-                  border: "1px solid rgba(217, 119, 6, 0.18)"
-                  transform: translate(-50%, -50%)
-                  font-size: 12px
-                  font-weight: 700
-
-              - type: state-label
-                entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_grid_power
-                tap_action: none
-                style:
-                  top: 29%
-                  left: 71%
-                  color: "#7c2d12"
-                  background: "rgba(255, 237, 213, 0.98)"
-                  border-radius: 999px
-                  padding: 4px 9px
-                  border: "1px solid rgba(217, 119, 6, 0.18)"
-                  transform: translate(-50%, -50%)
-                  font-size: 12px
-                  font-weight: 700
-
-              - type: state-label
-                entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_to_load_power
-                tap_action: none
-                style:
-                  top: 65%
-                  left: 34%
-                  color: "#134e4a"
-                  background: "rgba(204, 251, 241, 0.98)"
-                  border-radius: 999px
-                  padding: 4px 9px
-                  border: "1px solid rgba(15, 118, 110, 0.18)"
-                  transform: translate(-50%, -50%)
-                  font-size: 12px
-                  font-weight: 700
-
-              - type: state-label
-                entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_to_load_power
-                tap_action: none
-                style:
-                  top: 65%
-                  left: 66%
-                  color: "#334155"
-                  background: "rgba(226, 232, 240, 0.98)"
-                  border-radius: 999px
-                  padding: 4px 9px
-                  border: "1px solid rgba(71, 85, 105, 0.18)"
-                  transform: translate(-50%, -50%)
-                  font-size: 12px
-                  font-weight: 700
-
           - type: grid
-            title: Daily Breakdown
-            columns: 3
+            title: Today At A Glance
+            columns: 2
             square: false
             cards:
               - type: tile
                 entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13112
-                name: Daily PV Yield
+                name: PV Yield
                 icon: mdi:solar-power
               - type: tile
                 entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13116
-                name: PV Used By Loads
+                name: PV To Load
                 icon: mdi:home-lightning-bolt-outline
               - type: tile
                 entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13174
@@ -215,7 +215,7 @@ views:
                 icon: mdi:battery-charging-medium
               - type: tile
                 entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13173
-                name: PV Feed-in
+                name: Feed-in
                 icon: mdi:upload-network-outline
               - type: tile
                 entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13147
@@ -227,31 +227,47 @@ views:
                 icon: mdi:battery-medium
 
           - type: history-graph
-            title: System Power Trend
+            title: Today Energy Accumulation
             hours_to_show: 24
-            refresh_interval: 60
+            refresh_interval: 300
             entities:
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_power
-                name: PV
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_load_power
-                name: Load
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_power
-                name: Grid
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_power
-                name: Battery
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13112
+                name: PV Yield
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13116
+                name: PV To Load
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13174
+                name: PV To Battery
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13173
+                name: Feed-in
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13147
+                name: Grid Import
 
-          - type: history-graph
-            title: Flow Paths Trend
-            hours_to_show: 24
-            refresh_interval: 60
-            entities:
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_load_power
-                name: PV to Load
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_battery_power
-                name: PV to Battery
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_grid_power
-                name: PV to Grid
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_to_load_power
-                name: Battery to Load
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_to_load_power
-                name: Grid to Load
+      - type: history-graph
+        title: Power Balance Today
+        hours_to_show: 24
+        refresh_interval: 60
+        entities:
+          - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_power
+            name: PV
+          - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_load_power
+            name: Load
+          - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_power
+            name: Grid
+          - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_power
+            name: Battery
+
+      - type: history-graph
+        title: Route Detail Today
+        hours_to_show: 24
+        refresh_interval: 60
+        entities:
+          - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_load_power
+            name: PV to Load
+          - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_battery_power
+            name: PV to Battery
+          - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_grid_power
+            name: PV to Grid
+          - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_to_load_power
+            name: Battery to Load
+          - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_to_load_power
+            name: Grid to Load
