@@ -70,14 +70,14 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         }
 
         .title {
-          padding: 18px 20px 0;
-          font-size: 1rem;
+          padding: 12px 14px 0;
+          font-size: 0.96rem;
           font-weight: 600;
           color: var(--primary-text-color);
         }
 
         .shell {
-          padding: 10px 14px 14px;
+          padding: 8px 10px 10px;
         }
 
         svg {
@@ -87,7 +87,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         }
 
         .stage {
-          border-radius: 20px;
+          border-radius: 18px;
           overflow: hidden;
           background:
             radial-gradient(circle at 50% 16%, rgba(255,255,255,0.05), transparent 34%),
@@ -108,6 +108,18 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
           stroke-linecap: round;
           opacity: 0.95;
           transition: stroke-width 180ms ease, opacity 180ms ease;
+        }
+
+        .edge-dot {
+          opacity: 0;
+        }
+
+        .edge-dot.active {
+          opacity: 1;
+        }
+
+        .edge-dot circle {
+          filter: drop-shadow(0 0 5px rgba(255,255,255,0.18));
         }
 
         .edge-solar-home {
@@ -132,7 +144,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
 
         .node-ring {
           fill: rgba(15, 23, 42, 0.18);
-          stroke-width: 3;
+          stroke-width: 2.5;
         }
 
         .node-fill {
@@ -177,13 +189,13 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
 
         .node-value {
           fill: var(--primary-text-color);
-          font-size: 16px;
+          font-size: 15px;
           font-weight: 700;
           text-anchor: middle;
         }
 
         .node-subvalue {
-          font-size: 12px;
+          font-size: 11px;
           font-weight: 700;
           text-anchor: middle;
         }
@@ -194,7 +206,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
 
         .node-label {
           fill: var(--secondary-text-color);
-          font-size: 14px;
+          font-size: 13px;
           font-weight: 500;
           text-anchor: middle;
         }
@@ -205,7 +217,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         }
 
         .route-pill text {
-          font-size: 11px;
+          font-size: 10px;
           font-weight: 700;
           text-anchor: middle;
           dominant-baseline: middle;
@@ -283,49 +295,59 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
   _layout() {
     return {
       width: 940,
-      height: 460,
-      radius: 46,
+      height: 410,
+      radius: 42,
       nodes: {
-        solar: { x: 470, y: 84, label: "PV", ringClass: "solar-ring" },
-        grid: { x: 230, y: 226, label: "Grid", ringClass: "grid-ring" },
-        home: { x: 710, y: 226, label: "Home", ringClass: "home-ring" },
-        battery: { x: 470, y: 368, label: "Battery", ringClass: "battery-ring" },
+        solar: { x: 470, y: 74, label: "PV", ringClass: "solar-ring" },
+        grid: { x: 238, y: 198, label: "Grid", ringClass: "grid-ring" },
+        home: { x: 702, y: 198, label: "Home", ringClass: "home-ring" },
+        battery: { x: 470, y: 324, label: "Battery", ringClass: "battery-ring" },
       },
       edges: {
         pv_to_grid_power: {
-          path: "M432 120 C368 138 304 164 268 190",
-          labelX: 362,
-          labelY: 154,
+          path: "M434 110 C374 126 313 148 275 172",
+          labelX: 364,
+          labelY: 142,
           edgeClass: "edge-solar-grid",
           pillClass: "pill-solar-grid",
+          dotStartOffset: "6%",
+          dotDur: "4.6s",
         },
         pv_to_load_power: {
-          path: "M508 120 C572 138 636 164 672 190",
-          labelX: 578,
-          labelY: 154,
+          path: "M506 110 C566 126 627 148 665 172",
+          labelX: 576,
+          labelY: 142,
           edgeClass: "edge-solar-home",
           pillClass: "pill-solar-home",
+          dotStartOffset: "6%",
+          dotDur: "4.2s",
         },
         pv_to_battery_power: {
-          path: "M470 130 C470 186 470 242 470 312",
+          path: "M470 118 C470 166 470 214 470 270",
           labelX: 470,
-          labelY: 202,
+          labelY: 178,
           edgeClass: "edge-solar-battery",
           pillClass: "pill-solar-battery",
+          dotStartOffset: "6%",
+          dotDur: "4.8s",
         },
         grid_to_load_power: {
-          path: "M286 226 C376 226 564 226 654 226",
+          path: "M292 198 C382 198 558 198 648 198",
           labelX: 470,
-          labelY: 256,
+          labelY: 226,
           edgeClass: "edge-grid-home",
           pillClass: "pill-grid-home",
+          dotStartOffset: "6%",
+          dotDur: "4.4s",
         },
         battery_to_load_power: {
-          path: "M508 334 C560 310 620 274 676 246",
-          labelX: 600,
-          labelY: 304,
+          path: "M506 292 C554 270 609 238 664 214",
+          labelX: 594,
+          labelY: 272,
           edgeClass: "edge-battery-home",
           pillClass: "pill-battery-home",
+          dotStartOffset: "6%",
+          dotDur: "4.9s",
         },
       },
     };
@@ -356,15 +378,21 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
     const active = magnitude > 0.01;
     const width = active ? 4 + Math.min(magnitude, 6) * 1.6 : 3.5;
     const opacity = active ? 1 : 0.14;
+    const color = this._edgeColor(edge.edgeClass);
 
     return `
       <path class="edge-base" d="${edge.path}"></path>
       <path class="edge-active ${edge.edgeClass}" d="${edge.path}" style="stroke-width:${width};opacity:${opacity};"></path>
+      <g class="edge-dot${active ? " active" : ""}">
+        <circle r="${Math.max(4, width * 0.6)}" fill="${color}">
+          <animateMotion dur="${edge.dotDur || "4.5s"}" repeatCount="indefinite" rotate="auto" path="${edge.path}" keyPoints="0;1" keyTimes="0;1"></animateMotion>
+        </circle>
+      </g>
     `;
   }
 
   _renderEdgeLabel(edge, display) {
-    const width = Math.max(70, display.formatted.length * 7.2);
+    const width = Math.max(62, display.formatted.length * 6.8);
     const active = Math.abs(display.numericValue) > 0.01;
     return `
       <g class="route-pill ${edge.pillClass}${active ? "" : " inactive"}" transform="translate(${edge.labelX} ${edge.labelY})">
@@ -378,9 +406,9 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
     const radius = this._layout().radius;
     const entityId = this._entityIdForNode(key);
     const display = displays[key];
-    const labelY = node.y + radius + 22;
-    const iconMarkup = this._renderIcon(key, node.x, node.y - 10);
-    const valueY = key === "battery" ? node.y + 15 : node.y + 17;
+    const labelY = node.y + radius + 20;
+    const iconMarkup = this._renderIcon(key, node.x, node.y - 8);
+    const valueY = key === "battery" ? node.y + 12 : node.y + 14;
     const batterySoc = displays.batterySoc;
     return `
       <g class="node-button" ${entityId ? `data-entity="${this._escape(entityId)}"` : `role="presentation"`}>
@@ -389,7 +417,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         <circle class="node-fill" cx="${node.x}" cy="${node.y}" r="${radius - 2}"></circle>
         ${iconMarkup}
         <text class="node-value" x="${node.x}" y="${valueY}">${this._escape(display.formatted)}</text>
-        ${key === "battery" ? `<text class="node-subvalue battery-soc" x="${node.x}" y="${node.y + 30}">${this._escape(batterySoc.formatted)}</text>` : ""}
+        ${key === "battery" ? `<text class="node-subvalue battery-soc" x="${node.x}" y="${node.y + 25}">${this._escape(batterySoc.formatted)}</text>` : ""}
         <text class="node-label" x="${node.x}" y="${labelY}">${this._escape(node.label)}</text>
       </g>
     `;
@@ -473,6 +501,23 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
       formatted: this._formatNumber(numericValue, unit),
       numericValue,
     };
+  }
+
+  _edgeColor(edgeClass) {
+    switch (edgeClass) {
+      case "edge-solar-home":
+        return "#f59e0b";
+      case "edge-solar-grid":
+        return "#8b5cf6";
+      case "edge-solar-battery":
+        return "#ec4899";
+      case "edge-battery-home":
+        return "#14b8a6";
+      case "edge-grid-home":
+        return "#cbd5e1";
+      default:
+        return "#ffffff";
+    }
   }
 
   _formatNumber(value, unit) {
