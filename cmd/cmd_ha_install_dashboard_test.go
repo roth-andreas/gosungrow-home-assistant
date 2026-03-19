@@ -207,7 +207,7 @@ func TestHAWSClientDashboardCalls(t *testing.T) {
 			case "lovelace/resources":
 				response["result"] = []map[string]any{{
 					"id":   "resource-id",
-					"url":  "/local/gosungrow/gosungrow-energy-flow-card.js?v=old",
+					"url":  "/local/gosungrow/gosungrow-energy-flow-card-v2.js?v=old",
 					"type": "module",
 				}}
 			case "lovelace/resources/create", "lovelace/resources/update":
@@ -272,7 +272,7 @@ func TestHAWSClientDashboardCalls(t *testing.T) {
 	if err := client.SaveConfig(ctx, "gosungrow-flow", map[string]any{"title": "GoSungrow Flow", "views": []any{}}); err != nil {
 		t.Fatalf("SaveConfig: %v", err)
 	}
-	if err := client.EnsureResource(ctx, "/local/gosungrow/gosungrow-energy-flow-card.js?v=new", dashboardCardResourceType); err != nil {
+	if err := client.EnsureResource(ctx, "/local/gosungrow/gosungrow-energy-flow-card-v2.js?v=new", dashboardCardResourceType); err != nil {
 		t.Fatalf("EnsureResource: %v", err)
 	}
 }
@@ -294,7 +294,7 @@ func TestBundledDashboardTemplateRenders(t *testing.T) {
 	}
 
 	text := string(rendered)
-	if !strings.Contains(text, "\"type\":\"custom:gosungrow-energy-flow-card\"") {
+	if !strings.Contains(text, "\"type\":\"custom:gosungrow-energy-flow-card-v2\"") {
 		t.Fatal("expected custom GoSungrow flow card in bundled dashboard")
 	}
 	if !strings.Contains(text, "sensor.gosungrow_virtual_5072099_14_1_1_pv_to_grid_power") {

@@ -5,7 +5,7 @@ views:
     icon: mdi:solar-power
     type: sidebar
     cards:
-      - type: custom:gosungrow-energy-flow-card
+      - type: custom:gosungrow-energy-flow-card-v2
         title: Live Energy Flow
         view_layout:
           position: main

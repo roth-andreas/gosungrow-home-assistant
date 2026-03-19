@@ -1,7 +1,7 @@
 class GoSungrowEnergyFlowCard extends HTMLElement {
   static getStubConfig() {
     return {
-      type: "custom:gosungrow-energy-flow-card",
+      type: "custom:gosungrow-energy-flow-card-v2",
       title: "Live Energy Flow",
       entities: {
         solar_power: "sensor.example_solar_power",
@@ -282,48 +282,48 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
 
   _layout() {
     return {
-      width: 1000,
-      height: 590,
-      radius: 58,
+      width: 940,
+      height: 460,
+      radius: 46,
       nodes: {
-        solar: { x: 500, y: 105, label: "PV", ringClass: "solar-ring" },
-        grid: { x: 260, y: 290, label: "Grid", ringClass: "grid-ring" },
-        home: { x: 740, y: 290, label: "Home", ringClass: "home-ring" },
-        battery: { x: 500, y: 465, label: "Battery", ringClass: "battery-ring" },
+        solar: { x: 470, y: 84, label: "PV", ringClass: "solar-ring" },
+        grid: { x: 230, y: 226, label: "Grid", ringClass: "grid-ring" },
+        home: { x: 710, y: 226, label: "Home", ringClass: "home-ring" },
+        battery: { x: 470, y: 368, label: "Battery", ringClass: "battery-ring" },
       },
       edges: {
         pv_to_grid_power: {
-          path: "M456 154 C393 176 330 210 294 246",
-          labelX: 394,
-          labelY: 202,
+          path: "M432 120 C368 138 304 164 268 190",
+          labelX: 362,
+          labelY: 154,
           edgeClass: "edge-solar-grid",
           pillClass: "pill-solar-grid",
         },
         pv_to_load_power: {
-          path: "M544 154 C607 176 670 210 706 246",
-          labelX: 606,
-          labelY: 202,
+          path: "M508 120 C572 138 636 164 672 190",
+          labelX: 578,
+          labelY: 154,
           edgeClass: "edge-solar-home",
           pillClass: "pill-solar-home",
         },
         pv_to_battery_power: {
-          path: "M500 164 C500 230 500 300 500 404",
-          labelX: 500,
-          labelY: 248,
+          path: "M470 130 C470 186 470 242 470 312",
+          labelX: 470,
+          labelY: 202,
           edgeClass: "edge-solar-battery",
           pillClass: "pill-solar-battery",
         },
         grid_to_load_power: {
-          path: "M324 290 C415 290 585 290 676 290",
-          labelX: 500,
-          labelY: 322,
+          path: "M286 226 C376 226 564 226 654 226",
+          labelX: 470,
+          labelY: 256,
           edgeClass: "edge-grid-home",
           pillClass: "pill-grid-home",
         },
         battery_to_load_power: {
-          path: "M544 423 C584 392 648 346 700 314",
-          labelX: 627,
-          labelY: 382,
+          path: "M508 334 C560 310 620 274 676 246",
+          labelX: 600,
+          labelY: 304,
           edgeClass: "edge-battery-home",
           pillClass: "pill-battery-home",
         },
@@ -378,9 +378,9 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
     const radius = this._layout().radius;
     const entityId = this._entityIdForNode(key);
     const display = displays[key];
-    const labelY = node.y + radius + 24;
-    const iconMarkup = this._renderIcon(key, node.x, node.y - 12);
-    const valueY = key === "battery" ? node.y + 18 : node.y + 20;
+    const labelY = node.y + radius + 22;
+    const iconMarkup = this._renderIcon(key, node.x, node.y - 10);
+    const valueY = key === "battery" ? node.y + 15 : node.y + 17;
     const batterySoc = displays.batterySoc;
     return `
       <g class="node-button" ${entityId ? `data-entity="${this._escape(entityId)}"` : `role="presentation"`}>
@@ -389,7 +389,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         <circle class="node-fill" cx="${node.x}" cy="${node.y}" r="${radius - 2}"></circle>
         ${iconMarkup}
         <text class="node-value" x="${node.x}" y="${valueY}">${this._escape(display.formatted)}</text>
-        ${key === "battery" ? `<text class="node-subvalue battery-soc" x="${node.x}" y="${node.y + 36}">${this._escape(batterySoc.formatted)}</text>` : ""}
+        ${key === "battery" ? `<text class="node-subvalue battery-soc" x="${node.x}" y="${node.y + 30}">${this._escape(batterySoc.formatted)}</text>` : ""}
         <text class="node-label" x="${node.x}" y="${labelY}">${this._escape(node.label)}</text>
       </g>
     `;
@@ -513,11 +513,11 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
   }
 }
 
-customElements.define("gosungrow-energy-flow-card", GoSungrowEnergyFlowCard);
+customElements.define("gosungrow-energy-flow-card-v2", GoSungrowEnergyFlowCard);
 
 window.customCards = window.customCards || [];
 window.customCards.push({
-  type: "gosungrow-energy-flow-card",
-  name: "GoSungrow Energy Flow Card",
+  type: "gosungrow-energy-flow-card-v2",
+  name: "GoSungrow Energy Flow Card v2",
   description: "Custom Sungrow energy flow card with Energy dashboard-inspired layout.",
 });

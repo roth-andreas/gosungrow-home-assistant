@@ -32,7 +32,7 @@ const (
 	defaultSupervisorCoreURL   = "http://supervisor/core"
 	dashboardTemplateFile      = "home-assistant-sungrow-flow.yaml"
 	dashboardStateFileName     = "dashboard_state.json"
-	dashboardCardFileName      = "gosungrow-energy-flow-card.js"
+	dashboardCardFileName      = "gosungrow-energy-flow-card-v2.js"
 	dashboardCardResourceDir   = "gosungrow"
 	dashboardCardResourceType  = "module"
 	dashboardCardCDNBaseURL    = "https://cdn.jsdelivr.net/gh/roth-andreas/gosungrow-home-assistant@main/addon/gosungrow/assets"
