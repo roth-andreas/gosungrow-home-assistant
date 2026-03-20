@@ -411,22 +411,22 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
       radius: 38,
       nodes: {
           solar: { x: 470, y: 74, label: "PV", ringClass: "solar-ring", labelY: 136, powerChip: { x: 470, y: 20, className: "node-chip-solar" } },
-          grid: { x: 272, y: 164, label: "Grid", ringClass: "grid-ring", labelY: 226, powerChip: { x: 192, y: 164, className: "node-chip-grid" } },
-          home: { x: 668, y: 164, label: "Home", ringClass: "home-ring", labelY: 226, powerChip: { x: 748, y: 164, className: "node-chip-home" } },
+          grid: { x: 190, y: 164, label: "Grid", ringClass: "grid-ring", labelY: 226, powerChip: { x: 104, y: 164, className: "node-chip-grid" } },
+          home: { x: 750, y: 164, label: "Home", ringClass: "home-ring", labelY: 226, powerChip: { x: 836, y: 164, className: "node-chip-home" } },
           battery: { x: 470, y: 244, label: "Battery", ringClass: "battery-ring", labelY: 328, powerChip: { x: 470, y: 180, className: "node-chip-battery" }, socChip: { x: 470, y: 300, className: "node-chip-soc" } },
       },
       edges: {
         pv_to_grid_power: {
-          path: "M439 88 Q381 100 303 150",
-          labelX: 386,
+          path: "M439 88 Q351 104 221 150",
+          labelX: 350,
           labelY: 128,
           edgeClass: "edge-solar-grid",
           pillClass: "pill-solar-grid",
           dotDur: "4.6s",
         },
         pv_to_load_power: {
-          path: "M501 88 Q559 100 637 150",
-          labelX: 554,
+          path: "M501 88 Q589 104 719 150",
+          labelX: 590,
           labelY: 128,
           edgeClass: "edge-solar-home",
           pillClass: "pill-solar-home",
@@ -441,7 +441,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
           dotDur: "4.8s",
         },
         grid_to_load_power: {
-          path: "M310 164 L630 164",
+          path: "M228 164 L712 164",
           labelX: 470,
           labelY: 168,
           edgeClass: "edge-grid-home",
@@ -449,8 +449,8 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
           dotDur: "4.4s",
         },
         battery_to_load_power: {
-          path: "M501 231 Q569 192 637 178",
-          labelX: 570,
+          path: "M501 231 Q610 190 719 178",
+          labelX: 604,
           labelY: 208,
           edgeClass: "edge-battery-home",
           pillClass: "pill-battery-home",
