@@ -35,7 +35,16 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
   }
 
   getCardSize() {
-    return 5;
+    return 4;
+  }
+
+  getGridOptions() {
+    return {
+      rows: 4,
+      columns: 12,
+      min_rows: 4,
+      min_columns: 6,
+    };
   }
 
   _render() {
@@ -43,7 +52,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
       return;
     }
 
-    const layout = this._layout();
+    const layout = this._layout(this._isCompact());
     const nodes = this._nodeDisplays();
     const flows = this._flowDisplays();
 
@@ -296,61 +305,117 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
     });
   }
 
-  _layout() {
+  _isCompact() {
+    const width = Math.max(this.clientWidth || 0, this.getBoundingClientRect?.().width || 0, window.innerWidth || 0);
+    return width > 0 && width < 700;
+  }
+
+  _layout(compact) {
+    if (compact) {
+      return {
+        width: 760,
+        height: 380,
+        radius: 38,
+        nodes: {
+          solar: { x: 380, y: 64, label: "PV", ringClass: "solar-ring" },
+          grid: { x: 206, y: 178, label: "Grid", ringClass: "grid-ring" },
+          home: { x: 554, y: 178, label: "Home", ringClass: "home-ring" },
+          battery: { x: 380, y: 304, label: "Battery", ringClass: "battery-ring" },
+        },
+        edges: {
+          pv_to_grid_power: {
+            path: "M353 96 C320 110 274 132 238 156",
+            labelX: 300,
+            labelY: 126,
+            edgeClass: "edge-solar-grid",
+            pillClass: "pill-solar-grid",
+            dotDur: "4.6s",
+          },
+          pv_to_load_power: {
+            path: "M407 96 C440 110 486 132 522 156",
+            labelX: 460,
+            labelY: 126,
+            edgeClass: "edge-solar-home",
+            pillClass: "pill-solar-home",
+            dotDur: "4.2s",
+          },
+          pv_to_battery_power: {
+            path: "M380 102 C380 146 380 194 380 258",
+            labelX: 380,
+            labelY: 164,
+            edgeClass: "edge-solar-battery",
+            pillClass: "pill-solar-battery",
+            dotDur: "4.8s",
+          },
+          grid_to_load_power: {
+            path: "M244 178 C312 176 448 176 516 178",
+            labelX: 380,
+            labelY: 206,
+            edgeClass: "edge-grid-home",
+            pillClass: "pill-grid-home",
+            dotDur: "4.4s",
+          },
+          battery_to_load_power: {
+            path: "M406 278 C444 252 484 224 520 198",
+            labelX: 470,
+            labelY: 246,
+            edgeClass: "edge-battery-home",
+            pillClass: "pill-battery-home",
+            dotDur: "4.9s",
+          },
+        },
+      };
+    }
+
     return {
       width: 940,
-      height: 320,
+      height: 270,
       radius: 36,
       nodes: {
-        solar: { x: 470, y: 62, label: "PV", ringClass: "solar-ring" },
-        grid: { x: 272, y: 162, label: "Grid", ringClass: "grid-ring" },
-        home: { x: 668, y: 162, label: "Home", ringClass: "home-ring" },
-        battery: { x: 470, y: 248, label: "Battery", ringClass: "battery-ring" },
+        solar: { x: 470, y: 54, label: "PV", ringClass: "solar-ring" },
+        grid: { x: 288, y: 138, label: "Grid", ringClass: "grid-ring" },
+        home: { x: 652, y: 138, label: "Home", ringClass: "home-ring" },
+        battery: { x: 470, y: 220, label: "Battery", ringClass: "battery-ring" },
       },
       edges: {
         pv_to_grid_power: {
-          path: "M442 92 C401 105 354 123 305 148",
-          labelX: 376,
-          labelY: 122,
+          path: "M444 84 C406 94 360 112 322 132",
+          labelX: 390,
+          labelY: 104,
           edgeClass: "edge-solar-grid",
           pillClass: "pill-solar-grid",
-          dotStartOffset: "6%",
           dotDur: "4.6s",
         },
         pv_to_load_power: {
-          path: "M498 92 C539 105 586 123 635 148",
-          labelX: 564,
-          labelY: 122,
+          path: "M496 84 C534 94 580 112 618 132",
+          labelX: 550,
+          labelY: 104,
           edgeClass: "edge-solar-home",
           pillClass: "pill-solar-home",
-          dotStartOffset: "6%",
           dotDur: "4.2s",
         },
         pv_to_battery_power: {
-          path: "M470 98 C470 138 470 176 470 212",
+          path: "M470 90 C470 122 470 154 470 188",
           labelX: 470,
-          labelY: 150,
+          labelY: 134,
           edgeClass: "edge-solar-battery",
           pillClass: "pill-solar-battery",
-          dotStartOffset: "6%",
           dotDur: "4.8s",
         },
         grid_to_load_power: {
-          path: "M314 162 C386 160 554 160 626 162",
+          path: "M324 138 C392 136 548 136 616 138",
           labelX: 470,
-          labelY: 186,
+          labelY: 164,
           edgeClass: "edge-grid-home",
           pillClass: "pill-grid-home",
-          dotStartOffset: "6%",
           dotDur: "4.4s",
         },
         battery_to_load_power: {
-          path: "M498 220 C542 206 585 187 632 172",
-          labelX: 572,
-          labelY: 214,
+          path: "M498 196 C540 180 580 160 618 148",
+          labelX: 566,
+          labelY: 192,
           edgeClass: "edge-battery-home",
           pillClass: "pill-battery-home",
-          dotStartOffset: "6%",
           dotDur: "4.9s",
         },
       },
