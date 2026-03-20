@@ -367,6 +367,13 @@ function inspectFlowCard(card, state, scenario) {
     if (outside(node.labelBox, svgBounds, 0)) {
       warnings.push(`${node.id} label is outside the stage bounds`);
     }
+    if (node.iconBox) {
+      const dx = Math.abs(node.iconCenter.x - node.circleCenter.x);
+      const dy = Math.abs(node.iconCenter.y - node.circleCenter.y);
+      if (dx > 3 || dy > 3) {
+        warnings.push(`${node.id} icon is off-center (dx=${dx.toFixed(1)}, dy=${dy.toFixed(1)})`);
+      }
+    }
   });
 
   chips.forEach((chip) => {
@@ -425,6 +432,17 @@ function inspectFlowCard(card, state, scenario) {
     view: state.view,
     warnings,
     metrics: {
+      nodeIcons: Object.values(nodes).map((node) => ({
+        id: node.id,
+        circleCenter: roundPoint(node.circleCenter),
+        iconCenter: node.iconBox ? roundPoint(node.iconCenter) : null,
+        iconOffset: node.iconBox
+          ? {
+              dx: Number((node.iconCenter.x - node.circleCenter.x).toFixed(1)),
+              dy: Number((node.iconCenter.y - node.circleCenter.y).toFixed(1)),
+            }
+          : null,
+      })),
       nodeChips: chips.map((chip) => ({ id: chip.id, box: roundBox(chip.box) })),
       routePills: routePills.map((pill) => ({ id: pill.id, box: roundBox(pill.box) })),
     },
@@ -437,9 +455,15 @@ function collectNodes(shadow) {
     const id = group.getAttribute("data-node");
     const circle = group.querySelector(".node-ring");
     const label = group.querySelector(`.node-label[data-node-label="${id}"]`);
+    const icon = group.querySelector(".node-icon");
+    const circleBox = absoluteBox(circle);
+    const iconBox = icon ? absoluteBox(icon) : null;
     nodes[id] = {
       id,
-      circleBox: absoluteBox(circle),
+      circleBox,
+      circleCenter: centerOf(circleBox),
+      iconBox,
+      iconCenter: iconBox ? centerOf(iconBox) : null,
       labelBox: absoluteBox(label),
     };
   });
@@ -474,6 +498,13 @@ function absoluteBox(element) {
     y: rect.top,
     width: rect.width,
     height: rect.height,
+  };
+}
+
+function roundPoint(point) {
+  return {
+    x: Number(point.x.toFixed(1)),
+    y: Number(point.y.toFixed(1)),
   };
 }
 

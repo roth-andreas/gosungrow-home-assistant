@@ -592,15 +592,15 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
   _iconLayout(key, node) {
     switch (key) {
       case "solar":
-        return { x: node.x, y: node.y - 6, scale: 0.95 };
+        return { x: node.x, y: node.y + 6, scale: 0.95 };
       case "home":
-        return { x: node.x, y: node.y - 5, scale: 0.94 };
+        return { x: node.x, y: node.y - 2, scale: 0.94 };
       case "battery":
-        return { x: node.x, y: node.y - 6, scale: 0.92 };
+        return { x: node.x, y: node.y + 3, scale: 0.92 };
       case "grid":
-        return { x: node.x, y: node.y - 6, scale: 0.94 };
+        return { x: node.x, y: node.y + 2, scale: 0.94 };
       default:
-        return { x: node.x, y: node.y - 6, scale: 0.92 };
+        return { x: node.x, y: node.y, scale: 0.92 };
     }
   }
 
