@@ -320,7 +320,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
           solar: { x: 380, y: 64, label: "PV", ringClass: "solar-ring" },
           grid: { x: 206, y: 178, label: "Grid", ringClass: "grid-ring" },
           home: { x: 554, y: 178, label: "Home", ringClass: "home-ring" },
-          battery: { x: 380, y: 304, label: "Battery", ringClass: "battery-ring" },
+          battery: { x: 380, y: 288, label: "Battery", ringClass: "battery-ring" },
         },
         edges: {
           pv_to_grid_power: {
@@ -356,9 +356,9 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
             dotDur: "4.4s",
           },
           battery_to_load_power: {
-            path: "M406 278 C444 252 484 224 520 198",
+            path: "M406 262 C444 238 484 212 520 190",
             labelX: 470,
-            labelY: 246,
+            labelY: 232,
             edgeClass: "edge-battery-home",
             pillClass: "pill-battery-home",
             dotDur: "4.9s",
@@ -375,7 +375,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         solar: { x: 470, y: 58, label: "PV", ringClass: "solar-ring" },
         grid: { x: 272, y: 152, label: "Grid", ringClass: "grid-ring" },
         home: { x: 668, y: 152, label: "Home", ringClass: "home-ring" },
-        battery: { x: 470, y: 236, label: "Battery", ringClass: "battery-ring" },
+        battery: { x: 470, y: 220, label: "Battery", ringClass: "battery-ring" },
       },
       edges: {
         pv_to_grid_power: {
@@ -411,9 +411,9 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
           dotDur: "4.4s",
         },
         battery_to_load_power: {
-          path: "M500 208 C544 190 586 170 630 160",
+          path: "M500 192 C544 176 586 164 630 156",
           labelX: 570,
-          labelY: 202,
+          labelY: 194,
           edgeClass: "edge-battery-home",
           pillClass: "pill-battery-home",
           dotDur: "4.9s",
