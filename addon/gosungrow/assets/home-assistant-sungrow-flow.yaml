@@ -149,7 +149,83 @@ views:
       - type: grid
         cards:
           - type: heading
-            heading: Battery
+            heading: Solar Allocation
+            icon: mdi:solar-power-variant
+          - type: history-graph
+            layout_options:
+              grid_columns: full
+              grid_rows: 5
+            hours_to_show: 24
+            refresh_interval: 60
+            entities:
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_load_power
+                name: PV To Load
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_battery_power
+                name: PV To Battery
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_grid_power
+                name: PV To Grid
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Load Sources
+            icon: mdi:home-lightning-bolt-outline
+          - type: history-graph
+            layout_options:
+              grid_columns: full
+              grid_rows: 5
+            hours_to_show: 24
+            refresh_interval: 60
+            entities:
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_load_power
+                name: PV To Load
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_to_load_power
+                name: Battery To Load
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_to_load_power
+                name: Grid To Load
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Grid Exchange
+            icon: mdi:transmission-tower-export
+          - type: history-graph
+            layout_options:
+              grid_columns: full
+              grid_rows: 5
+            hours_to_show: 24
+            refresh_interval: 60
+            entities:
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_power
+                name: Grid Net
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_to_load_power
+                name: Grid To Load
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_grid_power
+                name: PV To Grid
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Battery Flow
+            icon: mdi:battery-charging
+          - type: history-graph
+            layout_options:
+              grid_columns: full
+              grid_rows: 5
+            hours_to_show: 24
+            refresh_interval: 60
+            entities:
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_power
+                name: Battery Power
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_battery_power
+                name: Charge
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_to_load_power
+                name: Discharge
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Battery SOC
             icon: mdi:battery-high
           - type: history-graph
             layout_options:
@@ -183,26 +259,3 @@ views:
                 name: Feed-in
               - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13147
                 name: Grid Import
-
-      - type: grid
-        cards:
-          - type: heading
-            heading: Route Detail
-            icon: mdi:transit-connection-variant
-          - type: history-graph
-            layout_options:
-              grid_columns: full
-              grid_rows: 5
-            hours_to_show: 24
-            refresh_interval: 60
-            entities:
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_load_power
-                name: PV to Load
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_battery_power
-                name: PV to Battery
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_grid_power
-                name: PV to Grid
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_to_load_power
-                name: Battery to Load
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_to_load_power
-                name: Grid to Load

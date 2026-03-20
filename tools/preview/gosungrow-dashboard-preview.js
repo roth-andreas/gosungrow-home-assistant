@@ -147,6 +147,29 @@ const SCENARIOS = {
   },
 };
 
+Object.values(SCENARIOS).forEach((scenario) => {
+  scenario.charts.solarAllocation = [
+    cloneSeries(findSeries(scenario.charts.routeDetail, "PV To Load")),
+    cloneSeries(findSeries(scenario.charts.routeDetail, "PV To Battery")),
+    cloneSeries(findSeries(scenario.charts.routeDetail, "PV To Grid")),
+  ];
+  scenario.charts.loadSources = [
+    cloneSeries(findSeries(scenario.charts.routeDetail, "PV To Load")),
+    cloneSeries(findSeries(scenario.charts.routeDetail, "Battery To Load")),
+    cloneSeries(findSeries(scenario.charts.routeDetail, "Grid To Load")),
+  ];
+  scenario.charts.gridExchange = [
+    cloneSeries(findSeries(scenario.charts.powerBalance, "Grid"), "Grid Net"),
+    cloneSeries(findSeries(scenario.charts.routeDetail, "Grid To Load")),
+    cloneSeries(findSeries(scenario.charts.routeDetail, "PV To Grid")),
+  ];
+  scenario.charts.batteryFlow = [
+    cloneSeries(findSeries(scenario.charts.powerBalance, "Battery"), "Battery Power"),
+    cloneSeries(findSeries(scenario.charts.routeDetail, "PV To Battery"), "Charge"),
+    cloneSeries(findSeries(scenario.charts.routeDetail, "Battery To Load"), "Discharge"),
+  ];
+});
+
 init();
 
 function init() {
@@ -240,9 +263,12 @@ function renderView(state, scenario) {
   trends.innerHTML = `
     <div class="trends-grid">
       ${renderChartCard("Power Balance", "kW", scenario.charts.powerBalance)}
-      ${renderChartCard("Battery", "%", scenario.charts.battery)}
+      ${renderChartCard("Solar Allocation", "kW", scenario.charts.solarAllocation)}
+      ${renderChartCard("Load Sources", "kW", scenario.charts.loadSources)}
+      ${renderChartCard("Grid Exchange", "kW", scenario.charts.gridExchange)}
+      ${renderChartCard("Battery Flow", "kW", scenario.charts.batteryFlow)}
+      ${renderChartCard("Battery SOC", "%", scenario.charts.battery)}
       ${renderChartCard("Daily Energy", "kWh", scenario.charts.dailyEnergy)}
-      ${renderChartCard("Route Detail", "kW", scenario.charts.routeDetail)}
     </div>
   `;
   root.appendChild(trends);
@@ -636,6 +662,22 @@ function series(name, values) {
     values,
     color: SERIES_COLORS[name] || "#ffffff",
   };
+}
+
+function cloneSeries(seriesDef, nameOverride) {
+  return {
+    name: nameOverride || seriesDef.name,
+    values: [...seriesDef.values],
+    color: SERIES_COLORS[nameOverride || seriesDef.name] || seriesDef.color || "#ffffff",
+  };
+}
+
+function findSeries(seriesList, name) {
+  const found = seriesList.find((seriesDef) => seriesDef.name === name);
+  if (!found) {
+    throw new Error(`Missing series ${name}`);
+  }
+  return found;
 }
 
 function formatFixed(value) {

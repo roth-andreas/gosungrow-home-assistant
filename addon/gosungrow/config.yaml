@@ -1,5 +1,5 @@
 name: GoSungrow
-version: 3.0.7-haos52
+version: 3.0.7-haos53
 slug: gosungrow
 url: https://github.com/roth-andreas/gosungrow-home-assistant
 image: ghcr.io/roth-andreas/gosungrow-addon-{arch}
