@@ -59,6 +59,65 @@ views:
             name: Battery SOC
             icon: mdi:battery-medium
 
+      - type: grid
+        cards:
+          - type: heading
+            heading: Power Balance
+            icon: mdi:chart-line
+          - type: history-graph
+            layout_options:
+              grid_columns: full
+              grid_rows: 4
+            hours_to_show: 24
+            refresh_interval: 60
+            entities:
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_power
+                name: PV
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_load_power
+                name: Load
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_power
+                name: Grid
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_power
+                name: Battery
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Battery
+            icon: mdi:battery-high
+          - type: history-graph
+            layout_options:
+              grid_columns: full
+              grid_rows: 4
+            hours_to_show: 24
+            refresh_interval: 120
+            entities:
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13141
+                name: Battery SOC
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Daily Energy
+            icon: mdi:chart-areaspline
+          - type: history-graph
+            layout_options:
+              grid_columns: full
+              grid_rows: 4
+            hours_to_show: 24
+            refresh_interval: 300
+            entities:
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13112
+                name: PV Yield
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13116
+                name: PV To Load
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13174
+                name: PV To Battery
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13173
+                name: Feed-in
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13147
+                name: Grid Import
+
   - title: Trends
     path: trends
     icon: mdi:chart-line
