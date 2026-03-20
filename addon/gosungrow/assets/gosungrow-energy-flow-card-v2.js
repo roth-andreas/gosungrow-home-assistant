@@ -53,16 +53,17 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
     }
 
     const compact = this._isCompact();
+    this._compact = compact;
     const layout = this._layout(compact);
     const flows = this._flowDisplays();
     const nodes = this._nodeDisplays(flows);
 
     const edgeMarkup = Object.entries(layout.edges)
-      .map(([key, edge]) => this._renderEdge(edge, flows[key]))
+      .map(([key, edge]) => this._renderEdge(key, edge, flows[key]))
       .join("");
 
     const edgeLabels = Object.entries(layout.edges)
-      .map(([key, edge]) => this._renderEdgeLabel(edge, flows[key]))
+      .map(([key, edge]) => this._renderEdgeLabel(key, edge, flows[key]))
       .join("");
 
     const nodeMarkup = Object.entries(layout.nodes)
@@ -351,51 +352,51 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
     if (compact) {
       return {
         width: 700,
-        height: 438,
-        radius: 48,
+        height: 560,
+        radius: 40,
         nodes: {
-          solar: { x: 350, y: 82, label: "PV", ringClass: "solar-ring", labelY: 148, powerChip: { x: 350, y: 30, className: "node-chip-solar" } },
-          grid: { x: 126, y: 216, label: "Grid", ringClass: "grid-ring", labelY: 282, powerChip: { x: 80, y: 216, className: "node-chip-grid" } },
-          home: { x: 574, y: 216, label: "Home", ringClass: "home-ring", labelY: 282, powerChip: { x: 620, y: 216, className: "node-chip-home" } },
-          battery: { x: 350, y: 352, label: "Battery", ringClass: "battery-ring", labelY: 426, powerChip: { x: 350, y: 298, className: "node-chip-battery" }, socChip: { x: 350, y: 412, className: "node-chip-soc" } },
+          solar: { x: 350, y: 122, label: "PV", ringClass: "solar-ring", labelY: 182, powerChip: { x: 350, y: 40, className: "node-chip-solar" } },
+          grid: { x: 154, y: 286, label: "Grid", ringClass: "grid-ring", labelY: 350, powerChip: { x: 94, y: 286, className: "node-chip-grid" } },
+          home: { x: 546, y: 286, label: "Home", ringClass: "home-ring", labelY: 350, powerChip: { x: 606, y: 286, className: "node-chip-home" } },
+          battery: { x: 350, y: 442, label: "Battery", ringClass: "battery-ring", labelY: 516, powerChip: { x: 350, y: 366, className: "node-chip-battery" }, socChip: { x: 350, y: 492, className: "node-chip-soc" } },
         },
         edges: {
           pv_to_grid_power: {
-            path: "M322 118 C278 138 226 166 174 198",
-            labelX: 258,
-            labelY: 164,
+            path: "M324 158 C288 182 246 216 198 258",
+            labelX: 272,
+            labelY: 216,
             edgeClass: "edge-solar-grid",
             pillClass: "pill-solar-grid",
             dotDur: "4.6s",
           },
           pv_to_load_power: {
-            path: "M378 118 C422 138 474 166 526 198",
-            labelX: 442,
-            labelY: 164,
+            path: "M376 158 C414 182 456 216 502 258",
+            labelX: 428,
+            labelY: 216,
             edgeClass: "edge-solar-home",
             pillClass: "pill-solar-home",
             dotDur: "4.2s",
           },
           pv_to_battery_power: {
-            path: "M350 130 C350 184 350 238 350 298",
+            path: "M350 164 C350 236 350 306 350 396",
             labelX: 350,
-            labelY: 224,
+            labelY: 286,
             edgeClass: "edge-solar-battery",
             pillClass: "pill-solar-battery",
             dotDur: "4.8s",
           },
           grid_to_load_power: {
-            path: "M180 216 C274 214 426 214 520 216",
+            path: "M200 286 C284 284 416 284 500 286",
             labelX: 350,
-            labelY: 254,
+            labelY: 258,
             edgeClass: "edge-grid-home",
             pillClass: "pill-grid-home",
             dotDur: "4.4s",
           },
           battery_to_load_power: {
-            path: "M386 324 C432 292 482 252 536 220",
-            labelX: 452,
-            labelY: 300,
+            path: "M384 404 C426 366 470 326 516 286",
+            labelX: 454,
+            labelY: 352,
             edgeClass: "edge-battery-home",
             pillClass: "pill-battery-home",
             dotDur: "4.9s",
@@ -406,51 +407,51 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
 
     return {
       width: 940,
-      height: 320,
+      height: 340,
       radius: 38,
       nodes: {
-          solar: { x: 470, y: 58, label: "PV", ringClass: "solar-ring", labelY: 120, powerChip: { x: 470, y: 30, className: "node-chip-solar" } },
-          grid: { x: 272, y: 152, label: "Grid", ringClass: "grid-ring", labelY: 214, powerChip: { x: 228, y: 152, className: "node-chip-grid" } },
-          home: { x: 668, y: 152, label: "Home", ringClass: "home-ring", labelY: 214, powerChip: { x: 712, y: 152, className: "node-chip-home" } },
-          battery: { x: 470, y: 220, label: "Battery", ringClass: "battery-ring", labelY: 308, powerChip: { x: 470, y: 172, className: "node-chip-battery" }, socChip: { x: 470, y: 280, className: "node-chip-soc" } },
+          solar: { x: 470, y: 74, label: "PV", ringClass: "solar-ring", labelY: 136, powerChip: { x: 470, y: 20, className: "node-chip-solar" } },
+          grid: { x: 272, y: 164, label: "Grid", ringClass: "grid-ring", labelY: 226, powerChip: { x: 192, y: 164, className: "node-chip-grid" } },
+          home: { x: 668, y: 164, label: "Home", ringClass: "home-ring", labelY: 226, powerChip: { x: 748, y: 164, className: "node-chip-home" } },
+          battery: { x: 470, y: 244, label: "Battery", ringClass: "battery-ring", labelY: 328, powerChip: { x: 470, y: 180, className: "node-chip-battery" }, socChip: { x: 470, y: 300, className: "node-chip-soc" } },
       },
       edges: {
         pv_to_grid_power: {
-          path: "M442 88 C398 102 350 122 306 146",
-          labelX: 390,
-          labelY: 124,
+          path: "M442 104 C398 116 350 136 306 158",
+          labelX: 386,
+          labelY: 128,
           edgeClass: "edge-solar-grid",
           pillClass: "pill-solar-grid",
           dotDur: "4.6s",
         },
         pv_to_load_power: {
-          path: "M498 88 C542 102 590 122 634 146",
-          labelX: 550,
-          labelY: 124,
+          path: "M498 104 C542 116 590 136 634 158",
+          labelX: 554,
+          labelY: 128,
           edgeClass: "edge-solar-home",
           pillClass: "pill-solar-home",
           dotDur: "4.2s",
         },
         pv_to_battery_power: {
-          path: "M470 96 C470 132 470 170 470 208",
+          path: "M470 112 C470 150 470 190 470 226",
           labelX: 470,
-          labelY: 154,
+          labelY: 160,
           edgeClass: "edge-solar-battery",
           pillClass: "pill-solar-battery",
           dotDur: "4.8s",
         },
         grid_to_load_power: {
-          path: "M316 152 C392 150 548 150 624 152",
+          path: "M316 164 C392 162 548 162 624 164",
           labelX: 470,
-          labelY: 186,
+          labelY: 168,
           edgeClass: "edge-grid-home",
           pillClass: "pill-grid-home",
           dotDur: "4.4s",
         },
         battery_to_load_power: {
-          path: "M500 192 C544 176 586 164 630 156",
-          labelX: 564,
-          labelY: 200,
+          path: "M500 214 C544 196 586 182 630 168",
+          labelX: 570,
+          labelY: 208,
           edgeClass: "edge-battery-home",
           pillClass: "pill-battery-home",
           dotDur: "4.9s",
@@ -518,7 +519,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
     };
   }
 
-  _renderEdge(edge, display) {
+  _renderEdge(key, edge, display) {
     const magnitude = Math.abs(display.numericValue);
     const active = magnitude > 0.01;
     const width = active ? 3.4 + Math.min(magnitude, 6) * 1.2 : 2.4;
@@ -526,9 +527,9 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
     const color = this._edgeColor(edge.edgeClass);
 
     return `
-      <path class="edge-base" d="${edge.path}"></path>
-      <path class="edge-active ${edge.edgeClass}" d="${edge.path}" style="stroke-width:${width};opacity:${opacity};"></path>
-      <g class="edge-dot${active ? " active" : ""}">
+      <path class="edge-base" data-edge="${key}" d="${edge.path}"></path>
+      <path class="edge-active ${edge.edgeClass}" data-edge="${key}" d="${edge.path}" style="stroke-width:${width};opacity:${opacity};"></path>
+      <g class="edge-dot${active ? " active" : ""}" data-edge="${key}">
         <circle r="${Math.max(4.5, width * 0.9)}" fill="${color}">
           <animateMotion dur="${edge.dotDur || "4.5s"}" repeatCount="indefinite" rotate="auto" path="${edge.path}" keyPoints="0;1" keyTimes="0;1"></animateMotion>
         </circle>
@@ -536,14 +537,17 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
     `;
   }
 
-  _renderEdgeLabel(edge, display) {
+  _renderEdgeLabel(key, edge, display) {
+    if (this._compact) {
+      return "";
+    }
     const active = Math.abs(display.numericValue) > 0.01;
     if (!active) {
       return "";
     }
     const width = Math.max(62, display.formatted.length * 6.8);
     return `
-      <g class="route-pill ${edge.pillClass}" transform="translate(${edge.labelX} ${edge.labelY})">
+      <g class="route-pill ${edge.pillClass}" data-edge="${key}" transform="translate(${edge.labelX} ${edge.labelY})">
         <rect x="${-width / 2}" y="-11" width="${width}" height="22" rx="11"></rect>
         <text x="0" y="1">${this._escape(display.formatted)}</text>
       </g>
@@ -557,28 +561,28 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
     const iconMarkup = this._renderIcon(key, iconLayout.x, iconLayout.y, iconLayout.scale);
     const batterySoc = displays.batterySoc;
     const chips = [
-      this._renderNodeChip(node.powerChip, displays[key].formatted),
-      key === "battery" ? this._renderNodeChip(node.socChip, batterySoc.formatted) : "",
+      this._renderNodeChip(key, "power", node.powerChip, displays[key].formatted),
+      key === "battery" ? this._renderNodeChip(key, "soc", node.socChip, batterySoc.formatted) : "",
     ].join("");
     return `
-      <g class="node-button" ${entityId ? `data-entity="${this._escape(entityId)}"` : `role="presentation"`}>
+      <g class="node-button" data-node="${key}" ${entityId ? `data-entity="${this._escape(entityId)}"` : `role="presentation"`}>
         <circle class="node-hit" cx="${node.x}" cy="${node.y}" r="${radius + 18}"></circle>
         <circle class="node-ring ${node.ringClass}" cx="${node.x}" cy="${node.y}" r="${radius}"></circle>
         <circle class="node-fill" cx="${node.x}" cy="${node.y}" r="${radius - 2}"></circle>
         ${iconMarkup}
-        <text class="node-label" x="${node.x}" y="${node.labelY}">${this._escape(node.label)}</text>
+        <text class="node-label" data-node-label="${key}" x="${node.x}" y="${node.labelY}">${this._escape(node.label)}</text>
       </g>
       ${chips}
     `;
   }
 
-  _renderNodeChip(chip, text) {
+  _renderNodeChip(nodeKey, chipType, chip, text) {
     if (!chip || !text) {
       return "";
     }
     const width = Math.max(72, text.length * 7.2);
     return `
-      <g class="node-chip ${chip.className}" transform="translate(${chip.x} ${chip.y})">
+      <g class="node-chip ${chip.className}" data-node="${nodeKey}" data-chip="${chipType}" transform="translate(${chip.x} ${chip.y})">
         <rect x="${-width / 2}" y="-13" width="${width}" height="26" rx="13"></rect>
         <text x="0" y="1">${this._escape(text)}</text>
       </g>

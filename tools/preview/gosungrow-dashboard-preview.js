@@ -156,6 +156,7 @@ function init() {
     view: params.get("view") || "overview",
     device: params.get("device") || "desktop",
     chrome: params.get("chrome") !== "0",
+    inspect: params.get("inspect") === "1",
   };
 
   populateControls(state);
@@ -195,6 +196,16 @@ function render(state) {
   const scenario = SCENARIOS[state.scenario];
   app.innerHTML = "";
   app.appendChild(renderView(state, scenario));
+
+  if (state.inspect) {
+    window.setTimeout(() => {
+      try {
+        writeInspectionReport(state, scenario);
+      } catch (error) {
+        writeInspectionFailure(state, error);
+      }
+    }, 200);
+  }
 }
 
 function renderView(state, scenario) {
@@ -258,6 +269,232 @@ function mountFlowCard(container, device, scenario) {
   card._isCompact = () => device === "mobile";
   card.hass = buildHass(scenario);
   container.appendChild(card);
+}
+
+function writeInspectionReport(state, scenario) {
+  const flowCard = document.querySelector("gosungrow-energy-flow-card-v2");
+  const report = inspectFlowCard(flowCard, state, scenario);
+  const existing = document.getElementById("inspect-report");
+  if (existing) {
+    existing.remove();
+  }
+  const script = document.createElement("script");
+  script.type = "application/json";
+  script.id = "inspect-report";
+  script.textContent = JSON.stringify(report, null, 2);
+  document.body.appendChild(script);
+}
+
+function writeInspectionFailure(state, error) {
+  const existing = document.getElementById("inspect-report");
+  if (existing) {
+    existing.remove();
+  }
+  const script = document.createElement("script");
+  script.type = "application/json";
+  script.id = "inspect-report";
+  script.textContent = JSON.stringify({
+    ok: false,
+    scenario: state.scenario,
+    device: state.device,
+    view: state.view,
+    warnings: [],
+    errors: [error?.message || String(error)],
+  }, null, 2);
+  document.body.appendChild(script);
+}
+
+function inspectFlowCard(card, state, scenario) {
+  const shadow = card?.shadowRoot;
+  const svg = shadow?.querySelector("svg");
+  if (!svg) {
+    return {
+      ok: false,
+      scenario: state.scenario,
+      device: state.device,
+      view: state.view,
+      errors: ["SVG not found"],
+      warnings: [],
+      metrics: {},
+    };
+  }
+
+  const svgBounds = absoluteBox(svg);
+  const nodes = collectNodes(shadow);
+  const chips = collectChips(shadow);
+  const routePills = collectRoutePills(shadow, svg);
+  const warnings = [];
+
+  chips.forEach((chip) => {
+    if (outside(chip.box, svgBounds, 0)) {
+      warnings.push(`${chip.id} is outside the stage bounds`);
+    }
+  });
+
+  routePills.forEach((pill) => {
+    if (outside(pill.box, svgBounds, 0)) {
+      warnings.push(`${pill.id} is outside the stage bounds`);
+    }
+  });
+
+  Object.values(nodes).forEach((node) => {
+    if (outside(node.labelBox, svgBounds, 0)) {
+      warnings.push(`${node.id} label is outside the stage bounds`);
+    }
+  });
+
+  chips.forEach((chip) => {
+    Object.values(nodes).forEach((node) => {
+      if (node.id !== chip.node && intersects(chip.box, node.circleBox, 3)) {
+        warnings.push(`${chip.id} overlaps ${node.id} circle`);
+      }
+      if (node.id !== chip.node && intersects(chip.box, node.labelBox, 1)) {
+        warnings.push(`${chip.id} overlaps ${node.id} label`);
+      }
+    });
+  });
+
+  routePills.forEach((pill) => {
+    Object.values(nodes).forEach((node) => {
+      if (intersects(pill.box, node.circleBox, 3)) {
+        warnings.push(`${pill.id} overlaps ${node.id} circle`);
+      }
+      if (intersects(pill.box, node.labelBox, 1)) {
+        warnings.push(`${pill.id} overlaps ${node.id} label`);
+      }
+    });
+  });
+
+  for (let index = 0; index < chips.length; index += 1) {
+    for (let inner = index + 1; inner < chips.length; inner += 1) {
+      if (intersects(chips[index].box, chips[inner].box, 2)) {
+        warnings.push(`${chips[index].id} overlaps ${chips[inner].id}`);
+      }
+    }
+  }
+
+  for (let index = 0; index < routePills.length; index += 1) {
+    for (let inner = index + 1; inner < routePills.length; inner += 1) {
+      if (intersects(routePills[index].box, routePills[inner].box, 2)) {
+        warnings.push(`${routePills[index].id} overlaps ${routePills[inner].id}`);
+      }
+    }
+  }
+
+  routePills.forEach((pill) => {
+    if (pill.path) {
+      const midpoint = pointOnScreen(pill.path, pill.path.getTotalLength() * 0.5);
+      const center = centerOf(pill.box);
+      const distance = Math.hypot(center.x - midpoint.x, center.y - midpoint.y);
+      if (distance > 34) {
+        warnings.push(`${pill.id} is too far from its edge midpoint (${distance.toFixed(1)})`);
+      }
+    }
+  });
+
+  return {
+    ok: warnings.length === 0,
+    scenario: state.scenario,
+    device: state.device,
+    view: state.view,
+    warnings,
+    metrics: {
+      nodeChips: chips.map((chip) => ({ id: chip.id, box: roundBox(chip.box) })),
+      routePills: routePills.map((pill) => ({ id: pill.id, box: roundBox(pill.box) })),
+    },
+  };
+}
+
+function collectNodes(shadow) {
+  const nodes = {};
+  shadow.querySelectorAll(".node-button[data-node]").forEach((group) => {
+    const id = group.getAttribute("data-node");
+    const circle = group.querySelector(".node-ring");
+    const label = group.querySelector(`.node-label[data-node-label="${id}"]`);
+    nodes[id] = {
+      id,
+      circleBox: absoluteBox(circle),
+      labelBox: absoluteBox(label),
+    };
+  });
+  return nodes;
+}
+
+function collectChips(shadow) {
+  return Array.from(shadow.querySelectorAll(".node-chip[data-node][data-chip]")).map((group) => ({
+    id: `${group.getAttribute("data-node")}-${group.getAttribute("data-chip")}`,
+    node: group.getAttribute("data-node"),
+    chipType: group.getAttribute("data-chip"),
+    box: absoluteBox(group),
+  }));
+}
+
+function collectRoutePills(shadow, svg) {
+  return Array.from(shadow.querySelectorAll(".route-pill[data-edge]")).map((group) => {
+    const edgeId = group.getAttribute("data-edge");
+    return {
+      id: edgeId,
+      edge: edgeId,
+      box: absoluteBox(group),
+      path: svg.querySelector(`.edge-active[data-edge="${edgeId}"]`),
+    };
+  });
+}
+
+function absoluteBox(element) {
+  const rect = element.getBoundingClientRect();
+  return {
+    x: rect.left,
+    y: rect.top,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+function pointOnScreen(path, length) {
+  const point = path.getPointAtLength(length);
+  const matrix = path.getScreenCTM();
+  if (!matrix) {
+    return { x: point.x, y: point.y };
+  }
+  return {
+    x: matrix.a * point.x + matrix.c * point.y + matrix.e,
+    y: matrix.b * point.x + matrix.d * point.y + matrix.f,
+  };
+}
+
+function intersects(a, b, margin = 0) {
+  return !(
+    a.x + a.width + margin <= b.x ||
+    b.x + b.width + margin <= a.x ||
+    a.y + a.height + margin <= b.y ||
+    b.y + b.height + margin <= a.y
+  );
+}
+
+function outside(box, bounds, margin = 0) {
+  return (
+    box.x < bounds.x + margin ||
+    box.y < bounds.y + margin ||
+    box.x + box.width > bounds.x + bounds.width - margin ||
+    box.y + box.height > bounds.y + bounds.height - margin
+  );
+}
+
+function centerOf(box) {
+  return {
+    x: box.x + box.width / 2,
+    y: box.y + box.height / 2,
+  };
+}
+
+function roundBox(box) {
+  return {
+    x: Number(box.x.toFixed(1)),
+    y: Number(box.y.toFixed(1)),
+    width: Number(box.width.toFixed(1)),
+    height: Number(box.height.toFixed(1)),
+  };
 }
 
 function buildHass(scenario) {
