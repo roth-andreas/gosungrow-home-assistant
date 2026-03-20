@@ -369,13 +369,13 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
 
     return {
       width: 940,
-      height: 300,
+      height: 320,
       radius: 38,
       nodes: {
         solar: { x: 470, y: 58, label: "PV", ringClass: "solar-ring" },
         grid: { x: 272, y: 152, label: "Grid", ringClass: "grid-ring" },
         home: { x: 668, y: 152, label: "Home", ringClass: "home-ring" },
-        battery: { x: 470, y: 244, label: "Battery", ringClass: "battery-ring" },
+        battery: { x: 470, y: 236, label: "Battery", ringClass: "battery-ring" },
       },
       edges: {
         pv_to_grid_power: {
@@ -411,9 +411,9 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
           dotDur: "4.4s",
         },
         battery_to_load_power: {
-          path: "M500 216 C544 198 586 178 630 160",
+          path: "M500 208 C544 190 586 170 630 160",
           labelX: 570,
-          labelY: 210,
+          labelY: 202,
           edgeClass: "edge-battery-home",
           pillClass: "pill-battery-home",
           dotDur: "4.9s",

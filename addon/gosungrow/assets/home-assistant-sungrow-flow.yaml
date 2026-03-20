@@ -83,25 +83,17 @@ views:
       - type: grid
         cards:
           - type: heading
-            heading: Flow Paths
-            icon: mdi:transit-connection-variant
+            heading: Battery
+            icon: mdi:battery-high
           - type: history-graph
             layout_options:
               grid_columns: full
               grid_rows: 5
             hours_to_show: 24
-            refresh_interval: 60
+            refresh_interval: 120
             entities:
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_load_power
-                name: PV to Load
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_battery_power
-                name: PV to Battery
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_grid_power
-                name: PV to Grid
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_to_load_power
-                name: Battery to Load
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_to_load_power
-                name: Grid to Load
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13141
+                name: Battery SOC
 
       - type: grid
         cards:
