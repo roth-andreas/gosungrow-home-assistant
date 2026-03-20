@@ -362,7 +362,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         },
         edges: {
           pv_to_grid_power: {
-            path: "M324 158 C288 182 246 216 198 258",
+            path: "M323 145 Q264 195 182 263",
             labelX: 272,
             labelY: 216,
             edgeClass: "edge-solar-grid",
@@ -370,7 +370,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
             dotDur: "4.6s",
           },
           pv_to_load_power: {
-            path: "M376 158 C414 182 456 216 502 258",
+            path: "M377 145 Q436 195 518 263",
             labelX: 428,
             labelY: 216,
             edgeClass: "edge-solar-home",
@@ -386,7 +386,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
             dotDur: "4.8s",
           },
           grid_to_load_power: {
-            path: "M200 286 C284 284 416 284 500 286",
+            path: "M194 286 L506 286",
             labelX: 350,
             labelY: 258,
             edgeClass: "edge-grid-home",
@@ -394,7 +394,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
             dotDur: "4.4s",
           },
           battery_to_load_power: {
-            path: "M384 404 C426 366 470 326 516 286",
+            path: "M378 420 Q447 356 518 308",
             labelX: 454,
             labelY: 352,
             edgeClass: "edge-battery-home",
@@ -417,7 +417,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
       },
       edges: {
         pv_to_grid_power: {
-          path: "M442 104 C398 116 350 136 306 158",
+          path: "M439 88 Q381 100 303 150",
           labelX: 386,
           labelY: 128,
           edgeClass: "edge-solar-grid",
@@ -425,7 +425,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
           dotDur: "4.6s",
         },
         pv_to_load_power: {
-          path: "M498 104 C542 116 590 136 634 158",
+          path: "M501 88 Q559 100 637 150",
           labelX: 554,
           labelY: 128,
           edgeClass: "edge-solar-home",
@@ -441,7 +441,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
           dotDur: "4.8s",
         },
         grid_to_load_power: {
-          path: "M316 164 C392 162 548 162 624 164",
+          path: "M310 164 L630 164",
           labelX: 470,
           labelY: 168,
           edgeClass: "edge-grid-home",
@@ -449,7 +449,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
           dotDur: "4.4s",
         },
         battery_to_load_power: {
-          path: "M500 214 C544 196 586 182 630 168",
+          path: "M501 231 Q569 192 637 178",
           labelX: 570,
           labelY: 208,
           edgeClass: "edge-battery-home",
@@ -522,8 +522,8 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
   _renderEdge(key, edge, display) {
     const magnitude = Math.abs(display.numericValue);
     const active = magnitude > 0.01;
-    const width = active ? 3.4 + Math.min(magnitude, 6) * 1.2 : 2.4;
-    const opacity = active ? 0.96 : 0.12;
+    const width = active ? 3.4 + Math.min(magnitude, 6) * 1.2 : 0;
+    const opacity = active ? 0.96 : 0;
     const color = this._edgeColor(edge.edgeClass);
 
     return `
