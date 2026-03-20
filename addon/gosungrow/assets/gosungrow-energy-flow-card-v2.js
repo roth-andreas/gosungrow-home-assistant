@@ -219,8 +219,8 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
 
         .node-label {
           fill: var(--secondary-text-color);
-          font-size: 12px;
-          font-weight: 500;
+          font-size: 11px;
+          font-weight: 450;
           text-anchor: middle;
         }
 
@@ -478,7 +478,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
     const radius = this._layout().radius;
     const entityId = this._entityIdForNode(key);
     const display = displays[key];
-    const labelY = node.y + radius + 16;
+    const labelY = node.y + radius + 22;
     const iconLayout = this._iconLayout(key, node);
     const iconMarkup = this._renderIcon(key, iconLayout.x, iconLayout.y, iconLayout.scale);
     const valueY = key === "battery" ? node.y + 12 : node.y + 14;
