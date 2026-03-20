@@ -64,6 +64,49 @@ views:
 	}
 }
 
+func TestRenderDashboardConfigPreservesMultiplePrototypeViews(t *testing.T) {
+	templateDir := t.TempDir()
+	templatePath := filepath.Join(templateDir, dashboardTemplateFile)
+
+	template := `title: Template
+views:
+  - title: Overview
+    path: overview
+    cards:
+      - type: tile
+        entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13112
+  - title: Trends
+    path: trends
+    cards:
+      - type: tile
+        entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13141
+`
+	if err := os.WriteFile(templatePath, []byte(template), 0600); err != nil {
+		t.Fatalf("write template: %v", err)
+	}
+
+	config, err := renderDashboardConfig(templatePath, "GoSungrow Flow", []haDashboardTarget{
+		{PsID: "100", PsKey: "5072099_14_1_1", ViewTitle: "Roof", ViewPath: "roof"},
+	})
+	if err != nil {
+		t.Fatalf("renderDashboardConfig: %v", err)
+	}
+
+	views, ok := config["views"].([]any)
+	if !ok || len(views) != 2 {
+		t.Fatalf("expected 2 generated views, got %#v", config["views"])
+	}
+
+	firstView := views[0].(map[string]any)
+	secondView := views[1].(map[string]any)
+	if firstView["title"] != "Overview" || firstView["path"] != "overview" {
+		t.Fatalf("unexpected first view metadata: %#v", firstView)
+	}
+	if secondView["title"] != "Trends" || secondView["path"] != "trends" {
+		t.Fatalf("unexpected second view metadata: %#v", secondView)
+	}
+}
+
 func TestDashboardStateRoundTripAndCanonicalHash(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("GOSUNGROW_CONFIG", configPath)
@@ -310,6 +353,11 @@ func TestBundledDashboardTemplateRenders(t *testing.T) {
 	rendered, err := json.Marshal(config)
 	if err != nil {
 		t.Fatalf("marshal bundled dashboard: %v", err)
+	}
+
+	views, ok := config["views"].([]any)
+	if !ok || len(views) != 2 {
+		t.Fatalf("expected bundled dashboard to render 2 views, got %#v", config["views"])
 	}
 
 	text := string(rendered)

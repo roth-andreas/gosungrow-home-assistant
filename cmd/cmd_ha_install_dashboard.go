@@ -291,7 +291,14 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		return err
 	}
 
-	fmt.Printf("Managed GoSungrow dashboard ready at /%s with %d view(s).\n", opts.DashboardURLPath, len(targets))
+	viewCount := 0
+	if views, ok := config["views"].([]any); ok {
+		viewCount = len(views)
+	}
+	if viewCount == 0 {
+		viewCount = len(targets)
+	}
+	fmt.Printf("Managed GoSungrow dashboard ready at /%s with %d view(s).\n", opts.DashboardURLPath, viewCount)
 	return nil
 }
 
@@ -392,20 +399,37 @@ func renderDashboardConfig(templatePath string, dashboardTitle string, targets [
 		return nil, fmt.Errorf("dashboard template %q does not contain any views", templatePath)
 	}
 
-	generatedViews := make([]any, 0, len(targets))
+	generatedViews := make([]any, 0, len(targets)*len(rawViews))
 	for _, target := range targets {
-		view, err := deepCopyJSONValue(rawViews[0])
-		if err != nil {
-			return nil, err
+		for _, rawView := range rawViews {
+			view, err := deepCopyJSONValue(rawView)
+			if err != nil {
+				return nil, err
+			}
+			view = replaceDashboardPlaceholder(view, "YOUR_ESS_PS_KEY", target.PsKey)
+			viewMap, ok := view.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("dashboard view prototype has unexpected type %T", view)
+			}
+
+			if len(rawViews) == 1 {
+				viewMap["title"] = target.ViewTitle
+				viewMap["path"] = target.ViewPath
+			} else if len(targets) > 1 {
+				prototypeTitle := cleanDashboardLabel(fmt.Sprint(viewMap["title"]))
+				if prototypeTitle == "" {
+					prototypeTitle = "View"
+				}
+				prototypePath := dashboardSlug(fmt.Sprint(viewMap["path"]))
+				if prototypePath == "" {
+					prototypePath = dashboardSlug(prototypeTitle)
+				}
+				viewMap["title"] = fmt.Sprintf("%s %s", target.ViewTitle, prototypeTitle)
+				viewMap["path"] = dashboardSlug(fmt.Sprintf("%s-%s", target.ViewPath, prototypePath))
+			}
+
+			generatedViews = append(generatedViews, viewMap)
 		}
-		view = replaceDashboardPlaceholder(view, "YOUR_ESS_PS_KEY", target.PsKey)
-		viewMap, ok := view.(map[string]any)
-		if !ok {
-			return nil, fmt.Errorf("dashboard view prototype has unexpected type %T", view)
-		}
-		viewMap["title"] = target.ViewTitle
-		viewMap["path"] = target.ViewPath
-		generatedViews = append(generatedViews, viewMap)
 	}
 
 	template["title"] = dashboardTitle

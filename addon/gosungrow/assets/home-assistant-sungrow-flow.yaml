@@ -1,7 +1,7 @@
 title: GoSungrow Flow
 views:
-  - title: System
-    path: system
+  - title: Overview
+    path: overview
     icon: mdi:solar-power
     type: sections
     max_columns: 3
@@ -16,7 +16,7 @@ views:
           - type: custom:gosungrow-energy-flow-card-v2
             layout_options:
               grid_columns: full
-              grid_rows: 5
+              grid_rows: 6
             entities:
               solar_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_power
               load_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_load_power
@@ -59,6 +59,13 @@ views:
             name: Battery SOC
             icon: mdi:battery-medium
 
+  - title: Trends
+    path: trends
+    icon: mdi:chart-line
+    type: sections
+    max_columns: 2
+    dense_section_placement: true
+    sections:
       - type: grid
         cards:
           - type: heading
@@ -117,3 +124,26 @@ views:
                 name: Feed-in
               - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13147
                 name: Grid Import
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Route Detail
+            icon: mdi:transit-connection-variant
+          - type: history-graph
+            layout_options:
+              grid_columns: full
+              grid_rows: 5
+            hours_to_show: 24
+            refresh_interval: 60
+            entities:
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_load_power
+                name: PV to Load
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_battery_power
+                name: PV to Battery
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_grid_power
+                name: PV to Grid
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_to_load_power
+                name: Battery to Load
+              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_to_load_power
+                name: Grid to Load
