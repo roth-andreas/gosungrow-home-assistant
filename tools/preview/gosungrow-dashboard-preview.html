@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GoSungrow Dashboard Preview</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --ha-bg: #111214;
+        --ha-surface: #18191c;
+        --ha-card: #1d1f22;
+        --ha-card-border: rgba(255, 255, 255, 0.08);
+        --ha-text: #f3f4f6;
+        --ha-text-soft: #b8bcc5;
+        --ha-section: #f7f7f8;
+        --ha-grid-gap: 22px;
+        --primary-text-color: #f3f4f6;
+        --secondary-text-color: #b8bcc5;
+        --card-background-color: #252628;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        background: var(--ha-bg);
+        color: var(--ha-text);
+      }
+
+      .toolbar {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: flex;
+        gap: 12px;
+        align-items: end;
+        padding: 14px 18px;
+        background: rgba(17, 18, 20, 0.96);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        backdrop-filter: blur(8px);
+      }
+
+      .toolbar.hidden {
+        display: none;
+      }
+
+      .control {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .control label {
+        font-size: 12px;
+        color: var(--ha-text-soft);
+      }
+
+      .control select,
+      .control button {
+        min-width: 160px;
+        height: 36px;
+        padding: 0 12px;
+        font: inherit;
+        color: var(--ha-text);
+        background: #222428;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+      }
+
+      .control button {
+        min-width: 120px;
+        cursor: pointer;
+      }
+
+      .preview-shell {
+        padding: 22px 26px 30px;
+      }
+
+      .preview-shell.mobile {
+        max-width: 420px;
+        margin: 0 auto;
+        padding: 14px 8px 24px;
+      }
+
+      .view-title {
+        margin: 4px 0 18px;
+        font-size: 24px;
+        font-weight: 700;
+      }
+
+      .overview-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 2.2fr) minmax(320px, 1fr);
+        gap: var(--ha-grid-gap);
+        align-items: start;
+      }
+
+      .today-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .charts-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: var(--ha-grid-gap);
+        margin-top: var(--ha-grid-gap);
+      }
+
+      .trends-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--ha-grid-gap);
+      }
+
+      .section-card,
+      .tile-card,
+      .chart-card {
+        background: var(--ha-card);
+        border: 1px solid var(--ha-card-border);
+        border-radius: 16px;
+      }
+
+      .section-card {
+        padding: 12px;
+      }
+
+      .section-heading {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 2px 2px 12px;
+        color: var(--ha-section);
+        font-size: 15px;
+        font-weight: 600;
+      }
+
+      .tile-card {
+        min-height: 70px;
+        padding: 14px 16px 12px;
+      }
+
+      .tile-label {
+        font-size: 12px;
+        color: var(--ha-text-soft);
+        margin-bottom: 6px;
+      }
+
+      .tile-value {
+        font-size: 20px;
+        font-weight: 700;
+      }
+
+      .chart-card {
+        padding: 14px 16px 12px;
+      }
+
+      .chart-title {
+        margin-bottom: 10px;
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--ha-section);
+      }
+
+      .chart-frame {
+        display: block;
+        width: 100%;
+        height: auto;
+        background: #181a1d;
+        border-radius: 12px;
+      }
+
+      .chart-gridline {
+        stroke: rgba(255, 255, 255, 0.08);
+        stroke-width: 1;
+      }
+
+      .chart-axis {
+        fill: #c9ccd3;
+        font-size: 10px;
+        font-weight: 500;
+      }
+
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 14px;
+        margin-top: 10px;
+      }
+
+      .legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--ha-text-soft);
+      }
+
+      .legend-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+      }
+
+      @media (max-width: 980px) {
+        .overview-grid,
+        .charts-grid,
+        .trends-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="toolbar" class="toolbar">
+      <div class="control">
+        <label for="scenario">Scenario</label>
+        <select id="scenario"></select>
+      </div>
+      <div class="control">
+        <label for="view">View</label>
+        <select id="view">
+          <option value="overview">Overview</option>
+          <option value="trends">Trends</option>
+        </select>
+      </div>
+      <div class="control">
+        <label for="device">Device</label>
+        <select id="device">
+          <option value="desktop">Desktop</option>
+          <option value="mobile">Mobile</option>
+        </select>
+      </div>
+      <div class="control">
+        <label>&nbsp;</label>
+        <button id="apply" type="button">Apply</button>
+      </div>
+    </div>
+
+    <main id="app" class="preview-shell"></main>
+
+    <script src="../../addon/gosungrow/assets/gosungrow-energy-flow-card-v2.js"></script>
+    <script src="./gosungrow-dashboard-preview.js"></script>
+  </body>
+</html>

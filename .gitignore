@@ -11,4 +11,5 @@ WebAppService_*.json
 logfile
 /%USERPROFILE%/
 .idea/
+tools/preview/output/
 
