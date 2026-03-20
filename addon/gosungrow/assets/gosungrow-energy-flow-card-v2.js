@@ -52,9 +52,10 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
       return;
     }
 
-    const layout = this._layout(this._isCompact());
-    const nodes = this._nodeDisplays();
+    const compact = this._isCompact();
+    const layout = this._layout(compact);
     const flows = this._flowDisplays();
+    const nodes = this._nodeDisplays(flows);
 
     const edgeMarkup = Object.entries(layout.edges)
       .map(([key, edge]) => this._renderEdge(edge, flows[key]))
@@ -87,6 +88,10 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
 
         .shell {
           padding: 10px 8px 8px;
+        }
+
+        .shell.compact {
+          padding: 8px 2px 6px;
         }
 
         svg {
@@ -312,7 +317,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
       </style>
       <ha-card>
         ${this._config.title ? `<div class="title">${this._escape(this._config.title)}</div>` : ""}
-        <div class="shell">
+        <div class="shell${compact ? " compact" : ""}">
           <div class="stage">
             <svg viewBox="0 0 ${layout.width} ${layout.height}" preserveAspectRatio="xMidYMid meet">
               ${edgeMarkup}
@@ -343,52 +348,52 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
   _layout(compact) {
     if (compact) {
       return {
-        width: 760,
-        height: 430,
-        radius: 44,
+        width: 700,
+        height: 438,
+        radius: 48,
         nodes: {
-          solar: { x: 380, y: 76, label: "PV", ringClass: "solar-ring", labelY: 140, powerChip: { x: 380, y: 16, className: "node-chip-solar" } },
-          grid: { x: 194, y: 206, label: "Grid", ringClass: "grid-ring", labelY: 270, powerChip: { x: 116, y: 206, className: "node-chip-grid" } },
-          home: { x: 566, y: 206, label: "Home", ringClass: "home-ring", labelY: 270, powerChip: { x: 644, y: 206, className: "node-chip-home" } },
-          battery: { x: 380, y: 332, label: "Battery", ringClass: "battery-ring", labelY: 420, powerChip: { x: 300, y: 332, className: "node-chip-battery" }, socChip: { x: 380, y: 388, className: "node-chip-soc" } },
+          solar: { x: 350, y: 82, label: "PV", ringClass: "solar-ring", labelY: 148, powerChip: { x: 350, y: 18, className: "node-chip-solar" } },
+          grid: { x: 126, y: 216, label: "Grid", ringClass: "grid-ring", labelY: 282, powerChip: { x: 50, y: 216, className: "node-chip-grid" } },
+          home: { x: 574, y: 216, label: "Home", ringClass: "home-ring", labelY: 282, powerChip: { x: 650, y: 216, className: "node-chip-home" } },
+          battery: { x: 350, y: 352, label: "Battery", ringClass: "battery-ring", labelY: 426, powerChip: { x: 270, y: 352, className: "node-chip-battery" }, socChip: { x: 350, y: 410, className: "node-chip-soc" } },
         },
         edges: {
           pv_to_grid_power: {
-            path: "M350 110 C314 126 266 152 222 184",
-            labelX: 292,
-            labelY: 146,
+            path: "M322 118 C278 138 226 166 174 198",
+            labelX: 246,
+            labelY: 156,
             edgeClass: "edge-solar-grid",
             pillClass: "pill-solar-grid",
             dotDur: "4.6s",
           },
           pv_to_load_power: {
-            path: "M410 110 C446 126 494 152 538 184",
-            labelX: 468,
-            labelY: 146,
+            path: "M378 118 C422 138 474 166 526 198",
+            labelX: 454,
+            labelY: 156,
             edgeClass: "edge-solar-home",
             pillClass: "pill-solar-home",
             dotDur: "4.2s",
           },
           pv_to_battery_power: {
-            path: "M380 120 C380 170 380 222 380 286",
-            labelX: 380,
-            labelY: 204,
+            path: "M350 130 C350 184 350 238 350 298",
+            labelX: 350,
+            labelY: 218,
             edgeClass: "edge-solar-battery",
             pillClass: "pill-solar-battery",
             dotDur: "4.8s",
           },
           grid_to_load_power: {
-            path: "M246 206 C320 204 440 204 514 206",
-            labelX: 380,
-            labelY: 236,
+            path: "M180 216 C274 214 426 214 520 216",
+            labelX: 350,
+            labelY: 248,
             edgeClass: "edge-grid-home",
             pillClass: "pill-grid-home",
             dotDur: "4.4s",
           },
           battery_to_load_power: {
-            path: "M412 304 C448 278 490 246 536 216",
-            labelX: 470,
-            labelY: 276,
+            path: "M386 324 C432 292 482 252 536 220",
+            labelX: 458,
+            labelY: 292,
             edgeClass: "edge-battery-home",
             pillClass: "pill-battery-home",
             dotDur: "4.9s",
@@ -452,13 +457,52 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
     };
   }
 
-  _nodeDisplays() {
-    return {
+  _nodeDisplays(flows) {
+    const direct = {
       solar: this._entityDisplay("solar_power"),
       grid: this._entityDisplay("grid_power"),
       home: this._entityDisplay("load_power"),
       battery: this._entityDisplay("battery_power"),
       batterySoc: this._entityDisplay("battery_soc"),
+    };
+
+    const flowUnit =
+      flows.pv_to_load_power.unit ||
+      flows.pv_to_grid_power.unit ||
+      flows.pv_to_battery_power.unit ||
+      flows.grid_to_load_power.unit ||
+      flows.battery_to_load_power.unit ||
+      direct.solar.unit ||
+      direct.home.unit ||
+      direct.grid.unit ||
+      direct.battery.unit;
+
+    return {
+      solar: this._displayFromValue(
+        flows.pv_to_load_power.numericValue + flows.pv_to_grid_power.numericValue + flows.pv_to_battery_power.numericValue,
+        flowUnit,
+        direct.solar,
+        this._hasAnyDisplay([flows.pv_to_load_power, flows.pv_to_grid_power, flows.pv_to_battery_power]),
+      ),
+      grid: this._displayFromValue(
+        flows.grid_to_load_power.numericValue - flows.pv_to_grid_power.numericValue,
+        flowUnit,
+        direct.grid,
+        this._hasAnyDisplay([flows.grid_to_load_power, flows.pv_to_grid_power]),
+      ),
+      home: this._displayFromValue(
+        flows.pv_to_load_power.numericValue + flows.grid_to_load_power.numericValue + flows.battery_to_load_power.numericValue,
+        flowUnit,
+        direct.home,
+        this._hasAnyDisplay([flows.pv_to_load_power, flows.grid_to_load_power, flows.battery_to_load_power]),
+      ),
+      battery: this._displayFromValue(
+        flows.battery_to_load_power.numericValue - flows.pv_to_battery_power.numericValue,
+        flowUnit,
+        direct.battery,
+        this._hasAnyDisplay([flows.battery_to_load_power, flows.pv_to_battery_power]),
+      ),
+      batterySoc: direct.batterySoc,
     };
   }
 
@@ -621,17 +665,37 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
     const unit = stateObj?.attributes?.unit_of_measurement || "";
 
     if (!stateObj) {
-      return { formatted: "--", numericValue: 0 };
+      return { formatted: "--", numericValue: 0, unit: "", available: false };
     }
 
     const numericValue = Number.parseFloat(stateObj.state);
     if (!Number.isFinite(numericValue)) {
-      return { formatted: stateObj.state, numericValue: 0 };
+      return { formatted: stateObj.state, numericValue: 0, unit, available: true };
     }
 
     return {
       formatted: this._formatNumber(numericValue, unit),
       numericValue,
+      unit,
+      available: true,
+    };
+  }
+
+  _hasAnyDisplay(displays) {
+    return displays.some((display) => display && display.available);
+  }
+
+  _displayFromValue(value, unit, fallback, useComputed) {
+    if (!useComputed) {
+      return fallback;
+    }
+
+    const normalized = Math.abs(value) < 0.005 ? 0 : value;
+    return {
+      formatted: this._formatNumber(normalized, unit || fallback?.unit || ""),
+      numericValue: normalized,
+      unit: unit || fallback?.unit || "",
+      available: true,
     };
   }
 

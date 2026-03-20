@@ -67,7 +67,7 @@ views:
           - type: history-graph
             layout_options:
               grid_columns: full
-              grid_rows: 4
+              grid_rows: 5
             hours_to_show: 24
             refresh_interval: 60
             entities:
@@ -88,7 +88,7 @@ views:
           - type: history-graph
             layout_options:
               grid_columns: full
-              grid_rows: 4
+              grid_rows: 5
             hours_to_show: 24
             refresh_interval: 120
             entities:
@@ -103,7 +103,7 @@ views:
           - type: history-graph
             layout_options:
               grid_columns: full
-              grid_rows: 4
+              grid_rows: 5
             hours_to_show: 24
             refresh_interval: 300
             entities:
