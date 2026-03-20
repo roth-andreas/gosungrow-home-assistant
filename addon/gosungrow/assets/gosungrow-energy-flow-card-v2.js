@@ -134,6 +134,8 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
 
         .edge-dot circle {
           filter: drop-shadow(0 0 5px rgba(255,255,255,0.18));
+          stroke: rgba(255,255,255,0.28);
+          stroke-width: 1.2;
         }
 
         .edge-solar-home {
@@ -355,7 +357,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
           solar: { x: 350, y: 82, label: "PV", ringClass: "solar-ring", labelY: 148, powerChip: { x: 350, y: 18, className: "node-chip-solar" } },
           grid: { x: 126, y: 216, label: "Grid", ringClass: "grid-ring", labelY: 282, powerChip: { x: 50, y: 216, className: "node-chip-grid" } },
           home: { x: 574, y: 216, label: "Home", ringClass: "home-ring", labelY: 282, powerChip: { x: 650, y: 216, className: "node-chip-home" } },
-          battery: { x: 350, y: 352, label: "Battery", ringClass: "battery-ring", labelY: 426, powerChip: { x: 270, y: 352, className: "node-chip-battery" }, socChip: { x: 350, y: 410, className: "node-chip-soc" } },
+          battery: { x: 350, y: 352, label: "Battery", ringClass: "battery-ring", labelY: 426, powerChip: { x: 350, y: 288, className: "node-chip-battery" }, socChip: { x: 350, y: 410, className: "node-chip-soc" } },
         },
         edges: {
           pv_to_grid_power: {
@@ -410,7 +412,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         solar: { x: 470, y: 58, label: "PV", ringClass: "solar-ring", labelY: 120, powerChip: { x: 470, y: 18, className: "node-chip-solar" } },
         grid: { x: 272, y: 152, label: "Grid", ringClass: "grid-ring", labelY: 214, powerChip: { x: 196, y: 152, className: "node-chip-grid" } },
         home: { x: 668, y: 152, label: "Home", ringClass: "home-ring", labelY: 214, powerChip: { x: 744, y: 152, className: "node-chip-home" } },
-        battery: { x: 470, y: 220, label: "Battery", ringClass: "battery-ring", labelY: 308, powerChip: { x: 394, y: 220, className: "node-chip-battery" }, socChip: { x: 470, y: 276, className: "node-chip-soc" } },
+          battery: { x: 470, y: 220, label: "Battery", ringClass: "battery-ring", labelY: 308, powerChip: { x: 470, y: 164, className: "node-chip-battery" }, socChip: { x: 470, y: 276, className: "node-chip-soc" } },
       },
       edges: {
         pv_to_grid_power: {
@@ -527,7 +529,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
       <path class="edge-base" d="${edge.path}"></path>
       <path class="edge-active ${edge.edgeClass}" d="${edge.path}" style="stroke-width:${width};opacity:${opacity};"></path>
       <g class="edge-dot${active ? " active" : ""}">
-        <circle r="${Math.max(3, width * 0.52)}" fill="${color}">
+        <circle r="${Math.max(4.5, width * 0.9)}" fill="${color}">
           <animateMotion dur="${edge.dotDur || "4.5s"}" repeatCount="indefinite" rotate="auto" path="${edge.path}" keyPoints="0;1" keyTimes="0;1"></animateMotion>
         </circle>
       </g>
