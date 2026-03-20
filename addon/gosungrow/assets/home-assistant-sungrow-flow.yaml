@@ -4,14 +4,19 @@ views:
     path: system
     icon: mdi:solar-power
     type: sections
-    max_columns: 2
+    max_columns: 3
+    dense_section_placement: true
     sections:
       - type: grid
+        column_span: 2
         cards:
           - type: heading
             heading: Live Flow
             icon: mdi:solar-power
           - type: custom:gosungrow-energy-flow-card-v2
+            layout_options:
+              grid_columns: full
+              grid_rows: 5
             entities:
               solar_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_power
               load_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_load_power
@@ -60,6 +65,9 @@ views:
             heading: Power Balance
             icon: mdi:chart-line
           - type: history-graph
+            layout_options:
+              grid_columns: full
+              grid_rows: 5
             hours_to_show: 24
             refresh_interval: 60
             entities:
@@ -78,6 +86,9 @@ views:
             heading: Flow Paths
             icon: mdi:transit-connection-variant
           - type: history-graph
+            layout_options:
+              grid_columns: full
+              grid_rows: 5
             hours_to_show: 24
             refresh_interval: 60
             entities:
@@ -98,6 +109,9 @@ views:
             heading: Daily Energy
             icon: mdi:chart-areaspline
           - type: history-graph
+            layout_options:
+              grid_columns: full
+              grid_rows: 5
             hours_to_show: 24
             refresh_interval: 300
             entities:
@@ -111,15 +125,3 @@ views:
                 name: Feed-in
               - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13147
                 name: Grid Import
-
-      - type: grid
-        cards:
-          - type: heading
-            heading: Battery
-            icon: mdi:battery-high
-          - type: history-graph
-            hours_to_show: 24
-            refresh_interval: 120
-            entities:
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13141
-                name: Battery SOC
