@@ -33,9 +33,13 @@ This repository is based on the original [MickMake/GoSungrow](https://github.com
    - `https://github.com/roth-andreas/gosungrow-home-assistant`
 4. Install `GoSungrow`.
 5. Enter your `gosungrow_user` and `gosungrow_password`.
-6. Leave `use_homeassistant_mqtt: true` unless you intentionally use an external broker.
-7. Start the add-on.
-8. Open the automatically created `GoSungrow Flow` dashboards from the sidebar.
+6. Start the add-on.
+7. Open the automatically created `GoSungrow Flow` dashboards from the sidebar.
+
+For almost everyone, the only add-on settings you need are:
+
+- `gosungrow_user`
+- `gosungrow_password`
 
 ## What You Get
 
@@ -51,17 +55,25 @@ Required:
 - `gosungrow_user`
 - `gosungrow_password`
 
-Recommended for most users:
+Optional:
 
-- `use_homeassistant_mqtt: true`
-- leave `mqtt_host`, `mqtt_port`, `mqtt_user`, and `mqtt_password` empty
+- `install_dashboard`
+- `debug`
 
-Advanced options are documented in `addon/gosungrow/DOCS.md`.
+Everything else is handled internally by the add-on:
+
+- the standard iSolarCloud host
+- the required app key
+- Home Assistant MQTT service wiring
+- the managed dashboard URL and title
+
+The add-on documentation is in `addon/gosungrow/DOCS.md`.
 
 ## Notes
 
 - This is not a native Home Assistant integration. MQTT must be working before the add-on starts.
-- The add-on manages its own dashboard. If you want to refresh that dashboard after template changes, use `dashboard_force_update: true` for one restart.
+- The add-on manages its own dashboard automatically.
+- If you are updating from an older version with more options, open the add-on configuration once and save it to clear legacy fields.
 - The repository also includes `examples/home-assistant-energy-cards.yaml` if you want to build a dashboard around Home Assistant's official Energy cards.
 
 ## Credit

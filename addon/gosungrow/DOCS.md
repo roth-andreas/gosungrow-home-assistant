@@ -21,8 +21,7 @@ For most users, that means installing and starting the `Mosquitto broker` add-on
 3. Refresh the Add-on Store.
 4. Install `GoSungrow`.
 5. Enter your `gosungrow_user` and `gosungrow_password`.
-6. Leave `use_homeassistant_mqtt: true` unless you intentionally use an external broker.
-7. Start the add-on.
+6. Start the add-on.
 
 ## Configuration
 
@@ -31,19 +30,9 @@ Required:
 - `gosungrow_user`
 - `gosungrow_password`
 
-Recommended:
+Optional:
 
-- `use_homeassistant_mqtt: true`
-- leave `mqtt_host`, `mqtt_port`, `mqtt_user`, and `mqtt_password` empty
-
-Other options:
-
-- `gosungrow_host`: defaults to `https://augateway.isolarcloud.com`
-- `gosungrow_appkey`: application key used for login requests
 - `install_dashboard`: create or update the managed dashboard automatically
-- `dashboard_url_path`: URL path for the managed dashboard
-- `dashboard_title`: title shown in the Home Assistant sidebar
-- `dashboard_force_update`: replace the managed dashboard on the next startup
 - `debug`: enable verbose logging
 
 ## What Happens On Startup
@@ -62,3 +51,5 @@ No Home Assistant restart is required for the managed dashboards.
 - Runtime state is stored in `/data/.GoSungrow`.
 - The managed dashboard state is stored in `/data/.GoSungrow/dashboard_state.json`.
 - If no entities appear, verify MQTT first.
+- The add-on uses the standard iSolarCloud host, app key, Home Assistant MQTT service, and managed dashboard path internally.
+- If you are updating from an older version with more options, open the add-on configuration once and save it to clear legacy fields.

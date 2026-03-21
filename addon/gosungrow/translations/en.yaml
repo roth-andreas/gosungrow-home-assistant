@@ -3,27 +3,7 @@ configuration:
     name: iSolarCloud username
   gosungrow_password:
     name: iSolarCloud password
-  gosungrow_host:
-    name: iSolarCloud API host
-  gosungrow_appkey:
-    name: iSolarCloud app key
-  use_homeassistant_mqtt:
-    name: Use Home Assistant MQTT service
-  mqtt_host:
-    name: MQTT host
-  mqtt_port:
-    name: MQTT port
-  mqtt_user:
-    name: MQTT username
-  mqtt_password:
-    name: MQTT password
   install_dashboard:
     name: Install managed dashboard
-  dashboard_url_path:
-    name: Dashboard URL path
-  dashboard_title:
-    name: Dashboard title
-  dashboard_force_update:
-    name: Force dashboard update
   debug:
     name: Enable debug mode

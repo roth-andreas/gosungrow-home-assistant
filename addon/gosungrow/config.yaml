@@ -1,5 +1,5 @@
 name: GoSungrow
-version: 3.0.7-haos56
+version: 3.0.7-haos57
 slug: gosungrow
 url: https://github.com/roth-andreas/gosungrow-home-assistant
 image: ghcr.io/roth-andreas/gosungrow-addon-{arch}
@@ -21,30 +21,10 @@ arch:
 options:
   gosungrow_user: null
   gosungrow_password: null
-  gosungrow_host: https://augateway.isolarcloud.com
-  gosungrow_appkey: B0455FBE7AA0328DB57B59AA729F05D8
-  use_homeassistant_mqtt: true
-  mqtt_host: ""
-  mqtt_port: 1883
-  mqtt_user: ""
-  mqtt_password: ""
   install_dashboard: true
-  dashboard_url_path: gosungrow-flow
-  dashboard_title: GoSungrow Flow
-  dashboard_force_update: false
   debug: false
 schema:
   gosungrow_user: str
   gosungrow_password: password
-  gosungrow_host: str
-  gosungrow_appkey: str
-  use_homeassistant_mqtt: bool
-  mqtt_host: str
-  mqtt_port: port
-  mqtt_user: str
-  mqtt_password: password
   install_dashboard: bool
-  dashboard_url_path: str
-  dashboard_title: str
-  dashboard_force_update: bool
   debug: bool
