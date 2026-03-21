@@ -4,7 +4,7 @@ Custom Home Assistant add-on for Sungrow iSolarCloud.
 
 GoSungrow logs in to iSolarCloud, publishes entities to Home Assistant through MQTT discovery, and installs managed dashboards for live flow and trends.
 
-This repository is based on the original [MickMake/GoSungrow](https://github.com/MickMake/GoSungrow) project and is maintained here by Andreas Roth with a focused Home Assistant add-on deployment model.
+This repository is based on the original [MickMake/GoSungrow](https://github.com/MickMake/GoSungrow) project and is maintained by [Andreas Roth](https://github.com/roth-andreas) with a focused Home Assistant add-on deployment model.
 
 ![Home Assistant Add-on](https://img.shields.io/badge/Home%20Assistant-Add--on-41BDF5?logo=homeassistant&logoColor=white)
 ![MQTT Required](https://img.shields.io/badge/MQTT-Required-F97316?logo=eclipsemosquitto&logoColor=white)
@@ -79,4 +79,4 @@ The add-on documentation is in `addon/gosungrow/DOCS.md`.
 ## Credit
 
 - Original GoSungrow reverse engineering and codebase: MickMake
-- Home Assistant add-on packaging and maintenance in this repository: Andreas Roth
+- Home Assistant add-on packaging and maintenance in this repository: [Andreas Roth](https://github.com/roth-andreas)
