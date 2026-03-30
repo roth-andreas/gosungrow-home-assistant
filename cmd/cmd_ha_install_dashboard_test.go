@@ -11,7 +11,82 @@ import (
 	"testing"
 
 	"github.com/gorilla/websocket"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/WebIscmAppService/getPsTreeMenu"
 )
+
+func testPsTreeDevice(psID string, psKey string, deviceType int64, plantName string, deviceName string) getPsTreeMenu.Ps {
+	var ps getPsTreeMenu.Ps
+	ps.PsId.SetString(psID)
+	ps.PsKey.SetValue(psKey)
+	ps.DeviceType.SetValue(deviceType)
+	ps.PsName.SetString(plantName)
+	ps.DeviceName.SetString(deviceName)
+	return ps
+}
+
+func TestDiscoverDashboardTargetsPrefersDeviceType14(t *testing.T) {
+	trees := map[string]iSolarCloud.PsTree{
+		"100": {
+			Devices: []getPsTreeMenu.Ps{
+				testPsTreeDevice("100", "100_11_1_1", 11, "Roof", "Other Device"),
+				testPsTreeDevice("100", "100_14_1_1", 14, "Roof", "Inverter"),
+			},
+		},
+	}
+
+	targets, err := discoverDashboardTargetsFromTrees(trees)
+	if err != nil {
+		t.Fatalf("discoverDashboardTargetsFromTrees: %v", err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("expected 1 target, got %#v", targets)
+	}
+	if targets[0].PsKey != "100_14_1_1" {
+		t.Fatalf("expected type 14 ps key, got %#v", targets[0])
+	}
+}
+
+func TestDiscoverDashboardTargetsFallsBackToFirstValidPsKeyPerPlant(t *testing.T) {
+	trees := map[string]iSolarCloud.PsTree{
+		"100": {
+			Devices: []getPsTreeMenu.Ps{
+				testPsTreeDevice("100", "", 11, "Roof", "Invalid Device"),
+				testPsTreeDevice("100", "100_11_1_1", 11, "Roof", "String Inverter"),
+				testPsTreeDevice("100", "100_12_1_1", 12, "Roof", "Battery"),
+			},
+		},
+	}
+
+	targets, err := discoverDashboardTargetsFromTrees(trees)
+	if err != nil {
+		t.Fatalf("discoverDashboardTargetsFromTrees: %v", err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("expected 1 fallback target, got %#v", targets)
+	}
+	if targets[0].PsKey != "100_11_1_1" {
+		t.Fatalf("expected first valid ps key fallback, got %#v", targets[0])
+	}
+}
+
+func TestDiscoverDashboardTargetsReturnsClearErrorWhenNoValidPsKeysExist(t *testing.T) {
+	trees := map[string]iSolarCloud.PsTree{
+		"100": {
+			Devices: []getPsTreeMenu.Ps{
+				testPsTreeDevice("100", "", 11, "Roof", "Invalid Device"),
+			},
+		},
+	}
+
+	_, err := discoverDashboardTargetsFromTrees(trees)
+	if err == nil {
+		t.Fatal("expected error when no valid ps_key exists")
+	}
+	if got := err.Error(); got != "no Sungrow devices with a valid ps_key were discovered" {
+		t.Fatalf("unexpected error: %q", got)
+	}
+}
 
 func TestRenderDashboardConfigTargetsAndReplacesPsKeys(t *testing.T) {
 	templateDir := t.TempDir()

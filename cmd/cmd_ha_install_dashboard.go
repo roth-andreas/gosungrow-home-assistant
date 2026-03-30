@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -307,7 +308,10 @@ func (c *CmdHa) discoverDashboardTargets(args []string) ([]haDashboardTarget, er
 	if err != nil {
 		return nil, err
 	}
+	return discoverDashboardTargetsFromTrees(trees)
+}
 
+func discoverDashboardTargetsFromTrees(trees map[string]iSolarCloud.PsTree) ([]haDashboardTarget, error) {
 	psIDs := make([]string, 0, len(trees))
 	for psID := range trees {
 		psIDs = append(psIDs, psID)
@@ -325,11 +329,9 @@ func (c *CmdHa) discoverDashboardTargets(args []string) ([]haDashboardTarget, er
 	perPlantCounts := make(map[string]int)
 	for _, psID := range psIDs {
 		tree := trees[psID]
+		plantTargets := make([]deviceTarget, 0)
+		fallbackTargets := make([]deviceTarget, 0)
 		for _, device := range tree.Devices {
-			if !device.DeviceType.Match(14) {
-				continue
-			}
-
 			target := deviceTarget{
 				psID:       psID,
 				psKey:      strings.TrimSpace(device.PsKey.String()),
@@ -342,13 +344,26 @@ func (c *CmdHa) discoverDashboardTargets(args []string) ([]haDashboardTarget, er
 			if target.plantName == "" {
 				target.plantName = fmt.Sprintf("Plant %s", psID)
 			}
-			collected = append(collected, target)
-			perPlantCounts[psID]++
+			if device.DeviceType.Match(14) {
+				plantTargets = append(plantTargets, target)
+				continue
+			}
+			fallbackTargets = append(fallbackTargets, target)
 		}
+
+		if len(plantTargets) == 0 && len(fallbackTargets) > 0 {
+			plantTargets = append(plantTargets, fallbackTargets[0])
+		}
+		if len(plantTargets) == 0 {
+			continue
+		}
+
+		collected = append(collected, plantTargets...)
+		perPlantCounts[psID] += len(plantTargets)
 	}
 
 	if len(collected) == 0 {
-		return nil, fmt.Errorf("no Sungrow device type 14 devices were discovered")
+		return nil, fmt.Errorf("no Sungrow devices with a valid ps_key were discovered")
 	}
 
 	titleCounts := make(map[string]int)
