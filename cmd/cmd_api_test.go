@@ -59,7 +59,11 @@ func TestShouldTryNextLoginAttempt(t *testing.T) {
 		{name: "token invalid", err: errors.New("need to login again 'er_token_login_invalid'"), want: true},
 		{name: "gateway rejected", err: errors.New("login rejected by gateway"), want: true},
 		{name: "wrong app key", err: errors.New("appkey is incorrect"), want: true},
-		{name: "other error", err: errors.New("network timeout"), want: false},
+		{name: "dns no such host", err: errors.New("lookup augateway.isolarcloud.com: no such host"), want: true},
+		{name: "dns temporary failure", err: errors.New("dial tcp: lookup augateway.isolarcloud.com on 127.0.0.11:53: temporary failure in name resolution"), want: true},
+		{name: "network timeout", err: errors.New("dial tcp 1.2.3.4:443: i/o timeout"), want: true},
+		{name: "network unreachable", err: errors.New("dial tcp: connect: network is unreachable"), want: true},
+		{name: "other error", err: errors.New("unexpected payload format"), want: false},
 		{name: "nil", err: nil, want: false},
 	}
 

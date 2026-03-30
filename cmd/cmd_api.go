@@ -296,5 +296,12 @@ func shouldTryNextLoginAttempt(err error) bool {
 		strings.Contains(msg, "appkey is incorrect") ||
 		strings.Contains(msg, "need to login again") ||
 		strings.Contains(msg, "er_token_login_invalid") ||
-		strings.Contains(msg, "cannot login")
+		strings.Contains(msg, "cannot login") ||
+		strings.Contains(msg, "no such host") ||
+		strings.Contains(msg, "temporary failure in name resolution") ||
+		strings.Contains(msg, "server misbehaving") ||
+		strings.Contains(msg, "network is unreachable") ||
+		strings.Contains(msg, "connection refused") ||
+		strings.Contains(msg, "context deadline exceeded") ||
+		strings.Contains(msg, "i/o timeout")
 }
