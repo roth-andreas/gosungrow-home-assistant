@@ -22,7 +22,7 @@ if [ -z "$GOSUNGROW_PASSWORD" ]; then
 fi
 
 if [ -z "$GOSUNGROW_MQTT_HOST" ]; then
-  bashio::log.fatal 'Home Assistant MQTT service not available. Install and start the Mosquitto broker add-on first.'
+  bashio::log.fatal 'Home Assistant MQTT service not available. Install and start the Mosquitto broker app first.'
 fi
 
 bashio::log.info 'Using Home Assistant MQTT service settings.'

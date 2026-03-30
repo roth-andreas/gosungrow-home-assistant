@@ -20,7 +20,7 @@ const (
 	HelpSummary = `
 # GoSungrow for Home Assistant.
 
-This repository is maintained primarily as a Home Assistant add-on for Sungrow iSolarCloud systems.
+This repository is maintained primarily as a Home Assistant app for Sungrow iSolarCloud systems.
 It logs in to iSolarCloud, publishes MQTT discovery/state data, and can install a managed Home Assistant dashboard.
 
 `

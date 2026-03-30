@@ -1,4 +1,4 @@
-name: homeassistant-addon
+name: homeassistant-app
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
     tags:
       - "v*"
     paths:
-      - ".github/workflows/homeassistant-addon.yml"
+      - ".github/workflows/homeassistant-app.yml"
       - ".dockerignore"
       - "addon/gosungrow/**"
       - "cmd/**"
@@ -20,7 +20,7 @@ on:
       - "main.go"
   pull_request:
     paths:
-      - ".github/workflows/homeassistant-addon.yml"
+      - ".github/workflows/homeassistant-app.yml"
       - ".dockerignore"
       - "addon/gosungrow/**"
       - "cmd/**"
@@ -51,12 +51,12 @@ jobs:
       - name: Validate version alignment
         shell: bash
         run: |
-          addon_version="$(awk '/^version:/{print $2}' addon/gosungrow/config.yaml)"
+          app_package_version="$(awk '/^version:/{print $2}' addon/gosungrow/config.yaml)"
           app_version="$(awk -F'\"' '/BinaryVersion = /{print $2}' defaults/const.go)"
-          case "$addon_version" in
+          case "$app_package_version" in
             "$app_version"*) ;;
             *)
-              echo "Add-on version $addon_version must start with binary version $app_version"
+              echo "App version $app_package_version must start with binary version $app_version"
               exit 1
               ;;
           esac
@@ -73,11 +73,11 @@ jobs:
           CGO_ENABLED: 0
         run: go test ./...
 
-      - name: Validate add-on startup script
+      - name: Validate app startup script
         shell: bash
         run: bash -n addon/gosungrow/run.sh
 
-      - name: Build add-on image (amd64 smoke test)
+      - name: Build app image (amd64 smoke test)
         run: |
           docker build \
             --build-arg BUILD_FROM=ghcr.io/home-assistant/amd64-base:latest \
@@ -117,7 +117,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Read add-on version
+      - name: Read app version
         id: version
         shell: bash
         run: echo "value=$(awk '/^version:/{print $2}' addon/gosungrow/config.yaml)" >> "$GITHUB_OUTPUT"

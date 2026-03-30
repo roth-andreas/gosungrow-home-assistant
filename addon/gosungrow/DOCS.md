@@ -1,27 +1,27 @@
-# Home Assistant Add-on: GoSungrow
+# Home Assistant App: GoSungrow
 
 GoSungrow connects to Sungrow iSolarCloud, publishes MQTT discovery data for Home Assistant, and installs managed dashboards for live flow and trends.
 
 ## Before You Install
 
-This add-on requires MQTT.
+This app requires MQTT.
 
 Before installing `GoSungrow`, make sure Home Assistant already has:
 
 1. a running MQTT broker
 2. the `MQTT` integration under `Settings > Devices & services`
 
-For most users, that means installing and starting the `Mosquitto broker` add-on first.
+For most users, that means installing and starting the `Mosquitto broker` app first.
 
 ## Install
 
-1. Open the Home Assistant Add-on Store.
+1. Open the Home Assistant App Store.
 2. Add this repository as a custom repository:
    - `https://github.com/roth-andreas/gosungrow-home-assistant`
-3. Refresh the Add-on Store.
+3. Refresh the App Store.
 4. Install `GoSungrow`.
 5. Enter your `gosungrow_user` and `gosungrow_password`.
-6. Start the add-on.
+6. Start the app.
 
 ## Configuration
 
@@ -37,7 +37,7 @@ Optional:
 
 ## What Happens On Startup
 
-On a healthy setup, the add-on:
+On a healthy setup, the app:
 
 1. refreshes the iSolarCloud session
 2. installs or updates the managed dashboards
@@ -51,5 +51,5 @@ No Home Assistant restart is required for the managed dashboards.
 - Runtime state is stored in `/data/.GoSungrow`.
 - The managed dashboard state is stored in `/data/.GoSungrow/dashboard_state.json`.
 - If no entities appear, verify MQTT first.
-- The add-on uses the standard iSolarCloud host, app key, Home Assistant MQTT service, and managed dashboard path internally.
-- If you are updating from an older version with more options, open the add-on configuration once and save it to clear legacy fields.
+- The app uses the standard iSolarCloud host, app key, Home Assistant MQTT service, and managed dashboard path internally.
+- If you are updating from an older version with more options, open the app configuration once and save it to clear legacy fields.

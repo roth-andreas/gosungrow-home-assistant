@@ -1,11 +1,11 @@
 ﻿# Examples
 
-## Home Assistant add-on workflow
+## Home Assistant app workflow
 
-1. Configure credentials with Home Assistant add-on options.
-2. Start the add-on.
-3. Let the add-on publish MQTT discovery entities.
-4. Let the add-on install the managed dashboard.
+1. Configure credentials with Home Assistant app options.
+2. Start the app.
+3. Let the app publish MQTT discovery entities.
+4. Let the app install the managed dashboard.
 
 ## Local development examples
 
