@@ -45,6 +45,7 @@ type haDashboardInstallOptions struct {
 	HomeAssistantWSURL string
 	HomeAssistantURL   string
 	SupervisorToken    string
+	Language           string
 	DashboardURLPath   string
 	DashboardTitle     string
 	DashboardIcon      string
@@ -116,6 +117,7 @@ func (c *CmdHa) newInstallDashboardCommand() *cobra.Command {
 		HomeAssistantWSURL: defaultHAWebsocketURL,
 		HomeAssistantURL:   defaultSupervisorCoreURL,
 		SupervisorToken:    os.Getenv("SUPERVISOR_TOKEN"),
+		Language:           "auto",
 		DashboardURLPath:   defaultDashboardURLPath,
 		DashboardTitle:     defaultDashboardTitle,
 		DashboardIcon:      defaultDashboardIcon,
@@ -145,6 +147,7 @@ func (c *CmdHa) newInstallDashboardCommand() *cobra.Command {
 	cmd.Flags().StringVar(&opts.HomeAssistantWSURL, "ha-ws-url", opts.HomeAssistantWSURL, "Home Assistant websocket endpoint.")
 	cmd.Flags().StringVar(&opts.HomeAssistantURL, "ha-url", opts.HomeAssistantURL, "Home Assistant base URL used to verify custom card assets.")
 	cmd.Flags().StringVar(&opts.SupervisorToken, "supervisor-token", opts.SupervisorToken, "Supervisor token used to access the Home Assistant websocket.")
+	cmd.Flags().StringVar(&opts.Language, "language", opts.Language, "Dashboard language (auto, en, de, sv, or locale such as de-DE).")
 	cmd.Flags().StringVar(&opts.DashboardURLPath, "url-path", opts.DashboardURLPath, "Dashboard URL path.")
 	cmd.Flags().StringVar(&opts.DashboardTitle, "title", opts.DashboardTitle, "Dashboard title.")
 	cmd.Flags().StringVar(&opts.DashboardIcon, "icon", opts.DashboardIcon, "Dashboard sidebar icon.")
@@ -206,7 +209,10 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	}
 	defer client.Close()
 
-	preferredLanguage := client.GetPreferredLanguage(ctx)
+	preferredLanguage := strings.TrimSpace(opts.Language)
+	if preferredLanguage == "" || strings.EqualFold(preferredLanguage, "auto") {
+		preferredLanguage = client.GetPreferredLanguage(ctx)
+	}
 	localeBundle, _, err := localizedDashboardBundle(opts.AssetDir, preferredLanguage)
 	if err != nil {
 		return err

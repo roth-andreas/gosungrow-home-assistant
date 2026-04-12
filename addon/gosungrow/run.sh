@@ -37,6 +37,7 @@ export GOSUNGROW_MQTT_USER
 export GOSUNGROW_MQTT_PASSWORD
 export GOSUNGROW_DEBUG="$(bashio::config 'debug')"
 export GOSUNGROW_ASSET_DIR="${GOSUNGROW_ASSET_DIR:-/opt/gosungrow/assets}"
+export GOSUNGROW_DASHBOARD_LANGUAGE="$(bashio::config 'dashboard_language')"
 
 mkdir -p "$(dirname "$GOSUNGROW_CONFIG")"
 
@@ -56,6 +57,7 @@ if bashio::config.true 'install_dashboard'; then
     "--asset-dir=$GOSUNGROW_ASSET_DIR"
     "--url-path=${DEFAULT_DASHBOARD_URL_PATH}"
     "--title=${DEFAULT_DASHBOARD_TITLE}"
+    "--language=${GOSUNGROW_DASHBOARD_LANGUAGE:-auto}"
   )
 
   if ! GoSungrow "${dashboard_args[@]}"; then

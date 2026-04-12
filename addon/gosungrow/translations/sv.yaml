@@ -5,5 +5,7 @@ configuration:
     name: iSolarCloud-lösenord
   install_dashboard:
     name: Installera hanterad dashboard
+  dashboard_language:
+    name: Dashboard-språk (auto/en/de/sv)
   debug:
     name: Aktivera felsökningsläge

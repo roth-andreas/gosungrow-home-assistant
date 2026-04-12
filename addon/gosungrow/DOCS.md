@@ -33,6 +33,7 @@ Required:
 Optional:
 
 - `install_dashboard`: create or update the managed dashboard automatically
+- `dashboard_language`: `auto` (default) or explicit locale (`en`, `de`, `sv`)
 - `debug`: enable verbose logging
 
 ## What Happens On Startup

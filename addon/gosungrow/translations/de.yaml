@@ -5,5 +5,7 @@ configuration:
     name: iSolarCloud-Passwort
   install_dashboard:
     name: Verwaltetes Dashboard installieren
+  dashboard_language:
+    name: Dashboard-Sprache (auto/en/de/sv)
   debug:
     name: Debug-Modus aktivieren
