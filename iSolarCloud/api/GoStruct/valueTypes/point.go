@@ -164,6 +164,7 @@ func SetPsKeyString(value string) PsKey {
 type PsId struct {
 	string `json:"string,omitempty"`
 	int64  `json:"integer,omitempty"`
+	Numeric bool  `json:"-"`
 	Valid  bool  `json:"valid"`
 	Error  error `json:"-"`
 }
@@ -202,13 +203,18 @@ func (t PsId) MarshalJSON() ([]byte, error) {
 	var data []byte
 	for range Only.Once {
 		t.Valid = false
-
-		data, t.Error = json.Marshal(t.int64)
-		if t.Error != nil {
-			break
+		if t.Numeric {
+			data, t.Error = json.Marshal(t.int64)
+			if t.Error != nil {
+				break
+			}
+		} else {
+			data, t.Error = json.Marshal(t.string)
+			if t.Error != nil {
+				break
+			}
 		}
 		t.Valid = true
-		// t.string = strconv.FormatInt(t.int64, 10)
 	}
 
 	return data, t.Error
@@ -231,25 +237,32 @@ func (t PsId) Match(comp int64) bool {
 
 func (t *PsId) SetString(value string) PsId {
 	for range Only.Once {
-		t.string = value
+		t.string = strings.TrimSpace(value)
 		t.int64 = 0
+		t.Numeric = false
 		t.Valid = false
+		t.Error = nil
 
-		if value == "" {
+		if t.string == "" {
 			break
 		}
 
-		if value == "--" {
-			// value = ""
+		if t.string == "--" {
 			break
 		}
 
-		var v int
-		v, t.Error = strconv.Atoi(t.string)
-		if t.Error != nil {
+		var v int64
+		v, t.Error = strconv.ParseInt(t.string, 10, 64)
+		if t.Error == nil {
+			t.int64 = v
+			t.Numeric = true
+			t.Valid = true
 			break
 		}
-		t.int64 = int64(v)
+
+		// Some hybrid systems return composite identifiers such as "5520557_5520558".
+		// Preserve those as valid string identifiers instead of failing the whole decode path.
+		t.Error = nil
 		t.Valid = true
 	}
 
@@ -260,7 +273,9 @@ func (t *PsId) SetValue(value int64) PsId {
 	for range Only.Once {
 		t.string = ""
 		t.int64 = value
+		t.Numeric = true
 		t.Valid = true
+		t.Error = nil
 		t.string = strconv.FormatInt(t.int64, 10)
 	}
 
