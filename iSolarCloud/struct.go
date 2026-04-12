@@ -33,6 +33,7 @@ type SunGrow struct {
 	Error       error
 	NeedLogin   bool
 	AuthDetails *login.SunGrowAuth
+	recovering  bool
 
 	Directory  string
 	OutputType output.OutputType
@@ -172,7 +173,7 @@ func (sg *SunGrow) GetByJson(endpoint string, request string) api.EndPoint {
 			}
 		}
 
-		ret = ret.Call()
+		ret = sg.callEndpointWithRecovery(ret)
 		sg.Error = ret.GetError()
 		if sg.IsLoggedOut() {
 			break
@@ -236,7 +237,7 @@ func (sg *SunGrow) GetByStruct(endpoint string, request interface{}, cache time.
 		}
 
 		ret = ret.SetCacheTimeout(cache)
-		ret = ret.Call()
+		ret = sg.callEndpointWithRecovery(ret)
 		if !ret.IsError() {
 			break
 		}

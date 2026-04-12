@@ -142,7 +142,7 @@ func (sgd *SunGrowData) CallEndpoint(endpoint api.EndPoint, request SunGrowDataR
 		// @TODO - Make this a config option.
 		endpoint = endpoint.SetCacheTimeout(sgd.cacheTimeout)
 
-		endpoint = endpoint.Call()
+		endpoint = sgd.sunGrow.callEndpointWithRecovery(endpoint)
 		sgd.Error = endpoint.GetError()
 		if sgd.Error != nil {
 			if strings.Contains(sgd.Error.Error(), "er_token_login_invalid") {

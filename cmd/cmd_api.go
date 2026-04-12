@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/MickMake/GoUnify/Only"
@@ -20,15 +19,9 @@ const (
 	flagApiPassword  = "password"
 	flagApiAppKey    = "appkey"
 	flagApiLastLogin = "token-expiry"
-
-	oldLoginAppKey    = "A5C22A880B97303FCB902069C6B042AB"
-	legacyLoginAppKey = "93D72E60331ABDCDC7B39ADC2D1F32B3"
 )
 
-type loginAttempt struct {
-	host   string
-	appKey string
-}
+type loginAttempt = iSolarCloud.LoginAttempt
 
 //goland:noinspection GoNameStartsWithPackageName
 type CmdApi struct {
@@ -177,7 +170,7 @@ func (c *CmdApi) ApiLogin(force bool) error {
 			break
 		}
 
-		c.AppKey = normalizeLoginAppKey(c.AppKey)
+		c.AppKey = iSolarCloud.NormalizeLoginAppKey(c.AppKey)
 		candidates := buildLoginAttempts(c.Url, c.AppKey)
 
 		cacheDir := c.SunGrow.ApiRoot.GetCacheDir()
@@ -188,7 +181,7 @@ func (c *CmdApi) ApiLogin(force bool) error {
 			if idx > 0 && c.SunGrow != nil {
 				c.SunGrow.Logout()
 			}
-			c.SunGrow = iSolarCloud.NewSunGro(attempt.host, cacheDir)
+			c.SunGrow = iSolarCloud.NewSunGro(attempt.Host, cacheDir)
 			if c.SunGrow.Error != nil {
 				c.Error = c.SunGrow.Error
 				break
@@ -199,7 +192,7 @@ func (c *CmdApi) ApiLogin(force bool) error {
 			}
 
 			auth := login.SunGrowAuth{
-				AppKey:       attempt.appKey,
+				AppKey:       attempt.AppKey,
 				UserAccount:  c.Username,
 				UserPassword: c.Password,
 				TokenFile:    c.ApiTokenFile,
@@ -207,8 +200,8 @@ func (c *CmdApi) ApiLogin(force bool) error {
 			}
 			c.Error = c.SunGrow.Login(auth)
 			if c.Error == nil {
-				c.Url = attempt.host
-				c.AppKey = attempt.appKey
+				c.Url = attempt.Host
+				c.AppKey = attempt.AppKey
 				break
 			}
 			lastErr = c.Error
@@ -241,67 +234,13 @@ func (c *CmdApi) ApiLogin(force bool) error {
 }
 
 func normalizeLoginAppKey(appKey string) string {
-	appKey = strings.TrimSpace(appKey)
-	if appKey == "" || appKey == legacyLoginAppKey {
-		return iSolarCloud.DefaultApiAppKey
-	}
-	return appKey
-}
-
-func appendUniqueLoginAttempt(list []loginAttempt, item loginAttempt) []loginAttempt {
-	host := strings.TrimSpace(item.host)
-	key := strings.TrimSpace(item.appKey)
-	if host == "" || key == "" {
-		return list
-	}
-	for _, existing := range list {
-		if existing.host == host && existing.appKey == key {
-			return list
-		}
-	}
-	return append(list, loginAttempt{host: host, appKey: key})
+	return iSolarCloud.NormalizeLoginAppKey(appKey)
 }
 
 func buildLoginAttempts(host string, appKey string) []loginAttempt {
-	candidates := make([]loginAttempt, 0)
-	hosts := []string{
-		host,
-		iSolarCloud.DefaultHost,
-		"https://gateway.isolarcloud.com",
-		"https://gateway.isolarcloud.eu",
-		"https://gateway.isolarcloud.com.cn",
-	}
-	appKeys := []string{
-		normalizeLoginAppKey(appKey),
-		iSolarCloud.DefaultApiAppKey,
-		oldLoginAppKey,
-		legacyLoginAppKey,
-	}
-	for _, host := range hosts {
-		for _, appKey := range appKeys {
-			candidates = appendUniqueLoginAttempt(candidates, loginAttempt{host: host, appKey: appKey})
-		}
-	}
-	return candidates
+	return iSolarCloud.BuildLoginAttempts(host, appKey)
 }
 
 func shouldTryNextLoginAttempt(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "login_state=-1") ||
-		strings.Contains(msg, "login rejected by gateway") ||
-		strings.Contains(msg, "appkey is incorrect") ||
-		strings.Contains(msg, "need to login again") ||
-		strings.Contains(msg, "er_token_login_invalid") ||
-		strings.Contains(msg, "cannot login") ||
-		strings.Contains(msg, "no such host") ||
-		strings.Contains(msg, "temporary failure in name resolution") ||
-		strings.Contains(msg, "server misbehaving") ||
-		strings.Contains(msg, "network is unreachable") ||
-		strings.Contains(msg, "connection refused") ||
-		strings.Contains(msg, "context deadline exceeded") ||
-		strings.Contains(msg, "i/o timeout")
+	return iSolarCloud.ShouldRecoverGatewayError(err)
 }
