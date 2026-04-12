@@ -1,0 +1,34 @@
+dashboard:
+  view_overview: Übersicht
+  view_trends: Trends
+  heading_live_flow: Live-Fluss
+  heading_today: Heute
+  heading_power_balance: Leistungsbilanz
+  heading_battery: Batterie
+  heading_daily_energy: Tagesenergie
+  heading_solar_allocation: Solare Verteilung
+  heading_load_sources: Lastquellen
+  heading_grid_exchange: Netzaustausch
+  heading_battery_flow: Batteriefluss
+  heading_battery_soc: Batterie-SOC
+  name_pv_yield: PV-Ertrag
+  name_pv_to_load: PV zu Last
+  name_pv_to_battery: PV zu Batterie
+  name_pv_to_grid: PV zu Netz
+  name_feed_in: Einspeisung
+  name_grid_import: Netzbezug
+  name_grid_to_load: Netz zu Last
+  name_grid_net: Netz Netto
+  name_battery_soc: Batterie-SOC
+  name_battery_power: Batterieleistung
+  name_charge: Laden
+  name_discharge: Entladen
+  name_pv: PV
+  name_load: Last
+  name_grid: Netz
+  name_battery: Batterie
+flow_card:
+  node_pv: PV
+  node_grid: Netz
+  node_home: Haus
+  node_battery: Batterie

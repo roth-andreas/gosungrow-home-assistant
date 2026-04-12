@@ -52,4 +52,5 @@ No Home Assistant restart is required for the managed dashboards.
 - The managed dashboard state is stored in `/data/.GoSungrow/dashboard_state.json`.
 - If no entities appear, verify MQTT first.
 - The app uses the standard iSolarCloud host, app key, Home Assistant MQTT service, and managed dashboard path internally.
+- Managed dashboard text follows Home Assistant language when available (fallback: English).
 - If you are updating from an older version with more options, open the app configuration once and save it to clear legacy fields.

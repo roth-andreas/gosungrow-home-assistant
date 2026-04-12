@@ -1,0 +1,9 @@
+configuration:
+  gosungrow_user:
+    name: iSolarCloud-användarnamn
+  gosungrow_password:
+    name: iSolarCloud-lösenord
+  install_dashboard:
+    name: Installera hanterad dashboard
+  debug:
+    name: Aktivera felsökningsläge

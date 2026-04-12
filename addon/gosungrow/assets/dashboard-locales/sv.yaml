@@ -1,0 +1,34 @@
+dashboard:
+  view_overview: Översikt
+  view_trends: Trender
+  heading_live_flow: Liveflöde
+  heading_today: Idag
+  heading_power_balance: Effektbalans
+  heading_battery: Batteri
+  heading_daily_energy: Dagens energi
+  heading_solar_allocation: Solfördelning
+  heading_load_sources: Lastkällor
+  heading_grid_exchange: Nätutbyte
+  heading_battery_flow: Batteriflöde
+  heading_battery_soc: Batteri SOC
+  name_pv_yield: PV-produktion
+  name_pv_to_load: PV till last
+  name_pv_to_battery: PV till batteri
+  name_pv_to_grid: PV till nät
+  name_feed_in: Inmatning
+  name_grid_import: Nätimport
+  name_grid_to_load: Nät till last
+  name_grid_net: Nät netto
+  name_battery_soc: Batteri SOC
+  name_battery_power: Batterieffekt
+  name_charge: Laddning
+  name_discharge: Urladdning
+  name_pv: PV
+  name_load: Last
+  name_grid: Nät
+  name_battery: Batteri
+flow_card:
+  node_pv: PV
+  node_grid: Nät
+  node_home: Hem
+  node_battery: Batteri

@@ -66,6 +66,7 @@ Everything else is handled internally by the app:
 - the required app key
 - Home Assistant MQTT service wiring
 - the managed dashboard URL and title
+- dashboard language follows Home Assistant UI language when available (fallback: English)
 
 The app documentation is in `addon/gosungrow/DOCS.md`.
 

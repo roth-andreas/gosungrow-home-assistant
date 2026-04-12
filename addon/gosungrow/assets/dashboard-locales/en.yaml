@@ -1,0 +1,34 @@
+dashboard:
+  view_overview: Overview
+  view_trends: Trends
+  heading_live_flow: Live Flow
+  heading_today: Today
+  heading_power_balance: Power Balance
+  heading_battery: Battery
+  heading_daily_energy: Daily Energy
+  heading_solar_allocation: Solar Allocation
+  heading_load_sources: Load Sources
+  heading_grid_exchange: Grid Exchange
+  heading_battery_flow: Battery Flow
+  heading_battery_soc: Battery SOC
+  name_pv_yield: PV Yield
+  name_pv_to_load: PV To Load
+  name_pv_to_battery: PV To Battery
+  name_pv_to_grid: PV To Grid
+  name_feed_in: Feed-in
+  name_grid_import: Grid Import
+  name_grid_to_load: Grid To Load
+  name_grid_net: Grid Net
+  name_battery_soc: Battery SOC
+  name_battery_power: Battery Power
+  name_charge: Charge
+  name_discharge: Discharge
+  name_pv: PV
+  name_load: Load
+  name_grid: Grid
+  name_battery: Battery
+flow_card:
+  node_pv: PV
+  node_grid: Grid
+  node_home: Home
+  node_battery: Battery

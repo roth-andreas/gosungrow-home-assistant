@@ -1,0 +1,9 @@
+configuration:
+  gosungrow_user:
+    name: iSolarCloud-Benutzername
+  gosungrow_password:
+    name: iSolarCloud-Passwort
+  install_dashboard:
+    name: Verwaltetes Dashboard installieren
+  debug:
+    name: Debug-Modus aktivieren

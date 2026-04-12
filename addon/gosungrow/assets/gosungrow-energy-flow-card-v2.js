@@ -355,10 +355,10 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         height: 560,
         radius: 40,
         nodes: {
-          solar: { x: 350, y: 122, label: "PV", ringClass: "solar-ring", labelY: 182, powerChip: { x: 350, y: 40, className: "node-chip-solar" } },
-          grid: { x: 154, y: 286, label: "Grid", ringClass: "grid-ring", labelY: 350, powerChip: { x: 94, y: 286, className: "node-chip-grid" } },
-          home: { x: 546, y: 286, label: "Home", ringClass: "home-ring", labelY: 350, powerChip: { x: 606, y: 286, className: "node-chip-home" } },
-          battery: { x: 350, y: 442, label: "Battery", ringClass: "battery-ring", labelY: 516, powerChip: { x: 350, y: 366, className: "node-chip-battery" }, socChip: { x: 350, y: 492, className: "node-chip-soc" } },
+          solar: { x: 350, y: 122, label: this._label("node_pv", "PV"), ringClass: "solar-ring", labelY: 182, powerChip: { x: 350, y: 40, className: "node-chip-solar" } },
+          grid: { x: 154, y: 286, label: this._label("node_grid", "Grid"), ringClass: "grid-ring", labelY: 350, powerChip: { x: 94, y: 286, className: "node-chip-grid" } },
+          home: { x: 546, y: 286, label: this._label("node_home", "Home"), ringClass: "home-ring", labelY: 350, powerChip: { x: 606, y: 286, className: "node-chip-home" } },
+          battery: { x: 350, y: 442, label: this._label("node_battery", "Battery"), ringClass: "battery-ring", labelY: 516, powerChip: { x: 350, y: 366, className: "node-chip-battery" }, socChip: { x: 350, y: 492, className: "node-chip-soc" } },
         },
         edges: {
           pv_to_grid_power: {
@@ -410,10 +410,10 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
       height: 340,
       radius: 38,
       nodes: {
-          solar: { x: 470, y: 74, label: "PV", ringClass: "solar-ring", labelY: 136, powerChip: { x: 470, y: 20, className: "node-chip-solar" } },
-          grid: { x: 190, y: 164, label: "Grid", ringClass: "grid-ring", labelY: 226, powerChip: { x: 104, y: 164, className: "node-chip-grid" } },
-          home: { x: 750, y: 164, label: "Home", ringClass: "home-ring", labelY: 226, powerChip: { x: 836, y: 164, className: "node-chip-home" } },
-          battery: { x: 470, y: 244, label: "Battery", ringClass: "battery-ring", labelY: 328, powerChip: { x: 470, y: 180, className: "node-chip-battery" }, socChip: { x: 470, y: 300, className: "node-chip-soc" } },
+          solar: { x: 470, y: 74, label: this._label("node_pv", "PV"), ringClass: "solar-ring", labelY: 136, powerChip: { x: 470, y: 20, className: "node-chip-solar" } },
+          grid: { x: 190, y: 164, label: this._label("node_grid", "Grid"), ringClass: "grid-ring", labelY: 226, powerChip: { x: 104, y: 164, className: "node-chip-grid" } },
+          home: { x: 750, y: 164, label: this._label("node_home", "Home"), ringClass: "home-ring", labelY: 226, powerChip: { x: 836, y: 164, className: "node-chip-home" } },
+          battery: { x: 470, y: 244, label: this._label("node_battery", "Battery"), ringClass: "battery-ring", labelY: 328, powerChip: { x: 470, y: 180, className: "node-chip-battery" }, socChip: { x: 470, y: 300, className: "node-chip-soc" } },
       },
       edges: {
         pv_to_grid_power: {
@@ -738,6 +738,56 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
 
   _locale() {
     return this._hass?.locale?.language || navigator.language || "en-US";
+  }
+
+  _label(key, fallback) {
+    const configLabel = this._config?.labels?.[key];
+    if (typeof configLabel === "string" && configLabel.trim() !== "") {
+      return configLabel;
+    }
+
+    const locale = this._locale().toLowerCase().replaceAll("_", "-");
+    const locales = this._labelsByLocale();
+    const candidates = [locale];
+    if (locale.includes("-")) {
+      candidates.push(locale.split("-")[0]);
+    }
+    candidates.push("en");
+
+    for (const candidate of candidates) {
+      const table = locales[candidate];
+      if (!table) {
+        continue;
+      }
+      const localized = table[key];
+      if (typeof localized === "string" && localized.trim() !== "") {
+        return localized;
+      }
+    }
+    return fallback;
+  }
+
+  _labelsByLocale() {
+    return {
+      en: {
+        node_pv: "PV",
+        node_grid: "Grid",
+        node_home: "Home",
+        node_battery: "Battery",
+      },
+      sv: {
+        node_pv: "PV",
+        node_grid: "Nät",
+        node_home: "Hem",
+        node_battery: "Batteri",
+      },
+      de: {
+        node_pv: "PV",
+        node_grid: "Netz",
+        node_home: "Haus",
+        node_battery: "Batterie",
+      },
+    };
   }
 
   _escape(value) {

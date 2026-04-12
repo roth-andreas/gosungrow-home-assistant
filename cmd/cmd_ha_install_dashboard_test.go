@@ -107,7 +107,7 @@ views:
 	config, err := renderDashboardConfig(templatePath, "GoSungrow Flow", []haDashboardTarget{
 		{PsID: "100", PsKey: "5072099_14_1_1", ViewTitle: "Roof", ViewPath: "roof"},
 		{PsID: "101", PsKey: "5080000_14_1_1", ViewTitle: "Garage", ViewPath: "garage"},
-	})
+	}, defaultDashboardLocaleBundle)
 	if err != nil {
 		t.Fatalf("renderDashboardConfig: %v", err)
 	}
@@ -162,7 +162,7 @@ views:
 
 	config, err := renderDashboardConfig(templatePath, "GoSungrow Flow", []haDashboardTarget{
 		{PsID: "100", PsKey: "5072099_14_1_1", ViewTitle: "Roof", ViewPath: "roof"},
-	})
+	}, defaultDashboardLocaleBundle)
 	if err != nil {
 		t.Fatalf("renderDashboardConfig: %v", err)
 	}
@@ -420,7 +420,7 @@ func TestBundledDashboardTemplateRenders(t *testing.T) {
 
 	config, err := renderDashboardConfig(templatePath, "GoSungrow Flow", []haDashboardTarget{
 		{PsID: "100", PsKey: "5072099_14_1_1", ViewTitle: "Roof", ViewPath: "roof"},
-	})
+	}, defaultDashboardLocaleBundle)
 	if err != nil {
 		t.Fatalf("render bundled dashboard: %v", err)
 	}
@@ -450,5 +450,36 @@ func TestBundledDashboardTemplateRenders(t *testing.T) {
 	}
 	if !strings.Contains(text, "sensor.gosungrow_virtual_5072099_14_1_1_p13112") {
 		t.Fatal("expected daily PV yield sensor in bundled dashboard")
+	}
+}
+
+func TestBundledDashboardTemplateRendersSwedishAndInjectsCardLabels(t *testing.T) {
+	assetDir := filepath.Join("..", "addon", "gosungrow", "assets")
+	templatePath := filepath.Join(assetDir, dashboardTemplateFile)
+	localeBundle, _, err := localizedDashboardBundle(assetDir, "sv-SE")
+	if err != nil {
+		t.Fatalf("localizedDashboardBundle: %v", err)
+	}
+
+	config, err := renderDashboardConfig(templatePath, "GoSungrow Flow", []haDashboardTarget{
+		{PsID: "100", PsKey: "5072099_14_1_1", ViewTitle: "Roof", ViewPath: "roof"},
+	}, localeBundle)
+	if err != nil {
+		t.Fatalf("render bundled dashboard: %v", err)
+	}
+
+	rendered, err := json.Marshal(config)
+	if err != nil {
+		t.Fatalf("marshal bundled dashboard: %v", err)
+	}
+	text := string(rendered)
+	if !strings.Contains(text, "\"heading\":\"Liveflöde\"") {
+		t.Fatal("expected swedish localized heading")
+	}
+	if !strings.Contains(text, "\"name\":\"PV till last\"") {
+		t.Fatal("expected swedish localized tile label")
+	}
+	if !strings.Contains(text, "\"labels\":{\"node_battery\":\"Batteri\"") && !strings.Contains(text, "\"node_battery\":\"Batteri\"") {
+		t.Fatal("expected localized flow-card labels to be injected")
 	}
 }

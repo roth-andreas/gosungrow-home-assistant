@@ -176,10 +176,6 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	}
 
 	templatePath := filepath.Join(opts.AssetDir, dashboardTemplateFile)
-	config, err := renderDashboardConfig(templatePath, opts.DashboardTitle, targets)
-	if err != nil {
-		return err
-	}
 
 	localResourceURL, assetVersion, err := installDashboardCardAsset(opts.AssetDir, opts.HomeAssistantDir)
 	if err != nil {
@@ -193,11 +189,6 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 			return err
 		}
 		fmt.Printf("Managed GoSungrow custom card local asset unavailable; using embedded fallback resource.\n")
-	}
-
-	desiredHash, err := hashCanonicalJSON(config)
-	if err != nil {
-		return err
 	}
 
 	statePath := dashboardStatePath()
@@ -214,6 +205,22 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		return err
 	}
 	defer client.Close()
+
+	preferredLanguage := client.GetPreferredLanguage(ctx)
+	localeBundle, _, err := localizedDashboardBundle(opts.AssetDir, preferredLanguage)
+	if err != nil {
+		return err
+	}
+
+	config, err := renderDashboardConfig(templatePath, opts.DashboardTitle, targets, localeBundle)
+	if err != nil {
+		return err
+	}
+
+	desiredHash, err := hashCanonicalJSON(config)
+	if err != nil {
+		return err
+	}
 
 	if err := client.EnsureResource(ctx, resourceURL, dashboardCardResourceType); err != nil {
 		return err
@@ -398,7 +405,9 @@ func discoverDashboardTargetsFromTrees(trees map[string]iSolarCloud.PsTree) ([]h
 	return ret, nil
 }
 
-func renderDashboardConfig(templatePath string, dashboardTitle string, targets []haDashboardTarget) (map[string]any, error) {
+func renderDashboardConfig(templatePath string, dashboardTitle string, targets []haDashboardTarget, localeBundle dashboardLocaleBundle) (map[string]any, error) {
+	localeBundle = mergeDashboardLocale(defaultDashboardLocaleBundle, localeBundle)
+
 	content, err := os.ReadFile(templatePath)
 	if err != nil {
 		return nil, err
@@ -449,7 +458,14 @@ func renderDashboardConfig(templatePath string, dashboardTitle string, targets [
 
 	template["title"] = dashboardTitle
 	template["views"] = generatedViews
-	return template, nil
+
+	localized := localizeDashboardValue(template, dashboardReplacementMap(localeBundle))
+	localized = injectFlowCardLabels(localized, localeBundle.FlowCard)
+	localizedTemplate, ok := localized.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("localized dashboard template has unexpected type %T", localized)
+	}
+	return localizedTemplate, nil
 }
 
 func installDashboardCardAsset(assetDir string, homeAssistantDir string) (string, string, error) {
