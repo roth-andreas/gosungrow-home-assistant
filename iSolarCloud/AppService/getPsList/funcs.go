@@ -30,8 +30,7 @@ func (e *ResultData) GetPsIds() []valueTypes.PsId {
 			break
 		}
 		for _, p := range e.PageList {
-			// fmt.Printf("%s_%s_%s\n", p.PsId, p.)
-			if p.PsId.Value() != 0 {
+			if p.PsId.HasValue() {
 				ret = append(ret, p.PsId)
 			}
 		}
@@ -47,7 +46,7 @@ func (e *ResultData) GetPsName() []string {
 			break
 		}
 		for _, p := range e.PageList {
-			if p.PsId.Value() != 0 {
+			if p.PsId.HasValue() {
 				ret = append(ret, p.PsName.Value())
 			}
 		}
@@ -63,7 +62,7 @@ func (e *ResultData) GetPsSerial() []string {
 			break
 		}
 		for _, p := range e.PageList {
-			if p.PsId.Value() != 0 {
+			if p.PsId.HasValue() {
 				ret = append(ret, p.PsShortName.Value())
 			}
 		}

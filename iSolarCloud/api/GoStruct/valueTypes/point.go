@@ -162,11 +162,11 @@ func SetPsKeyString(value string) PsKey {
 }
 
 type PsId struct {
-	string `json:"string,omitempty"`
-	int64  `json:"integer,omitempty"`
+	string  `json:"string,omitempty"`
+	int64   `json:"integer,omitempty"`
 	Numeric bool  `json:"-"`
-	Valid  bool  `json:"valid"`
-	Error  error `json:"-"`
+	Valid   bool  `json:"valid"`
+	Error   error `json:"-"`
 }
 
 // UnmarshalJSON - Convert JSON to value
@@ -226,6 +226,11 @@ func (t PsId) Value() int64 {
 
 func (t PsId) String() string {
 	return t.string
+}
+
+func (t PsId) HasValue() bool {
+	value := strings.TrimSpace(t.string)
+	return t.Valid && value != "" && value != "--"
 }
 
 func (t PsId) Match(comp int64) bool {

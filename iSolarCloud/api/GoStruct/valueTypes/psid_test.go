@@ -54,4 +54,16 @@ func TestPsIdAcceptsCompositeString(t *testing.T) {
 	if string(data) != `"5520557_5520558"` {
 		t.Fatalf("expected string JSON, got %s", data)
 	}
+	if !psID.HasValue() {
+		t.Fatal("expected composite ps_id to report a usable value")
+	}
+}
+
+func TestPsIdHasValueRejectsEmptyPlaceholder(t *testing.T) {
+	if SetPsIdString("").HasValue() {
+		t.Fatal("expected empty ps_id to be treated as missing")
+	}
+	if SetPsIdString("--").HasValue() {
+		t.Fatal("expected placeholder ps_id to be treated as missing")
+	}
 }
