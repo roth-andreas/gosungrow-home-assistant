@@ -26,7 +26,28 @@ func TestCmdMqttIsTokenInvalidError(t *testing.T) {
 	}
 }
 
-func TestCmdMqttRetryStartupTokenInvalidRelogsAndRetries(t *testing.T) {
+func TestCmdMqttIsRecoverableGatewayError(t *testing.T) {
+	c := NewCmdMqtt("")
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "token invalid", err: errors.New("er_token_login_invalid"), want: true},
+		{name: "http 500", err: errors.New("API httpResponse is 500 Internal Server Error"), want: true},
+		{name: "other", err: errors.New("mqtt publish failed"), want: false},
+	}
+
+	for _, tc := range tests {
+		if got := c.isRecoverableGatewayError(tc.err); got != tc.want {
+			t.Fatalf("%s: got %v want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestCmdMqttRetryStartupRecoverableRelogsAndRetries(t *testing.T) {
 	c := NewCmdMqtt("")
 
 	originalLogin := mqttApiLogin
@@ -42,7 +63,7 @@ func TestCmdMqttRetryStartupTokenInvalidRelogsAndRetries(t *testing.T) {
 	}
 
 	runCalls := 0
-	err := c.retryStartupTokenInvalid("metadata discovery", func() error {
+	err := c.retryStartupRecoverable("metadata discovery", func() error {
 		runCalls++
 		if runCalls == 1 {
 			return errors.New("need to login again 'er_token_login_invalid'")
@@ -60,7 +81,41 @@ func TestCmdMqttRetryStartupTokenInvalidRelogsAndRetries(t *testing.T) {
 	}
 }
 
-func TestCmdMqttRetryStartupTokenInvalidLeavesNonTokenErrorsAlone(t *testing.T) {
+func TestCmdMqttRetryStartupRecoverableRetriesHttp500(t *testing.T) {
+	c := NewCmdMqtt("")
+
+	originalLogin := mqttApiLogin
+	defer func() { mqttApiLogin = originalLogin }()
+
+	loginCalls := 0
+	mqttApiLogin = func(force bool) error {
+		if !force {
+			t.Fatal("expected forced login refresh")
+		}
+		loginCalls++
+		return nil
+	}
+
+	runCalls := 0
+	err := c.retryStartupRecoverable("metadata discovery", func() error {
+		runCalls++
+		if runCalls < 3 {
+			return errors.New("API httpResponse is 500 Internal Server Error")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if loginCalls != 2 {
+		t.Fatalf("expected 2 login refreshes, got %d", loginCalls)
+	}
+	if runCalls != 3 {
+		t.Fatalf("expected 3 execution attempts, got %d", runCalls)
+	}
+}
+
+func TestCmdMqttRetryStartupRecoverableLeavesNonRecoverableErrorsAlone(t *testing.T) {
 	c := NewCmdMqtt("")
 
 	originalLogin := mqttApiLogin
@@ -73,7 +128,7 @@ func TestCmdMqttRetryStartupTokenInvalidLeavesNonTokenErrorsAlone(t *testing.T) 
 	}
 
 	expected := errors.New("broker unavailable")
-	err := c.retryStartupTokenInvalid("device discovery", func() error {
+	err := c.retryStartupRecoverable("device discovery", func() error {
 		return expected
 	})
 	if !errors.Is(err, expected) {

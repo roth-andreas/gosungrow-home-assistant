@@ -85,12 +85,12 @@ run_mqtt_with_login_retry() {
       return 0
     fi
 
-    if grep -qiE 'er_token_login_invalid|need to login again' "$log_file"; then
+    if grep -qiE 'er_token_login_invalid|need to login again|API httpResponse is 5[0-9]{2}|internal server error|bad gateway|service unavailable|gateway timeout|no such host|temporary failure in name resolution|server misbehaving|network is unreachable|connection refused|context deadline exceeded|i/o timeout' "$log_file"; then
       attempt=$((attempt + 1))
-      bashio::log.warning "GoSungrow session expired. Refreshing login and restarting mqtt run (attempt ${attempt})."
-      GoSungrow api login >/dev/null
+      bashio::log.warning "Recoverable GoSungrow runtime error. Refreshing login and restarting mqtt run (attempt ${attempt})."
+      GoSungrow api login >/dev/null || true
       rm -f "$log_file"
-      sleep 2
+      sleep 3
       continue
     fi
 

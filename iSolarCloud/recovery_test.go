@@ -45,6 +45,8 @@ func TestShouldRecoverGatewayError(t *testing.T) {
 		{name: "token invalid", err: errors.New("need to login again 'er_token_login_invalid'"), want: true},
 		{name: "gateway rejected", err: errors.New("login rejected by gateway"), want: true},
 		{name: "wrong app key", err: errors.New("appkey is incorrect"), want: true},
+		{name: "http 500", err: errors.New("API httpResponse is 500 Internal Server Error"), want: true},
+		{name: "http 502", err: errors.New("API httpResponse is 502 Bad Gateway"), want: true},
 		{name: "dns no such host", err: errors.New("lookup augateway.isolarcloud.com: no such host"), want: true},
 		{name: "dns server misbehaving", err: errors.New("dial tcp: lookup gateway.isolarcloud.eu on 127.0.0.11:53: server misbehaving"), want: true},
 		{name: "network timeout", err: errors.New("dial tcp 1.2.3.4:443: i/o timeout"), want: true},

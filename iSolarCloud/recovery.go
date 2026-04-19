@@ -74,6 +74,11 @@ func ShouldRecoverGatewayError(err error) bool {
 		strings.Contains(msg, "need to login again") ||
 		strings.Contains(msg, "er_token_login_invalid") ||
 		strings.Contains(msg, "cannot login") ||
+		strings.Contains(msg, "api httpresponse is 5") ||
+		strings.Contains(msg, "internal server error") ||
+		strings.Contains(msg, "bad gateway") ||
+		strings.Contains(msg, "service unavailable") ||
+		strings.Contains(msg, "gateway timeout") ||
 		strings.Contains(msg, "no such host") ||
 		strings.Contains(msg, "temporary failure in name resolution") ||
 		strings.Contains(msg, "server misbehaving") ||

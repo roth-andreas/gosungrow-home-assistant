@@ -10,6 +10,7 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/go-co-op/gocron"
 	"github.com/roth-andreas/gosungrow-home-assistant/cmdHassio"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/WebAppService/getDevicePointAttrs"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api"
 	"github.com/spf13/cobra"
@@ -29,6 +30,7 @@ const (
 	flagMqttPassword   = "mqtt-password"
 	flagMqttHost       = "mqtt-host"
 	flagMqttPort       = "mqtt-port"
+	startupRetryMax    = 3
 )
 
 var mqttApiLogin = func(force bool) error {
@@ -188,7 +190,7 @@ func (c *CmdMqtt) MqttArgs(_ *cobra.Command, _ []string) error {
 		}
 
 		c.log.Info("Connecting to SunGrow...\n")
-		c.Error = c.retryStartupTokenInvalid("device discovery", func() error {
+		c.Error = c.retryStartupRecoverable("device discovery", func() error {
 			var err error
 			c.Client.SungrowDevices, err = cmds.Api.SunGrow.GetDeviceList()
 			return err
@@ -256,14 +258,14 @@ func (c *CmdMqtt) MqttArgs(_ *cobra.Command, _ []string) error {
 		}
 
 		c.log.Info("Caching Sungrow metadata...\n")
-		c.Error = c.retryStartupTokenInvalid("metadata discovery", func() error {
+		c.Error = c.retryStartupRecoverable("metadata discovery", func() error {
 			return c.GetEndPoints()
 		})
 		if c.Error != nil {
 			break
 		}
 
-		c.Error = c.retryStartupTokenInvalid("device point discovery", func() error {
+		c.Error = c.retryStartupRecoverable("device point discovery", func() error {
 			var err error
 			c.points, err = cmds.Api.SunGrow.DevicePointAttrsMap("")
 			return err
@@ -393,6 +395,11 @@ func (c *CmdMqtt) Cron() error {
 				break
 			}
 		}
+		if c.Error != nil && c.isRecoverableGatewayError(c.Error) {
+			c.log.Info("Recoverable API/gateway error during sync. Keeping service alive and retrying on next cycle: %s\n", c.Error)
+			c.Error = nil
+			break
+		}
 		if c.Error != nil {
 			break
 		}
@@ -481,18 +488,38 @@ func (c *CmdMqtt) isTokenInvalidError(err error) bool {
 	return false
 }
 
-func (c *CmdMqtt) retryStartupTokenInvalid(step string, fn func() error) error {
-	err := fn()
-	if !c.isTokenInvalidError(err) {
-		return err
+func (c *CmdMqtt) isRecoverableGatewayError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if c.isTokenInvalidError(err) {
+		return true
+	}
+	return iSolarCloud.ShouldRecoverGatewayError(err)
+}
+
+func (c *CmdMqtt) retryStartupRecoverable(step string, fn func() error) error {
+	var err error
+	for attempt := 1; attempt <= startupRetryMax; attempt++ {
+		err = fn()
+		if err == nil {
+			return nil
+		}
+		if !c.isRecoverableGatewayError(err) {
+			return err
+		}
+
+		c.log.Info("Recoverable API/gateway error during %s (attempt %d/%d). Re-authenticating: %s\n", step, attempt, startupRetryMax, err)
+		if loginErr := mqttApiLogin(true); loginErr != nil {
+			return loginErr
+		}
+
+		if attempt < startupRetryMax {
+			time.Sleep(time.Duration(attempt) * time.Second)
+		}
 	}
 
-	c.log.Info("Token expired/invalid during %s. Re-authenticating...\n", step)
-	if err = mqttApiLogin(true); err != nil {
-		return err
-	}
-
-	return fn()
+	return err
 }
 
 func (c *CmdMqtt) Update(endpoint string, data api.DataMap, newDay bool) error {
