@@ -107,3 +107,84 @@ func TestRemapDashboardEntitiesUsesBestPlantMatchWhenMultipleCandidatesExist(t *
 		t.Fatalf("expected best matching plant entity, got %v", got)
 	}
 }
+
+func TestRemapDashboardEntitiesUsesSemanticTokenMatchingForModernPowerNames(t *testing.T) {
+	config := map[string]any{
+		"views": []any{
+			map[string]any{
+				"cards": []any{
+					map[string]any{
+						"type": "custom:gosungrow-energy-flow-card-v2",
+						"entities": map[string]any{
+							"load_power": "sensor.gosungrow_virtual_1610907_22_247_1_load_power",
+							"pv_power":   "sensor.gosungrow_virtual_1610907_22_247_1_pv_power",
+							"grid_power": "sensor.gosungrow_virtual_1610907_22_247_1_grid_power",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	targets := []haDashboardTarget{
+		{PsID: "1610907", PsKey: "1610907_22_247_1"},
+	}
+	stateEntityIDs := []string{
+		"sensor.gosungrow_1610907_sungrow_gosungrow_load_information_total_active_power",
+		"sensor.gosungrow_1610907_sungrow_gosungrow_pv_information_total_active_power",
+		"sensor.gosungrow_1610907_sungrow_gosungrow_grid_information_total_active_power",
+	}
+
+	remapped := remapDashboardEntities(config, targets, stateEntityIDs)
+	views := remapped["views"].([]any)
+	cards := views[0].(map[string]any)["cards"].([]any)
+	flowEntities := cards[0].(map[string]any)["entities"].(map[string]any)
+
+	if got := flowEntities["load_power"]; got != "sensor.gosungrow_1610907_sungrow_gosungrow_load_information_total_active_power" {
+		t.Fatalf("unexpected remapped load_power entity: %v", got)
+	}
+	if got := flowEntities["pv_power"]; got != "sensor.gosungrow_1610907_sungrow_gosungrow_pv_information_total_active_power" {
+		t.Fatalf("unexpected remapped pv_power entity: %v", got)
+	}
+	if got := flowEntities["grid_power"]; got != "sensor.gosungrow_1610907_sungrow_gosungrow_grid_information_total_active_power" {
+		t.Fatalf("unexpected remapped grid_power entity: %v", got)
+	}
+}
+
+func TestRemapDashboardEntitiesMapsDailyEnergyPointAliases(t *testing.T) {
+	config := map[string]any{
+		"views": []any{
+			map[string]any{
+				"cards": []any{
+					map[string]any{
+						"type":   "tile",
+						"entity": "sensor.gosungrow_virtual_1610907_22_247_1_p13112",
+					},
+					map[string]any{
+						"type":   "tile",
+						"entity": "sensor.gosungrow_virtual_1610907_22_247_1_p13147",
+					},
+				},
+			},
+		},
+	}
+
+	targets := []haDashboardTarget{
+		{PsID: "1610907", PsKey: "1610907_22_247_1"},
+	}
+	stateEntityIDs := []string{
+		"sensor.gosungrow_1610907_sungrow_gosungrow_pv_information_pv_daily_energy",
+		"sensor.gosungrow_1610907_sungrow_gosungrow_grid_information_grid_to_load_energy",
+	}
+
+	remapped := remapDashboardEntities(config, targets, stateEntityIDs)
+	views := remapped["views"].([]any)
+	cards := views[0].(map[string]any)["cards"].([]any)
+
+	if got := cards[0].(map[string]any)["entity"]; got != "sensor.gosungrow_1610907_sungrow_gosungrow_pv_information_pv_daily_energy" {
+		t.Fatalf("unexpected remapped p13112 alias: %v", got)
+	}
+	if got := cards[1].(map[string]any)["entity"]; got != "sensor.gosungrow_1610907_sungrow_gosungrow_grid_information_grid_to_load_energy" {
+		t.Fatalf("unexpected remapped p13147 alias: %v", got)
+	}
+}

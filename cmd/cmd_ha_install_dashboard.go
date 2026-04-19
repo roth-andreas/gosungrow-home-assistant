@@ -227,6 +227,7 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		return err
 	}
 	if stateEntityIDs, listErr := client.ListStateEntityIDs(ctx); listErr == nil {
+		config = pruneDashboardForMissingBattery(config, targets, stateEntityIDs)
 		config = remapDashboardEntities(config, targets, stateEntityIDs)
 	}
 
