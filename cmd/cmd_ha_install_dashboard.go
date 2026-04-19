@@ -81,6 +81,10 @@ type haResourceMetadata struct {
 	ResType      string `json:"res_type,omitempty"`
 }
 
+type haState struct {
+	EntityID string `json:"entity_id"`
+}
+
 type haWSCallError struct {
 	Code    string
 	Message string
@@ -221,6 +225,9 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	config, err := renderDashboardConfig(templatePath, opts.DashboardTitle, targets, localeBundle)
 	if err != nil {
 		return err
+	}
+	if stateEntityIDs, listErr := client.ListStateEntityIDs(ctx); listErr == nil {
+		config = remapDashboardEntities(config, targets, stateEntityIDs)
 	}
 
 	desiredHash, err := hashCanonicalJSON(config)
@@ -864,6 +871,29 @@ func (c *haWSClient) ListResources(_ context.Context) ([]haResourceMetadata, err
 		return nil, err
 	}
 	return resources, nil
+}
+
+func (c *haWSClient) ListStateEntityIDs(_ context.Context) ([]string, error) {
+	var states []haState
+	if err := c.call(map[string]any{"type": "get_states"}, &states); err != nil {
+		return nil, err
+	}
+
+	entityIDs := make([]string, 0, len(states))
+	seen := make(map[string]struct{}, len(states))
+	for _, state := range states {
+		entityID := strings.TrimSpace(state.EntityID)
+		if entityID == "" {
+			continue
+		}
+		normalized := strings.ToLower(entityID)
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		entityIDs = append(entityIDs, entityID)
+	}
+	return entityIDs, nil
 }
 
 func (c *haWSClient) CreateResource(_ context.Context, url string, resourceType string) error {
