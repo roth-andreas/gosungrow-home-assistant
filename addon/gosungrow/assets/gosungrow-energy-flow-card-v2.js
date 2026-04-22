@@ -63,7 +63,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
       .join("");
 
     const edgeLabels = Object.entries(layout.edges)
-      .map(([key, edge]) => this._renderEdgeLabel(key, edge, flows[key]))
+      .map(([key, edge]) => this._renderEdgeLabel(key, edge, flows[key], nodes))
       .join("");
 
     const nodeMarkup = Object.entries(layout.nodes)
@@ -384,6 +384,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
             edgeClass: "edge-solar-battery",
             pillClass: "pill-solar-battery",
             dotDur: "4.8s",
+            hideLabelWhenNodeReflectsFlow: { node: "battery", sign: -1 },
           },
           grid_to_load_power: {
             path: "M194 286 L506 286",
@@ -439,6 +440,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
           edgeClass: "edge-solar-battery",
           pillClass: "pill-solar-battery",
           dotDur: "4.8s",
+          hideLabelWhenNodeReflectsFlow: { node: "battery", sign: -1 },
         },
         grid_to_load_power: {
           path: "M228 164 L712 164",
@@ -537,12 +539,15 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
     `;
   }
 
-  _renderEdgeLabel(key, edge, display) {
+  _renderEdgeLabel(key, edge, display, nodes) {
     if (this._compact) {
       return "";
     }
     const active = Math.abs(display.numericValue) > 0.01;
     if (!active) {
+      return "";
+    }
+    if (this._isRedundantEdgeLabel(edge, display, nodes)) {
       return "";
     }
     const width = Math.max(62, display.formatted.length * 6.8);
@@ -552,6 +557,22 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         <text x="0" y="1">${this._escape(display.formatted)}</text>
       </g>
     `;
+  }
+
+  _isRedundantEdgeLabel(edge, display, nodes) {
+    const rule = edge.hideLabelWhenNodeReflectsFlow;
+    if (!rule || !nodes) {
+      return false;
+    }
+
+    const nodeDisplay = nodes[rule.node];
+    if (!nodeDisplay?.available) {
+      return false;
+    }
+
+    const sign = Number.isFinite(rule.sign) ? rule.sign : 1;
+    const expectedNodeValue = display.numericValue * sign;
+    return Math.abs(nodeDisplay.numericValue - expectedNodeValue) < 0.01;
   }
 
   _renderNode(key, node, displays, layout) {
