@@ -688,6 +688,24 @@ func (c *CmdMqtt) GetEndPoints() error {
 		if c.Error != nil {
 			break
 		}
+		endpointsChanged, err := mergeDefaultMqttEndpoints(&c.endpoints)
+		if err != nil {
+			c.Error = err
+			break
+		}
+		if endpointsChanged {
+			updated, err := json.MarshalIndent(c.endpoints, "", "\t")
+			if err != nil {
+				c.Error = err
+				break
+			}
+			updated = append(updated, '\n')
+			c.Error = os.WriteFile(fn, updated, 0644)
+			if c.Error != nil {
+				break
+			}
+			c.log.Info("Updated MQTT endpoint config with required GoSungrow defaults.\n")
+		}
 
 		// All := []string{ "queryDeviceList", "getPsList", "getPsDetailWithPsType", "getPsDetail", "getKpiInfo"}
 		// All := []string{ "queryDeviceList", "getPsList", "getPsDetailWithPsType", "getPsDetail", "getKpiInfo"}	//, queryMutiPointDataList, getDevicePointMinuteDataList }
@@ -991,6 +1009,65 @@ func (c *MqttEndPoints) IsOK(check *api.DataEntry) bool {
 		}
 	}
 	return yes
+}
+
+func defaultMqttEndpoints() (MqttEndPoints, error) {
+	endpoints := MqttEndPoints{}
+	if err := json.Unmarshal([]byte(DefaultMqttFile), &endpoints); err != nil {
+		return nil, err
+	}
+	return endpoints, nil
+}
+
+func mergeDefaultMqttEndpoints(endpoints *MqttEndPoints) (bool, error) {
+	defaults, err := defaultMqttEndpoints()
+	if err != nil {
+		return false, err
+	}
+	if *endpoints == nil {
+		*endpoints = MqttEndPoints{}
+	}
+
+	changed := false
+	for name, defaultEndpoint := range defaults {
+		current, exists := (*endpoints)[name]
+		if !exists {
+			(*endpoints)[name] = MqttEndPoint{
+				Include: copyStringSlice(defaultEndpoint.Include),
+				Exclude: copyStringSlice(defaultEndpoint.Exclude),
+			}
+			changed = true
+			continue
+		}
+
+		for _, include := range defaultEndpoint.Include {
+			if stringSliceContains(current.Include, include) {
+				continue
+			}
+			current.Include = append(current.Include, include)
+			changed = true
+		}
+		(*endpoints)[name] = current
+	}
+	return changed, nil
+}
+
+func stringSliceContains(values []string, value string) bool {
+	for _, entry := range values {
+		if entry == value {
+			return true
+		}
+	}
+	return false
+}
+
+func copyStringSlice(values []string) []string {
+	if values == nil {
+		return nil
+	}
+	ret := make([]string, len(values))
+	copy(ret, values)
+	return ret
 }
 
 const DefaultMqttFile = `{

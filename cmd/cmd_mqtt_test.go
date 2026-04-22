@@ -138,3 +138,47 @@ func TestCmdMqttRetryStartupRecoverableLeavesNonRecoverableErrorsAlone(t *testin
 		t.Fatalf("expected no login refresh, got %d", loginCalls)
 	}
 }
+
+func TestMergeDefaultMqttEndpointsAddsRequiredVirtualIncludes(t *testing.T) {
+	endpoints := MqttEndPoints{
+		"queryDeviceList": {
+			Include: []string{"legacy.*"},
+			Exclude: []string{"custom.exclude"},
+		},
+	}
+
+	changed, err := mergeDefaultMqttEndpoints(&endpoints)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected endpoint config to change")
+	}
+	if !stringSliceContains(endpoints["queryDeviceList"].Include, "legacy.*") {
+		t.Fatalf("expected custom include to be preserved: %#v", endpoints["queryDeviceList"].Include)
+	}
+	if !stringSliceContains(endpoints["queryDeviceList"].Include, "virtual.*") {
+		t.Fatalf("expected required virtual include to be added: %#v", endpoints["queryDeviceList"].Include)
+	}
+	if !stringSliceContains(endpoints["queryDeviceList"].Exclude, "custom.exclude") {
+		t.Fatalf("expected custom exclude to be preserved: %#v", endpoints["queryDeviceList"].Exclude)
+	}
+	if _, ok := endpoints["queryDeviceRealTimeDataByPsKeys"]; !ok {
+		t.Fatal("expected missing default endpoint to be added")
+	}
+}
+
+func TestMergeDefaultMqttEndpointsLeavesCurrentDefaultsUnchanged(t *testing.T) {
+	endpoints, err := defaultMqttEndpoints()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	changed, err := mergeDefaultMqttEndpoints(&endpoints)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if changed {
+		t.Fatal("expected current default endpoint config to remain unchanged")
+	}
+}
