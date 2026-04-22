@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -481,5 +482,44 @@ func TestBundledDashboardTemplateRendersSwedishAndInjectsCardLabels(t *testing.T
 	}
 	if !strings.Contains(text, "\"labels\":{\"node_battery\":\"Batteri\"") && !strings.Contains(text, "\"node_battery\":\"Batteri\"") {
 		t.Fatal("expected localized flow-card labels to be injected")
+	}
+}
+
+func TestWriteDashboardInstallDiagnosticsIncludesSummaryAndUnresolvedRefs(t *testing.T) {
+	var buf bytes.Buffer
+	writeDashboardInstallDiagnostics(&buf, dashboardInstallDiagnostics{
+		HAStatesLoaded:        1284,
+		GoSungrowStatesFound:  42,
+		DashboardRefsFound:    23,
+		RemappedRefs:          18,
+		BatteryDetectionKnown: true,
+		BatteryTargetsFound:   0,
+		BatteryTargetsTotal:   1,
+		DashboardSaved:        true,
+		DashboardSaveReason:   "configuration changed",
+		UnresolvedRefs: []dashboardUnresolvedEntityRef{
+			{
+				Entity: "sensor.gosungrow_virtual_123_pv_power",
+				Reason: "no usable candidate entity matched metric \"pv_power\"",
+			},
+		},
+	})
+
+	text := buf.String()
+	for _, expected := range []string{
+		"Dashboard diagnostics:",
+		"- HA states loaded: 1284",
+		"- GoSungrow states found: 42",
+		"- dashboard entity refs found: 23",
+		"- remapped refs: 18",
+		"- unresolved refs: 1",
+		"- battery detected: false",
+		"- dashboard saved: yes (configuration changed)",
+		"Unresolved dashboard refs:",
+		"- sensor.gosungrow_virtual_123_pv_power: no usable candidate entity matched metric \"pv_power\"",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("expected diagnostics output to contain %q, got:\n%s", expected, text)
+		}
 	}
 }

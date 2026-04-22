@@ -87,6 +87,20 @@ type haState struct {
 	Attributes map[string]any `json:"attributes,omitempty"`
 }
 
+type dashboardInstallDiagnostics struct {
+	HAStatesLoaded        int
+	HAStatesLoadError     string
+	GoSungrowStatesFound  int
+	DashboardRefsFound    int
+	RemappedRefs          int
+	UnresolvedRefs        []dashboardUnresolvedEntityRef
+	BatteryDetectionKnown bool
+	BatteryTargetsFound   int
+	BatteryTargetsTotal   int
+	DashboardSaved        bool
+	DashboardSaveReason   string
+}
+
 type haWSCallError struct {
 	Code    string
 	Message string
@@ -228,10 +242,27 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	if err != nil {
 		return err
 	}
-	if states, listErr := client.ListStates(ctx); listErr == nil {
-		config = pruneDashboardForMissingBattery(config, targets, states)
-		config = remapDashboardEntities(config, targets, states)
+
+	diagnostics := dashboardInstallDiagnostics{
+		BatteryTargetsTotal: len(targets),
+		DashboardSaveReason: "unchanged",
 	}
+	states, listErr := client.ListStates(ctx)
+	var remapReport dashboardRemapReport
+	if listErr != nil {
+		diagnostics.HAStatesLoadError = listErr.Error()
+		_, remapReport = remapDashboardEntitiesWithReport(config, targets, nil)
+	} else {
+		diagnostics.HAStatesLoaded = len(states)
+		diagnostics.GoSungrowStatesFound = countDashboardGoSungrowStates(states)
+		diagnostics.BatteryDetectionKnown = true
+		diagnostics.BatteryTargetsFound = countDashboardBatteryTargets(targets, states)
+		config = pruneDashboardForMissingBattery(config, targets, states)
+		config, remapReport = remapDashboardEntitiesWithReport(config, targets, states)
+	}
+	diagnostics.DashboardRefsFound = remapReport.TotalRefs
+	diagnostics.RemappedRefs = len(remapReport.Remapped)
+	diagnostics.UnresolvedRefs = remapReport.Unresolved
 
 	desiredHash, err := hashCanonicalJSON(config)
 	if err != nil {
@@ -300,7 +331,10 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		}
 	}
 
-	if currentHash != desiredHash || currentConfig == nil || opts.ForceUpdate {
+	shouldSaveConfig := currentHash != desiredHash || currentConfig == nil || opts.ForceUpdate
+	diagnostics.DashboardSaved = shouldSaveConfig
+	diagnostics.DashboardSaveReason = dashboardSaveReason(shouldSaveConfig, currentConfig == nil, currentHash != desiredHash, opts.ForceUpdate)
+	if shouldSaveConfig {
 		if err := client.SaveConfig(ctx, opts.DashboardURLPath, config); err != nil {
 			return err
 		}
@@ -322,6 +356,7 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	if viewCount == 0 {
 		viewCount = len(targets)
 	}
+	printDashboardInstallDiagnostics(diagnostics)
 	fmt.Printf("Managed GoSungrow dashboard ready at /%s with %d view(s).\n", opts.DashboardURLPath, viewCount)
 	return nil
 }
@@ -588,6 +623,85 @@ func targetPSKeys(targets []haDashboardTarget) []string {
 		keys = append(keys, target.PsKey)
 	}
 	return keys
+}
+
+func countDashboardGoSungrowStates(states []haState) int {
+	count := 0
+	for _, state := range states {
+		entityID := strings.ToLower(strings.TrimSpace(state.EntityID))
+		if strings.HasPrefix(entityID, "sensor.") && strings.Contains(entityID, "gosungrow") {
+			count++
+		}
+	}
+	return count
+}
+
+func countDashboardBatteryTargets(targets []haDashboardTarget, states []haState) int {
+	count := 0
+	singleTarget := len(targets) == 1
+	for _, target := range targets {
+		if dashboardTargetHasBattery(target, states, singleTarget) {
+			count++
+		}
+	}
+	return count
+}
+
+func dashboardSaveReason(saved bool, newConfig bool, changed bool, forceUpdate bool) string {
+	switch {
+	case forceUpdate:
+		return "force update"
+	case newConfig:
+		return "new dashboard config"
+	case changed:
+		return "configuration changed"
+	case !saved:
+		return "unchanged"
+	default:
+		return "saved"
+	}
+}
+
+func printDashboardInstallDiagnostics(diagnostics dashboardInstallDiagnostics) {
+	writeDashboardInstallDiagnostics(os.Stdout, diagnostics)
+}
+
+func writeDashboardInstallDiagnostics(w io.Writer, diagnostics dashboardInstallDiagnostics) {
+	fmt.Fprintln(w, "Dashboard diagnostics:")
+	if diagnostics.HAStatesLoadError != "" {
+		fmt.Fprintf(w, "- HA states loaded: failed (%s)\n", diagnostics.HAStatesLoadError)
+	} else {
+		fmt.Fprintf(w, "- HA states loaded: %d\n", diagnostics.HAStatesLoaded)
+	}
+	fmt.Fprintf(w, "- GoSungrow states found: %d\n", diagnostics.GoSungrowStatesFound)
+	fmt.Fprintf(w, "- dashboard entity refs found: %d\n", diagnostics.DashboardRefsFound)
+	fmt.Fprintf(w, "- remapped refs: %d\n", diagnostics.RemappedRefs)
+	fmt.Fprintf(w, "- unresolved refs: %d\n", len(diagnostics.UnresolvedRefs))
+	if diagnostics.BatteryDetectionKnown {
+		if diagnostics.BatteryTargetsTotal == 1 {
+			fmt.Fprintf(w, "- battery detected: %t\n", diagnostics.BatteryTargetsFound == 1)
+		} else {
+			fmt.Fprintf(w, "- battery detected: %d/%d targets\n", diagnostics.BatteryTargetsFound, diagnostics.BatteryTargetsTotal)
+		}
+	} else {
+		fmt.Fprintln(w, "- battery detected: unknown")
+	}
+	fmt.Fprintf(w, "- dashboard saved: %s (%s)\n", dashboardYesNo(diagnostics.DashboardSaved), diagnostics.DashboardSaveReason)
+
+	if len(diagnostics.UnresolvedRefs) == 0 {
+		return
+	}
+	fmt.Fprintln(w, "Unresolved dashboard refs:")
+	for _, unresolved := range diagnostics.UnresolvedRefs {
+		fmt.Fprintf(w, "- %s: %s\n", unresolved.Entity, unresolved.Reason)
+	}
+}
+
+func dashboardYesNo(value bool) string {
+	if value {
+		return "yes"
+	}
+	return "no"
 }
 
 func dashboardStatePath() string {

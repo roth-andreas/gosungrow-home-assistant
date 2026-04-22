@@ -1,6 +1,9 @@
 package cmd
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestRemapDashboardEntitiesRemapsLegacyVirtualSensorsByMetricAndPlantAffinity(t *testing.T) {
 	config := map[string]any{
@@ -216,6 +219,45 @@ func TestRemapDashboardEntitiesDoesNotMapBatteryEnergyToPvYield(t *testing.T) {
 
 	if got := cards[0].(map[string]any)["entity"]; got != "sensor.gosungrow_virtual_1610907_22_247_1_p13174" {
 		t.Fatalf("expected p13174 to stay unchanged without a battery-energy candidate, got %v", got)
+	}
+}
+
+func TestRemapDashboardEntitiesReportsUnresolvedRefs(t *testing.T) {
+	config := map[string]any{
+		"views": []any{
+			map[string]any{
+				"cards": []any{
+					map[string]any{
+						"type":   "tile",
+						"entity": "sensor.gosungrow_virtual_1610907_22_247_1_pv_power",
+					},
+				},
+			},
+		},
+	}
+
+	targets := []haDashboardTarget{
+		{PsID: "1610907", PsKey: "1610907_22_247_1"},
+	}
+	states := []haState{
+		dashboardTestState("sensor.gosungrow_1610907_sungrow_gosungrow_pv_information_pv_power", "1.23", "kWh"),
+	}
+
+	_, report := remapDashboardEntitiesWithReport(config, targets, states)
+	if report.TotalRefs != 1 {
+		t.Fatalf("unexpected total refs: %d", report.TotalRefs)
+	}
+	if len(report.Remapped) != 0 {
+		t.Fatalf("expected no remapped refs, got %#v", report.Remapped)
+	}
+	if len(report.Unresolved) != 1 {
+		t.Fatalf("expected one unresolved ref, got %#v", report.Unresolved)
+	}
+	if report.Unresolved[0].Metric != "pv_power" {
+		t.Fatalf("unexpected unresolved metric: %q", report.Unresolved[0].Metric)
+	}
+	if !strings.Contains(report.Unresolved[0].Reason, "compatible power unit") {
+		t.Fatalf("unexpected unresolved reason: %q", report.Unresolved[0].Reason)
 	}
 }
 

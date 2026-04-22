@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -19,6 +20,24 @@ type dashboardMetricProfile struct {
 	Kind            string
 }
 
+type dashboardEntityRemap struct {
+	From   string
+	To     string
+	Metric string
+}
+
+type dashboardUnresolvedEntityRef struct {
+	Entity string
+	Metric string
+	Reason string
+}
+
+type dashboardRemapReport struct {
+	TotalRefs  int
+	Remapped   []dashboardEntityRemap
+	Unresolved []dashboardUnresolvedEntityRef
+}
+
 const (
 	dashboardMetricKindPower   = "power"
 	dashboardMetricKindEnergy  = "energy"
@@ -26,13 +45,30 @@ const (
 )
 
 func remapDashboardEntities(config map[string]any, targets []haDashboardTarget, states []haState) map[string]any {
-	if len(config) == 0 || len(targets) == 0 || len(states) == 0 {
-		return config
+	remapped, _ := remapDashboardEntitiesWithReport(config, targets, states)
+	return remapped
+}
+
+func remapDashboardEntitiesWithReport(config map[string]any, targets []haDashboardTarget, states []haState) (map[string]any, dashboardRemapReport) {
+	report := dashboardRemapReport{}
+	if len(config) == 0 || len(targets) == 0 {
+		return config, report
 	}
 
 	refs := collectLegacyDashboardEntityRefs(config, targets)
+	report.TotalRefs = len(refs)
 	if len(refs) == 0 {
-		return config
+		return config, report
+	}
+	if len(states) == 0 {
+		for _, ref := range refs {
+			report.Unresolved = append(report.Unresolved, dashboardUnresolvedEntityRef{
+				Entity: ref.Entity,
+				Metric: ref.Metric,
+				Reason: "no Home Assistant states were available",
+			})
+		}
+		return config, report
 	}
 
 	stateByID := make(map[string]haState, len(states))
@@ -48,20 +84,33 @@ func remapDashboardEntities(config map[string]any, targets []haDashboardTarget, 
 	singleTarget := len(targets) == 1
 	for _, ref := range refs {
 		resolved := resolveDashboardEntityRef(ref, states, stateByID, singleTarget)
-		if resolved == "" || strings.EqualFold(resolved, ref.Entity) {
+		if resolved == "" {
+			report.Unresolved = append(report.Unresolved, dashboardUnresolvedEntityRef{
+				Entity: ref.Entity,
+				Metric: ref.Metric,
+				Reason: dashboardResolveFailureReason(ref, states, singleTarget),
+			})
+			continue
+		}
+		if strings.EqualFold(resolved, ref.Entity) {
 			continue
 		}
 		replacements[ref.Entity] = resolved
+		report.Remapped = append(report.Remapped, dashboardEntityRemap{
+			From:   ref.Entity,
+			To:     resolved,
+			Metric: ref.Metric,
+		})
 	}
 	if len(replacements) == 0 {
-		return config
+		return config, report
 	}
 
 	remapped, ok := replaceDashboardEntityStrings(config, replacements).(map[string]any)
 	if !ok {
-		return config
+		return config, report
 	}
-	return remapped
+	return remapped, report
 }
 
 func collectLegacyDashboardEntityRefs(value any, targets []haDashboardTarget) []dashboardEntityRef {
@@ -202,6 +251,64 @@ func resolveDashboardEntityRef(ref dashboardEntityRef, states []haState, stateBy
 	return bestCandidate
 }
 
+func dashboardResolveFailureReason(ref dashboardEntityRef, states []haState, singleTarget bool) string {
+	if len(states) == 0 {
+		return "no Home Assistant states were available"
+	}
+
+	profile := dashboardMetricProfileFor(ref.Metric)
+	gosungrowStates := 0
+	plantStates := 0
+	nameCandidates := 0
+	unusableCandidates := 0
+	unitRejectedCandidates := 0
+
+	for _, state := range states {
+		candidate := strings.ToLower(strings.TrimSpace(state.EntityID))
+		if !strings.HasPrefix(candidate, "sensor.") || !strings.Contains(candidate, "gosungrow") {
+			continue
+		}
+		gosungrowStates++
+
+		if _, ok := dashboardEntityPlantAffinity(candidate, ref.Target, singleTarget); !ok {
+			continue
+		}
+		plantStates++
+
+		_, hasSuffixMatch := dashboardMetricSuffixScore(candidate, strings.ToLower(strings.TrimSpace(ref.Metric)), profile)
+		_, hasTokenMatch := dashboardMetricTokenScore(candidate, profile)
+		if !hasSuffixMatch && !hasTokenMatch {
+			continue
+		}
+		nameCandidates++
+
+		reason := dashboardMetricStateRejectionReason(state, profile)
+		if reason == "" {
+			continue
+		}
+		if strings.Contains(reason, "unit") {
+			unitRejectedCandidates++
+		} else {
+			unusableCandidates++
+		}
+	}
+
+	switch {
+	case gosungrowStates == 0:
+		return "no GoSungrow sensor entities were found in Home Assistant states"
+	case plantStates == 0:
+		return fmt.Sprintf("no GoSungrow entities matched ps_id %q or ps_key %q", ref.Target.PsID, ref.Target.PsKey)
+	case nameCandidates == 0:
+		return fmt.Sprintf("no candidate entity matched metric %q", ref.Metric)
+	case unitRejectedCandidates > 0:
+		return fmt.Sprintf("matching candidates existed, but none had a compatible %s unit", profile.Kind)
+	case unusableCandidates > 0:
+		return "matching candidates existed, but none had a usable numeric state"
+	default:
+		return fmt.Sprintf("no usable candidate entity matched metric %q", ref.Metric)
+	}
+}
+
 func dashboardMetricStateScore(state haState, profile dashboardMetricProfile) (int, bool) {
 	if !dashboardStateMatchesMetricKind(state, profile) {
 		return 0, false
@@ -217,29 +324,39 @@ func dashboardMetricStateScore(state haState, profile dashboardMetricProfile) (i
 }
 
 func dashboardStateMatchesMetricKind(state haState, profile dashboardMetricProfile) bool {
+	return dashboardMetricStateRejectionReason(state, profile) == ""
+}
+
+func dashboardMetricStateRejectionReason(state haState, profile dashboardMetricProfile) string {
 	kind := strings.TrimSpace(profile.Kind)
 	if kind == "" {
-		return true
+		return ""
 	}
 	if !dashboardStateHasUsableNumericValue(state) {
-		return false
+		return "state is unavailable or non-numeric"
 	}
 
 	unit := dashboardStateUnit(state)
 	if unit == "" {
-		return true
+		return ""
 	}
 
 	switch kind {
 	case dashboardMetricKindPower:
-		return isDashboardPowerUnit(unit)
+		if !isDashboardPowerUnit(unit) {
+			return fmt.Sprintf("unit %q is not compatible with power", unit)
+		}
 	case dashboardMetricKindEnergy:
-		return isDashboardEnergyUnit(unit)
+		if !isDashboardEnergyUnit(unit) {
+			return fmt.Sprintf("unit %q is not compatible with energy", unit)
+		}
 	case dashboardMetricKindPercent:
-		return strings.TrimSpace(unit) == "%"
-	default:
-		return true
+		if strings.TrimSpace(unit) != "%" {
+			return fmt.Sprintf("unit %q is not compatible with percent", unit)
+		}
 	}
+
+	return ""
 }
 
 func dashboardStateHasUsableNumericValue(state haState) bool {
