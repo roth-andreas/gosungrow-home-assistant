@@ -2,8 +2,8 @@ package cmd
 
 import "strings"
 
-func pruneDashboardForMissingBattery(config map[string]any, targets []haDashboardTarget, stateEntityIDs []string) map[string]any {
-	if len(config) == 0 || len(targets) == 0 || len(stateEntityIDs) == 0 {
+func pruneDashboardForMissingBattery(config map[string]any, targets []haDashboardTarget, states []haState) map[string]any {
+	if len(config) == 0 || len(targets) == 0 || len(states) == 0 {
 		return config
 	}
 
@@ -12,7 +12,7 @@ func pruneDashboardForMissingBattery(config map[string]any, targets []haDashboar
 	anyMissingBattery := false
 	for _, target := range targets {
 		psKey := strings.ToLower(strings.TrimSpace(target.PsKey))
-		hasBattery := dashboardTargetHasBattery(target, stateEntityIDs, singleTarget)
+		hasBattery := dashboardTargetHasBattery(target, states, singleTarget)
 		batteryByTarget[psKey] = hasBattery
 		if !hasBattery {
 			anyMissingBattery = true
@@ -66,9 +66,9 @@ func pruneDashboardForMissingBattery(config map[string]any, targets []haDashboar
 	return ret
 }
 
-func dashboardTargetHasBattery(target haDashboardTarget, stateEntityIDs []string, singleTarget bool) bool {
-	for _, entityID := range stateEntityIDs {
-		candidate := strings.ToLower(strings.TrimSpace(entityID))
+func dashboardTargetHasBattery(target haDashboardTarget, states []haState, singleTarget bool) bool {
+	for _, state := range states {
+		candidate := strings.ToLower(strings.TrimSpace(state.EntityID))
 		if !strings.HasPrefix(candidate, "sensor.") || !strings.Contains(candidate, "gosungrow") {
 			continue
 		}
@@ -78,22 +78,34 @@ func dashboardTargetHasBattery(target haDashboardTarget, stateEntityIDs []string
 			continue
 		}
 
-		if isBatteryEntityReference(candidate) {
+		if isBatteryCapabilityState(candidate, state) {
 			return true
-		}
-
-		tokens := dashboardTokenSet(candidate)
-		if _, hasStorage := tokens["es"]; hasStorage {
-			if _, hasPower := tokens["power"]; hasPower {
-				return true
-			}
-			if _, hasEnergy := tokens["energy"]; hasEnergy {
-				return true
-			}
 		}
 	}
 
 	return false
+}
+
+func isBatteryCapabilityState(candidate string, state haState) bool {
+	if !dashboardStateHasUsableNumericValue(state) {
+		return false
+	}
+
+	unit := dashboardStateUnit(state)
+	if isBatterySocEntityReference(candidate) && (unit == "" || strings.TrimSpace(unit) == "%") {
+		return true
+	}
+	return false
+}
+
+func isBatterySocEntityReference(entityID string) bool {
+	candidate := strings.ToLower(strings.TrimSpace(entityID))
+	return strings.HasSuffix(candidate, "_soc") ||
+		strings.Contains(candidate, "_soc_") ||
+		strings.Contains(candidate, "_p13141") ||
+		strings.Contains(candidate, "_p13142") ||
+		strings.Contains(candidate, "_battery_level") ||
+		strings.Contains(candidate, "_battery_charge_percent")
 }
 
 func dashboardTargetForView(view map[string]any, targets []haDashboardTarget) (haDashboardTarget, bool) {

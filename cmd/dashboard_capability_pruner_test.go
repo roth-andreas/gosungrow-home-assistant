@@ -65,13 +65,13 @@ func TestPruneDashboardForMissingBatteryPrunesBatteryCardsAndEntities(t *testing
 	targets := []haDashboardTarget{
 		{PsID: "100", PsKey: "100_14_1_1"},
 	}
-	stateEntityIDs := []string{
-		"sensor.gosungrow_100_sungrow_gosungrow_pv_information_total_active_power",
-		"sensor.gosungrow_100_sungrow_gosungrow_load_information_total_active_power",
-		"sensor.gosungrow_100_sungrow_gosungrow_grid_information_total_active_power",
+	states := []haState{
+		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_pv_information_total_active_power", "1.20", "kW"),
+		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_load_information_total_active_power", "0.70", "kW"),
+		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_grid_information_total_active_power", "0.10", "kW"),
 	}
 
-	pruned := pruneDashboardForMissingBattery(config, targets, stateEntityIDs)
+	pruned := pruneDashboardForMissingBattery(config, targets, states)
 	views := pruned["views"].([]any)
 	sections := views[0].(map[string]any)["sections"].([]any)
 
@@ -143,12 +143,12 @@ func TestPruneDashboardForMissingBatteryAppliesPerViewTarget(t *testing.T) {
 		{PsID: "100", PsKey: "100_14_1_1"},
 		{PsID: "200", PsKey: "200_14_1_1"},
 	}
-	stateEntityIDs := []string{
-		"sensor.gosungrow_100_sungrow_gosungrow_battery_information_battery_soc",
-		"sensor.gosungrow_200_sungrow_gosungrow_pv_information_total_active_power",
+	states := []haState{
+		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_battery_information_battery_soc", "88", "%"),
+		dashboardTestState("sensor.gosungrow_200_sungrow_gosungrow_pv_information_total_active_power", "1.20", "kW"),
 	}
 
-	pruned := pruneDashboardForMissingBattery(config, targets, stateEntityIDs)
+	pruned := pruneDashboardForMissingBattery(config, targets, states)
 	views := pruned["views"].([]any)
 
 	firstCards := views[0].(map[string]any)["sections"].([]any)[0].(map[string]any)["cards"].([]any)
@@ -162,5 +162,82 @@ func TestPruneDashboardForMissingBatteryAppliesPerViewTarget(t *testing.T) {
 	}
 	if got := secondCards[0].(map[string]any)["entity"]; got != "sensor.gosungrow_virtual_200_14_1_1_pv_power" {
 		t.Fatalf("unexpected remaining card entity: %v", got)
+	}
+}
+
+func TestPruneDashboardForMissingBatteryDoesNotTreatPvToBatteryEnergyAsBatteryCapability(t *testing.T) {
+	config := map[string]any{
+		"views": []any{
+			map[string]any{
+				"sections": []any{
+					map[string]any{
+						"type": "grid",
+						"cards": []any{
+							map[string]any{
+								"type": "custom:gosungrow-energy-flow-card-v2",
+								"entities": map[string]any{
+									"solar_power":           "sensor.gosungrow_virtual_1610907_22_247_1_pv_power",
+									"load_power":            "sensor.gosungrow_virtual_1610907_22_247_1_load_power",
+									"grid_power":            "sensor.gosungrow_virtual_1610907_22_247_1_grid_power",
+									"battery_power":         "sensor.gosungrow_virtual_1610907_22_247_1_battery_power",
+									"battery_soc":           "sensor.gosungrow_virtual_1610907_22_247_1_p13141",
+									"pv_to_battery_power":   "sensor.gosungrow_virtual_1610907_22_247_1_pv_to_battery_power",
+									"battery_to_load_power": "sensor.gosungrow_virtual_1610907_22_247_1_battery_to_load_power",
+								},
+							},
+						},
+					},
+					map[string]any{
+						"type": "grid",
+						"cards": []any{
+							map[string]any{
+								"type":   "tile",
+								"entity": "sensor.gosungrow_virtual_1610907_22_247_1_p13174",
+							},
+						},
+					},
+					map[string]any{
+						"type": "grid",
+						"cards": []any{
+							map[string]any{
+								"type":   "tile",
+								"entity": "sensor.gosungrow_virtual_1610907_22_247_1_p13112",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	targets := []haDashboardTarget{
+		{PsID: "1610907", PsKey: "1610907_22_247_1"},
+	}
+	states := []haState{
+		dashboardTestState("sensor.gosungrow_1610907_sungrow_gosungrow_pv_information_total_dc_power", "1.23", "kW"),
+		dashboardTestState("sensor.gosungrow_1610907_sungrow_gosungrow_load_information_load_power", "0.72", "kW"),
+		dashboardTestState("sensor.gosungrow_1610907_sungrow_gosungrow_grid_information_grid_to_load_power", "0.10", "kW"),
+		dashboardTestState("sensor.gosungrow_1610907_sungrow_gosungrow_pv_information_pv_daily_energy", "47.70", "kWh"),
+		dashboardTestState("sensor.gosungrow_1610907_sungrow_gosungrow_pv_information_pv_to_battery_energy", "47.70", "kWh"),
+	}
+
+	pruned := pruneDashboardForMissingBattery(config, targets, states)
+	views := pruned["views"].([]any)
+	sections := views[0].(map[string]any)["sections"].([]any)
+
+	if len(sections) != 2 {
+		t.Fatalf("expected p13174 battery-only section to be removed, got %d sections", len(sections))
+	}
+
+	firstCards := sections[0].(map[string]any)["cards"].([]any)
+	flowEntities := firstCards[0].(map[string]any)["entities"].(map[string]any)
+	if _, ok := flowEntities["battery_power"]; ok {
+		t.Fatalf("expected battery_power to be removed from no-battery flow card")
+	}
+	if _, ok := flowEntities["battery_soc"]; ok {
+		t.Fatalf("expected battery_soc to be removed from no-battery flow card")
+	}
+	if _, ok := flowEntities["pv_to_battery_power"]; ok {
+		t.Fatalf("expected pv_to_battery_power to be removed from no-battery flow card")
 	}
 }

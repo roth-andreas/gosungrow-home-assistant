@@ -82,7 +82,9 @@ type haResourceMetadata struct {
 }
 
 type haState struct {
-	EntityID string `json:"entity_id"`
+	EntityID   string         `json:"entity_id"`
+	State      string         `json:"state"`
+	Attributes map[string]any `json:"attributes,omitempty"`
 }
 
 type haWSCallError struct {
@@ -226,9 +228,9 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	if err != nil {
 		return err
 	}
-	if stateEntityIDs, listErr := client.ListStateEntityIDs(ctx); listErr == nil {
-		config = pruneDashboardForMissingBattery(config, targets, stateEntityIDs)
-		config = remapDashboardEntities(config, targets, stateEntityIDs)
+	if states, listErr := client.ListStates(ctx); listErr == nil {
+		config = pruneDashboardForMissingBattery(config, targets, states)
+		config = remapDashboardEntities(config, targets, states)
 	}
 
 	desiredHash, err := hashCanonicalJSON(config)
@@ -874,13 +876,13 @@ func (c *haWSClient) ListResources(_ context.Context) ([]haResourceMetadata, err
 	return resources, nil
 }
 
-func (c *haWSClient) ListStateEntityIDs(_ context.Context) ([]string, error) {
+func (c *haWSClient) ListStates(_ context.Context) ([]haState, error) {
 	var states []haState
 	if err := c.call(map[string]any{"type": "get_states"}, &states); err != nil {
 		return nil, err
 	}
 
-	entityIDs := make([]string, 0, len(states))
+	deduped := make([]haState, 0, len(states))
 	seen := make(map[string]struct{}, len(states))
 	for _, state := range states {
 		entityID := strings.TrimSpace(state.EntityID)
@@ -892,7 +894,21 @@ func (c *haWSClient) ListStateEntityIDs(_ context.Context) ([]string, error) {
 			continue
 		}
 		seen[normalized] = struct{}{}
-		entityIDs = append(entityIDs, entityID)
+		state.EntityID = entityID
+		deduped = append(deduped, state)
+	}
+	return deduped, nil
+}
+
+func (c *haWSClient) ListStateEntityIDs(ctx context.Context) ([]string, error) {
+	states, err := c.ListStates(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	entityIDs := make([]string, 0, len(states))
+	for _, state := range states {
+		entityIDs = append(entityIDs, state.EntityID)
 	}
 	return entityIDs, nil
 }

@@ -1,6 +1,10 @@
 package cmd
 
-import "strings"
+import (
+	"math"
+	"strconv"
+	"strings"
+)
 
 type dashboardEntityRef struct {
 	Entity string
@@ -12,10 +16,17 @@ type dashboardMetricProfile struct {
 	Aliases         []string
 	TokenGroups     [][]string
 	ForbiddenTokens []string
+	Kind            string
 }
 
-func remapDashboardEntities(config map[string]any, targets []haDashboardTarget, stateEntityIDs []string) map[string]any {
-	if len(config) == 0 || len(targets) == 0 || len(stateEntityIDs) == 0 {
+const (
+	dashboardMetricKindPower   = "power"
+	dashboardMetricKindEnergy  = "energy"
+	dashboardMetricKindPercent = "percent"
+)
+
+func remapDashboardEntities(config map[string]any, targets []haDashboardTarget, states []haState) map[string]any {
+	if len(config) == 0 || len(targets) == 0 || len(states) == 0 {
 		return config
 	}
 
@@ -24,15 +35,19 @@ func remapDashboardEntities(config map[string]any, targets []haDashboardTarget, 
 		return config
 	}
 
-	stateSet := make(map[string]struct{}, len(stateEntityIDs))
-	for _, entityID := range stateEntityIDs {
-		stateSet[strings.ToLower(strings.TrimSpace(entityID))] = struct{}{}
+	stateByID := make(map[string]haState, len(states))
+	for _, state := range states {
+		entityID := strings.ToLower(strings.TrimSpace(state.EntityID))
+		if entityID == "" {
+			continue
+		}
+		stateByID[entityID] = state
 	}
 
 	replacements := make(map[string]string)
 	singleTarget := len(targets) == 1
 	for _, ref := range refs {
-		resolved := resolveDashboardEntityRef(ref, stateEntityIDs, stateSet, singleTarget)
+		resolved := resolveDashboardEntityRef(ref, states, stateByID, singleTarget)
 		if resolved == "" || strings.EqualFold(resolved, ref.Entity) {
 			continue
 		}
@@ -108,26 +123,27 @@ func parseLegacyDashboardEntityRef(entity string, targets []haDashboardTarget) (
 	return dashboardEntityRef{}, false
 }
 
-func resolveDashboardEntityRef(ref dashboardEntityRef, stateEntityIDs []string, stateSet map[string]struct{}, singleTarget bool) string {
+func resolveDashboardEntityRef(ref dashboardEntityRef, states []haState, stateByID map[string]haState, singleTarget bool) string {
 	psKey := strings.ToLower(strings.TrimSpace(ref.Target.PsKey))
 	psID := strings.ToLower(strings.TrimSpace(ref.Target.PsID))
 	metric := strings.ToLower(strings.TrimSpace(ref.Metric))
+	profile := dashboardMetricProfileFor(metric)
 
 	legacy := []string{
 		"sensor.gosungrow_virtual_" + psKey + "_" + metric,
 		"sensor.gosungrow_virtual_" + psID + "_" + metric,
 	}
 	for _, candidate := range legacy {
-		if _, ok := stateSet[candidate]; ok {
+		state, ok := stateByID[candidate]
+		if ok && dashboardStateMatchesMetricKind(state, profile) {
 			return candidate
 		}
 	}
 
-	profile := dashboardMetricProfileFor(metric)
 	bestCandidate := ""
 	bestScore := -1
-	for _, entityID := range stateEntityIDs {
-		candidate := strings.ToLower(strings.TrimSpace(entityID))
+	for _, state := range states {
+		candidate := strings.ToLower(strings.TrimSpace(state.EntityID))
 		if !strings.HasPrefix(candidate, "sensor.") {
 			continue
 		}
@@ -145,6 +161,10 @@ func resolveDashboardEntityRef(ref dashboardEntityRef, stateEntityIDs []string, 
 		if !hasSuffixMatch && !hasTokenMatch {
 			continue
 		}
+		stateScore, ok := dashboardMetricStateScore(state, profile)
+		if !ok {
+			continue
+		}
 
 		forbiddenPenalty := 0
 		if hasTokenMatch {
@@ -155,7 +175,7 @@ func resolveDashboardEntityRef(ref dashboardEntityRef, stateEntityIDs []string, 
 			}
 		}
 
-		score := affinityScore + suffixScore + tokenScore - forbiddenPenalty
+		score := affinityScore + suffixScore + tokenScore + stateScore - forbiddenPenalty
 		if strings.HasSuffix(candidate, "_active") {
 			score -= 4
 		}
@@ -180,6 +200,84 @@ func resolveDashboardEntityRef(ref dashboardEntityRef, stateEntityIDs []string, 
 	}
 
 	return bestCandidate
+}
+
+func dashboardMetricStateScore(state haState, profile dashboardMetricProfile) (int, bool) {
+	if !dashboardStateMatchesMetricKind(state, profile) {
+		return 0, false
+	}
+	if strings.TrimSpace(profile.Kind) == "" {
+		return 0, true
+	}
+	unit := dashboardStateUnit(state)
+	if unit == "" {
+		return -18, true
+	}
+	return 28, true
+}
+
+func dashboardStateMatchesMetricKind(state haState, profile dashboardMetricProfile) bool {
+	kind := strings.TrimSpace(profile.Kind)
+	if kind == "" {
+		return true
+	}
+	if !dashboardStateHasUsableNumericValue(state) {
+		return false
+	}
+
+	unit := dashboardStateUnit(state)
+	if unit == "" {
+		return true
+	}
+
+	switch kind {
+	case dashboardMetricKindPower:
+		return isDashboardPowerUnit(unit)
+	case dashboardMetricKindEnergy:
+		return isDashboardEnergyUnit(unit)
+	case dashboardMetricKindPercent:
+		return strings.TrimSpace(unit) == "%"
+	default:
+		return true
+	}
+}
+
+func dashboardStateHasUsableNumericValue(state haState) bool {
+	text := strings.ToLower(strings.TrimSpace(state.State))
+	switch text {
+	case "", "unknown", "unavailable", "none", "null":
+		return false
+	}
+	value, err := strconv.ParseFloat(text, 64)
+	return err == nil && !math.IsNaN(value) && !math.IsInf(value, 0)
+}
+
+func dashboardStateUnit(state haState) string {
+	if state.Attributes == nil {
+		return ""
+	}
+	unit, _ := state.Attributes["unit_of_measurement"].(string)
+	return strings.TrimSpace(unit)
+}
+
+func isDashboardPowerUnit(unit string) bool {
+	normalized := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(unit), " ", ""))
+	switch normalized {
+	case "w", "kw", "mw":
+		return true
+	default:
+		return false
+	}
+}
+
+func isDashboardEnergyUnit(unit string) bool {
+	normalized := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(unit), " ", ""))
+	switch normalized {
+	case "wh", "kwh", "mwh":
+		return true
+	default:
+		return false
+	}
 }
 
 func dashboardEntityPlantAffinity(candidate string, target haDashboardTarget, singleTarget bool) (int, bool) {
@@ -297,79 +395,94 @@ func dashboardMetricProfileFor(metric string) dashboardMetricProfile {
 	switch strings.ToLower(strings.TrimSpace(metric)) {
 	case "pv_power":
 		return dashboardMetricProfile{
-			Aliases:     []string{"pv_power", "pv_power_active", "solar_power", "total_active_power", "active_power"},
+			Aliases:     []string{"pv_power", "pv_power_active", "solar_power", "p13003", "total_dc_power", "dc_power", "total_active_power", "active_power"},
 			TokenGroups: [][]string{{"pv", "solar"}, {"power"}},
+			Kind:        dashboardMetricKindPower,
 		}
 	case "load_power":
 		return dashboardMetricProfile{
-			Aliases:     []string{"load_power", "load_power_active", "house_power", "consumption_power", "use_power", "total_active_power", "active_power"},
+			Aliases:     []string{"load_power", "load_power_active", "p13119", "house_power", "consumption_power", "use_power", "total_load_power", "total_active_power", "active_power"},
 			TokenGroups: [][]string{{"load", "home", "house", "consumption", "use"}, {"power"}},
+			Kind:        dashboardMetricKindPower,
 		}
 	case "grid_power":
 		return dashboardMetricProfile{
-			Aliases:         []string{"grid_power", "grid_power_active", "net_grid_power", "active_power", "total_active_power", "import_power", "export_power"},
+			Aliases:         []string{"grid_power", "grid_power_active", "net_grid_power", "p13149", "p13121", "active_power", "total_active_power", "import_power", "export_power"},
 			TokenGroups:     [][]string{{"grid", "import", "export", "feed", "purchased"}, {"power"}},
 			ForbiddenTokens: []string{"battery"},
+			Kind:            dashboardMetricKindPower,
 		}
 	case "battery_power":
 		return dashboardMetricProfile{
-			Aliases:     []string{"battery_power", "battery_power_active", "es_power", "battery_charge_power", "battery_discharge_power", "charge_power", "discharge_power"},
+			Aliases:     []string{"battery_power", "battery_power_active", "es_power", "p13126", "p13150", "battery_charge_power", "battery_discharge_power", "charge_power", "discharge_power"},
 			TokenGroups: [][]string{{"battery", "soc", "es"}, {"power"}},
+			Kind:        dashboardMetricKindPower,
 		}
 	case "pv_to_load_power":
 		return dashboardMetricProfile{
 			Aliases:     []string{"pv_to_load_power", "pv_to_load_power_active", "load_from_pv_power", "pv_consumption_power"},
 			TokenGroups: [][]string{{"pv", "solar"}, {"load", "home", "house", "consumption", "use"}, {"power"}},
+			Kind:        dashboardMetricKindPower,
 		}
 	case "pv_to_battery_power":
 		return dashboardMetricProfile{
-			Aliases:     []string{"pv_to_battery_power", "pv_to_battery_power_active", "battery_charge_power"},
+			Aliases:     []string{"pv_to_battery_power", "pv_to_battery_power_active", "p13126", "battery_charge_power"},
 			TokenGroups: [][]string{{"pv", "solar"}, {"battery", "es"}, {"power"}},
+			Kind:        dashboardMetricKindPower,
 		}
 	case "pv_to_grid_power":
 		return dashboardMetricProfile{
-			Aliases:     []string{"pv_to_grid_power", "pv_to_grid_power_active", "export_power", "feed_in_power"},
+			Aliases:     []string{"pv_to_grid_power", "pv_to_grid_power_active", "p13121", "export_power", "feed_in_power"},
 			TokenGroups: [][]string{{"pv", "solar"}, {"grid", "export", "feed"}, {"power"}},
+			Kind:        dashboardMetricKindPower,
 		}
 	case "battery_to_load_power":
 		return dashboardMetricProfile{
-			Aliases:     []string{"battery_to_load_power", "battery_to_load_power_active", "battery_discharge_power"},
+			Aliases:     []string{"battery_to_load_power", "battery_to_load_power_active", "p13150", "battery_discharge_power"},
 			TokenGroups: [][]string{{"battery", "es"}, {"load", "home", "house", "consumption", "use"}, {"power"}},
+			Kind:        dashboardMetricKindPower,
 		}
 	case "grid_to_load_power":
 		return dashboardMetricProfile{
-			Aliases:     []string{"grid_to_load_power", "grid_to_load_power_active", "import_power", "purchased_power"},
+			Aliases:     []string{"grid_to_load_power", "grid_to_load_power_active", "p13149", "import_power", "purchased_power"},
 			TokenGroups: [][]string{{"grid", "import", "purchased"}, {"load", "home", "house", "consumption", "use"}, {"power"}},
+			Kind:        dashboardMetricKindPower,
 		}
 	case "p13112":
 		return dashboardMetricProfile{
 			Aliases:     []string{"p13112", "pv_daily_energy", "daily_pv_yield", "daily_pv_energy", "pv_yield"},
 			TokenGroups: [][]string{{"pv", "solar"}, {"energy", "yield", "production"}},
+			Kind:        dashboardMetricKindEnergy,
 		}
 	case "p13116":
 		return dashboardMetricProfile{
 			Aliases:     []string{"p13116", "pv_to_load_energy", "pv_consumption_energy"},
 			TokenGroups: [][]string{{"pv", "solar"}, {"load", "home", "house", "consumption", "use"}, {"energy"}},
+			Kind:        dashboardMetricKindEnergy,
 		}
 	case "p13174":
 		return dashboardMetricProfile{
-			Aliases:     []string{"p13174", "pv_to_battery_energy", "battery_charge_energy"},
-			TokenGroups: [][]string{{"pv", "solar", "battery"}, {"energy", "charge"}},
+			Aliases:     []string{"p13174", "pv_to_battery_energy", "battery_charge_energy", "battery_charging_energy_from_pv", "daily_battery_charging_energy_from_pv"},
+			TokenGroups: [][]string{{"battery", "es"}, {"energy"}, {"charge", "charging"}},
+			Kind:        dashboardMetricKindEnergy,
 		}
 	case "p13173":
 		return dashboardMetricProfile{
 			Aliases:     []string{"p13173", "pv_to_grid_energy", "feed_in_energy", "export_energy"},
-			TokenGroups: [][]string{{"pv", "solar", "grid", "export", "feed"}, {"energy"}},
+			TokenGroups: [][]string{{"grid", "export", "feed"}, {"energy"}},
+			Kind:        dashboardMetricKindEnergy,
 		}
 	case "p13147":
 		return dashboardMetricProfile{
 			Aliases:     []string{"p13147", "grid_to_load_energy", "grid_import_energy", "purchased_energy"},
 			TokenGroups: [][]string{{"grid", "import", "purchased"}, {"energy"}},
+			Kind:        dashboardMetricKindEnergy,
 		}
 	case "p13141":
 		return dashboardMetricProfile{
 			Aliases:     []string{"p13141", "battery_soc", "battery_level", "battery_charge_percent", "soc"},
 			TokenGroups: [][]string{{"battery", "soc"}, {"percent", "level", "charge", "soc"}},
+			Kind:        dashboardMetricKindPercent,
 		}
 	default:
 		return dashboardMetricProfile{
