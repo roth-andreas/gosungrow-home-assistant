@@ -44,6 +44,7 @@ On a healthy setup, the app:
 2. installs or updates the managed dashboards
 3. connects to MQTT
 4. publishes entity discovery and state updates
+5. reconciles the managed dashboard again shortly after MQTT startup, so fresh installs can remap newly created entities
 
 No Home Assistant restart is required for the managed dashboards.
 

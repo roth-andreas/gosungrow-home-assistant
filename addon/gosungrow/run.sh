@@ -50,9 +50,12 @@ GoSungrow config write \
 bashio::log.info 'Refreshing iSolarCloud session.'
 GoSungrow api login >/dev/null
 
-if bashio::config.true 'install_dashboard'; then
-  bashio::log.info "Installing managed Home Assistant dashboard at ${DEFAULT_DASHBOARD_URL_PATH}."
-  dashboard_args=(
+install_managed_dashboard() {
+  local action
+  action="${1:-Installing}"
+
+  bashio::log.info "${action} managed Home Assistant dashboard at ${DEFAULT_DASHBOARD_URL_PATH}."
+  local dashboard_args=(
     ha install-dashboard
     "--asset-dir=$GOSUNGROW_ASSET_DIR"
     "--url-path=${DEFAULT_DASHBOARD_URL_PATH}"
@@ -61,8 +64,29 @@ if bashio::config.true 'install_dashboard'; then
   )
 
   if ! GoSungrow "${dashboard_args[@]}"; then
-    bashio::log.warning 'Managed dashboard installation failed; continuing without changing Home Assistant dashboards.'
+    bashio::log.warning "Managed dashboard ${action} failed; continuing without changing Home Assistant dashboards."
+    return 1
   fi
+}
+
+reconcile_managed_dashboard_after_mqtt_start() {
+  local attempt
+  local delay
+
+  attempt=0
+  for delay in ${GOSUNGROW_DASHBOARD_RECONCILE_DELAYS:-30 90 180 300}; do
+    sleep "$delay" || return 0
+    attempt=$((attempt + 1))
+    install_managed_dashboard "Reconciling after MQTT startup (${attempt})" || true
+  done
+}
+
+dashboard_reconcile_pid=""
+if bashio::config.true 'install_dashboard'; then
+  install_managed_dashboard "Installing" || true
+  reconcile_managed_dashboard_after_mqtt_start &
+  dashboard_reconcile_pid="$!"
+  trap 'if [ -n "${dashboard_reconcile_pid:-}" ]; then kill "$dashboard_reconcile_pid" 2>/dev/null || true; fi' EXIT
 fi
 
 bashio::log.info "Starting GoSungrow against MQTT broker ${GOSUNGROW_MQTT_HOST}:${GOSUNGROW_MQTT_PORT}."
