@@ -11,6 +11,7 @@ import (
 	"github.com/go-co-op/gocron"
 	"github.com/roth-andreas/gosungrow-home-assistant/cmdHassio"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/getDeviceList"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/WebAppService/getDevicePointAttrs"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api"
 	"github.com/spf13/cobra"
@@ -18,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -200,6 +202,8 @@ func (c *CmdMqtt) MqttArgs(_ *cobra.Command, _ []string) error {
 		}
 
 		c.log.Info("Found SunGrow %d devices\n", len(c.Client.SungrowDevices))
+		c.log.Info("SunGrow device types: %s\n", formatSungrowDeviceTypeSummary(c.Client.SungrowDevices))
+		c.log.Info("Realtime source selection: %s\n", describeRealtimePsKeySelection(c.Client.SungrowDevices))
 		c.Client.DeviceName = DefaultServiceName
 		_, c.Error = c.Client.SetDeviceConfig(
 			c.Client.DeviceName, c.Client.DeviceName,
@@ -706,6 +710,7 @@ func (c *CmdMqtt) GetEndPoints() error {
 			}
 			c.log.Info("Updated MQTT endpoint config with required GoSungrow defaults.\n")
 		}
+		c.log.Info("Loaded MQTT endpoints: %s\n", strings.Join(sortedStrings(c.endpoints.Names()), ", "))
 
 		// All := []string{ "queryDeviceList", "getPsList", "getPsDetailWithPsType", "getPsDetail", "getKpiInfo"}
 		// All := []string{ "queryDeviceList", "getPsList", "getPsDetailWithPsType", "getPsDetail", "getKpiInfo"}	//, queryMutiPointDataList, getDevicePointMinuteDataList }
@@ -1009,6 +1014,59 @@ func (c *MqttEndPoints) IsOK(check *api.DataEntry) bool {
 		}
 	}
 	return yes
+}
+
+func sortedStrings(values []string) []string {
+	ret := append([]string(nil), values...)
+	sort.Strings(ret)
+	return ret
+}
+
+func formatSungrowDeviceTypeSummary(devices getDeviceList.Devices) string {
+	if len(devices) == 0 {
+		return "none"
+	}
+
+	counts := make(map[int64]int)
+	for _, device := range devices {
+		counts[device.DeviceType.Value()]++
+	}
+
+	types := make([]int64, 0, len(counts))
+	for deviceType := range counts {
+		types = append(types, deviceType)
+	}
+	sort.Slice(types, func(i, j int) bool {
+		return types[i] < types[j]
+	})
+
+	parts := make([]string, 0, len(types))
+	for _, deviceType := range types {
+		parts = append(parts, fmt.Sprintf("%d=%d", deviceType, counts[deviceType]))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func describeRealtimePsKeySelection(devices getDeviceList.Devices) string {
+	for _, device := range devices {
+		psKey := strings.TrimSpace(device.PsKey.String())
+		if psKey == "" {
+			continue
+		}
+		if device.DeviceType.Value() == 14 {
+			return fmt.Sprintf("ps_key=%s device_type=%d source=device-type-14", psKey, device.DeviceType.Value())
+		}
+	}
+
+	for _, device := range devices {
+		psKey := strings.TrimSpace(device.PsKey.String())
+		if psKey == "" {
+			continue
+		}
+		return fmt.Sprintf("ps_key=%s device_type=%d source=first-valid-ps-key-fallback", psKey, device.DeviceType.Value())
+	}
+
+	return "no usable ps_key available"
 }
 
 func defaultMqttEndpoints() (MqttEndPoints, error) {

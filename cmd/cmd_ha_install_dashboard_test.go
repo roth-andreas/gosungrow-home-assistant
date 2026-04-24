@@ -46,6 +46,12 @@ func TestDiscoverDashboardTargetsPrefersDeviceType14(t *testing.T) {
 	if targets[0].PsKey != "100_14_1_1" {
 		t.Fatalf("expected type 14 ps key, got %#v", targets[0])
 	}
+	if targets[0].DeviceType != 14 {
+		t.Fatalf("expected device type 14, got %#v", targets[0])
+	}
+	if targets[0].SelectionSource != "preferred-device-type-14" {
+		t.Fatalf("expected preferred type-14 selection, got %#v", targets[0])
+	}
 }
 
 func TestDiscoverDashboardTargetsFallsBackToFirstValidPsKeyPerPlant(t *testing.T) {
@@ -68,6 +74,12 @@ func TestDiscoverDashboardTargetsFallsBackToFirstValidPsKeyPerPlant(t *testing.T
 	}
 	if targets[0].PsKey != "100_11_1_1" {
 		t.Fatalf("expected first valid ps key fallback, got %#v", targets[0])
+	}
+	if targets[0].DeviceType != 11 {
+		t.Fatalf("expected fallback device type 11, got %#v", targets[0])
+	}
+	if targets[0].SelectionSource != "fallback-first-valid-ps-key" {
+		t.Fatalf("expected fallback selection source, got %#v", targets[0])
 	}
 }
 
@@ -488,15 +500,40 @@ func TestBundledDashboardTemplateRendersSwedishAndInjectsCardLabels(t *testing.T
 func TestWriteDashboardInstallDiagnosticsIncludesSummaryAndUnresolvedRefs(t *testing.T) {
 	var buf bytes.Buffer
 	writeDashboardInstallDiagnostics(&buf, dashboardInstallDiagnostics{
-		HAStatesLoaded:        1284,
-		GoSungrowStatesFound:  42,
-		DashboardRefsFound:    23,
-		RemappedRefs:          18,
+		DiagnosticContext:    "Reconciling after MQTT startup (1)",
+		HAStatesLoaded:       1284,
+		GoSungrowStatesFound: 42,
+		DashboardRefsFound:   23,
+		RemappedRefs:         18,
+		RemappedPreview: []dashboardEntityRemap{
+			{
+				From:   "sensor.gosungrow_virtual_123_pv_power",
+				To:     "sensor.gosungrow_123_pv_information_pv_power",
+				Metric: "pv_power",
+			},
+		},
 		BatteryDetectionKnown: true,
 		BatteryTargetsFound:   0,
 		BatteryTargetsTotal:   1,
-		DashboardSaved:        true,
-		DashboardSaveReason:   "configuration changed",
+		TargetDiagnostics: []dashboardTargetDiagnostics{
+			{
+				PlantName:       "Roof",
+				DeviceName:      "String inverter",
+				PsID:            "1203332",
+				PsKey:           "1203332_22_247_1",
+				ViewPath:        "1203332-22-247-1",
+				DeviceType:      22,
+				SelectionSource: "fallback-first-valid-ps-key",
+				GoSungrowStates: 97,
+				VirtualStates:   0,
+				ExampleGoSungrowStates: []string{
+					"sensor.gosungrow_1203332_pv_information_pv_power",
+					"sensor.gosungrow_1203332_grid_information_grid_power",
+				},
+			},
+		},
+		DashboardSaved:      true,
+		DashboardSaveReason: "configuration changed",
 		UnresolvedRefs: []dashboardUnresolvedEntityRef{
 			{
 				Entity: "sensor.gosungrow_virtual_123_pv_power",
@@ -508,6 +545,7 @@ func TestWriteDashboardInstallDiagnosticsIncludesSummaryAndUnresolvedRefs(t *tes
 	text := buf.String()
 	for _, expected := range []string{
 		"Dashboard diagnostics:",
+		"- context: Reconciling after MQTT startup (1)",
 		"- HA states loaded: 1284",
 		"- GoSungrow states found: 42",
 		"- dashboard entity refs found: 23",
@@ -515,6 +553,13 @@ func TestWriteDashboardInstallDiagnosticsIncludesSummaryAndUnresolvedRefs(t *tes
 		"- unresolved refs: 1",
 		"- battery detected: false",
 		"- dashboard saved: yes (configuration changed)",
+		"Dashboard targets:",
+		"- target[1]: plant=\"Roof\" device=\"String inverter\" ps_id=1203332 ps_key=1203332_22_247_1 device_type=22 selection=fallback-first-valid-ps-key view=1203332-22-247-1 gosungrow_states=97 virtual_states=0",
+		"warning: selected fallback non-ESS device_type=22; full ESS virtual metrics may be unavailable",
+		"warning: no target-specific gosungrow_virtual states were found",
+		"example gosungrow states: sensor.gosungrow_1203332_pv_information_pv_power, sensor.gosungrow_1203332_grid_information_grid_power",
+		"Remapped dashboard refs:",
+		"- pv_power: sensor.gosungrow_virtual_123_pv_power -> sensor.gosungrow_123_pv_information_pv_power",
 		"Unresolved dashboard refs:",
 		"- sensor.gosungrow_virtual_123_pv_power: no usable candidate entity matched metric \"pv_power\"",
 	} {

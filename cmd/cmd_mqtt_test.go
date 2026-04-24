@@ -3,6 +3,8 @@ package cmd
 import (
 	"errors"
 	"testing"
+
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/getDeviceList"
 )
 
 func TestCmdMqttIsTokenInvalidError(t *testing.T) {
@@ -181,4 +183,37 @@ func TestMergeDefaultMqttEndpointsLeavesCurrentDefaultsUnchanged(t *testing.T) {
 	if changed {
 		t.Fatal("expected current default endpoint config to remain unchanged")
 	}
+}
+
+func TestDescribeRealtimePsKeySelectionPrefersType14(t *testing.T) {
+	devices := getDeviceList.Devices{
+		testDeviceListDevice("100_11_1_1", 11),
+		testDeviceListDevice("100_14_1_1", 14),
+	}
+
+	got := describeRealtimePsKeySelection(devices)
+	want := "ps_key=100_14_1_1 device_type=14 source=device-type-14"
+	if got != want {
+		t.Fatalf("unexpected realtime selection: %q", got)
+	}
+}
+
+func TestFormatSungrowDeviceTypeSummary(t *testing.T) {
+	devices := getDeviceList.Devices{
+		testDeviceListDevice("", 22),
+		testDeviceListDevice("", 14),
+		testDeviceListDevice("", 22),
+	}
+
+	got := formatSungrowDeviceTypeSummary(devices)
+	if got != "14=1, 22=2" {
+		t.Fatalf("unexpected device type summary: %q", got)
+	}
+}
+
+func testDeviceListDevice(psKey string, deviceType int64) getDeviceList.Device {
+	var device getDeviceList.Device
+	device.PsKey.SetValue(psKey)
+	device.DeviceType.SetValue(deviceType)
+	return device
 }

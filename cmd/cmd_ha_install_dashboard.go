@@ -46,6 +46,7 @@ type haDashboardInstallOptions struct {
 	HomeAssistantURL   string
 	SupervisorToken    string
 	Language           string
+	DiagnosticContext  string
 	DashboardURLPath   string
 	DashboardTitle     string
 	DashboardIcon      string
@@ -55,10 +56,14 @@ type haDashboardInstallOptions struct {
 }
 
 type haDashboardTarget struct {
-	PsID      string
-	PsKey     string
-	ViewTitle string
-	ViewPath  string
+	PsID            string
+	PsKey           string
+	ViewTitle       string
+	ViewPath        string
+	PlantName       string
+	DeviceName      string
+	DeviceType      int64
+	SelectionSource string
 }
 
 type haDashboardState struct {
@@ -88,17 +93,34 @@ type haState struct {
 }
 
 type dashboardInstallDiagnostics struct {
+	DiagnosticContext     string
 	HAStatesLoaded        int
 	HAStatesLoadError     string
 	GoSungrowStatesFound  int
 	DashboardRefsFound    int
 	RemappedRefs          int
+	RemappedPreview       []dashboardEntityRemap
 	UnresolvedRefs        []dashboardUnresolvedEntityRef
 	BatteryDetectionKnown bool
 	BatteryTargetsFound   int
 	BatteryTargetsTotal   int
+	TargetDiagnostics     []dashboardTargetDiagnostics
 	DashboardSaved        bool
 	DashboardSaveReason   string
+}
+
+type dashboardTargetDiagnostics struct {
+	PlantName              string
+	DeviceName             string
+	PsID                   string
+	PsKey                  string
+	ViewPath               string
+	DeviceType             int64
+	SelectionSource        string
+	GoSungrowStates        int
+	VirtualStates          int
+	ExampleGoSungrowStates []string
+	ExampleVirtualStates   []string
 }
 
 type haWSCallError struct {
@@ -138,6 +160,7 @@ func (c *CmdHa) newInstallDashboardCommand() *cobra.Command {
 		HomeAssistantURL:   defaultSupervisorCoreURL,
 		SupervisorToken:    os.Getenv("SUPERVISOR_TOKEN"),
 		Language:           "auto",
+		DiagnosticContext:  "manual",
 		DashboardURLPath:   defaultDashboardURLPath,
 		DashboardTitle:     defaultDashboardTitle,
 		DashboardIcon:      defaultDashboardIcon,
@@ -168,6 +191,7 @@ func (c *CmdHa) newInstallDashboardCommand() *cobra.Command {
 	cmd.Flags().StringVar(&opts.HomeAssistantURL, "ha-url", opts.HomeAssistantURL, "Home Assistant base URL used to verify custom card assets.")
 	cmd.Flags().StringVar(&opts.SupervisorToken, "supervisor-token", opts.SupervisorToken, "Supervisor token used to access the Home Assistant websocket.")
 	cmd.Flags().StringVar(&opts.Language, "language", opts.Language, "Dashboard language (auto, en, de, sv, or locale such as de-DE).")
+	cmd.Flags().StringVar(&opts.DiagnosticContext, "diagnostic-context", opts.DiagnosticContext, "Diagnostic context label included in dashboard logs.")
 	cmd.Flags().StringVar(&opts.DashboardURLPath, "url-path", opts.DashboardURLPath, "Dashboard URL path.")
 	cmd.Flags().StringVar(&opts.DashboardTitle, "title", opts.DashboardTitle, "Dashboard title.")
 	cmd.Flags().StringVar(&opts.DashboardIcon, "icon", opts.DashboardIcon, "Dashboard sidebar icon.")
@@ -177,6 +201,7 @@ func (c *CmdHa) newInstallDashboardCommand() *cobra.Command {
 	_ = cmd.Flags().MarkHidden("supervisor-token")
 	_ = cmd.Flags().MarkHidden("ha-config-dir")
 	_ = cmd.Flags().MarkHidden("ha-url")
+	_ = cmd.Flags().MarkHidden("diagnostic-context")
 
 	return cmd
 }
@@ -244,8 +269,10 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	}
 
 	diagnostics := dashboardInstallDiagnostics{
+		DiagnosticContext:   dashboardDiagnosticContext(opts.DiagnosticContext),
 		BatteryTargetsTotal: len(targets),
 		DashboardSaveReason: "unchanged",
+		TargetDiagnostics:   buildDashboardTargetDiagnostics(targets, nil),
 	}
 	states, listErr := client.ListStates(ctx)
 	var remapReport dashboardRemapReport
@@ -257,11 +284,13 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		diagnostics.GoSungrowStatesFound = countDashboardGoSungrowStates(states)
 		diagnostics.BatteryDetectionKnown = true
 		diagnostics.BatteryTargetsFound = countDashboardBatteryTargets(targets, states)
+		diagnostics.TargetDiagnostics = buildDashboardTargetDiagnostics(targets, states)
 		config = pruneDashboardForMissingBattery(config, targets, states)
 		config, remapReport = remapDashboardEntitiesWithReport(config, targets, states)
 	}
 	diagnostics.DashboardRefsFound = remapReport.TotalRefs
 	diagnostics.RemappedRefs = len(remapReport.Remapped)
+	diagnostics.RemappedPreview = dashboardRemapPreview(remapReport.Remapped, 5)
 	diagnostics.UnresolvedRefs = remapReport.Unresolved
 
 	desiredHash, err := hashCanonicalJSON(config)
@@ -377,10 +406,12 @@ func discoverDashboardTargetsFromTrees(trees map[string]iSolarCloud.PsTree) ([]h
 	sort.Strings(psIDs)
 
 	type deviceTarget struct {
-		psID       string
-		psKey      string
-		plantName  string
-		deviceName string
+		psID            string
+		psKey           string
+		plantName       string
+		deviceName      string
+		deviceType      int64
+		selectionSource string
 	}
 
 	collected := make([]deviceTarget, 0)
@@ -395,6 +426,7 @@ func discoverDashboardTargetsFromTrees(trees map[string]iSolarCloud.PsTree) ([]h
 				psKey:      strings.TrimSpace(device.PsKey.String()),
 				plantName:  cleanDashboardLabel(device.PsName.String()),
 				deviceName: cleanDashboardLabel(device.DeviceName.String()),
+				deviceType: device.DeviceType.Value(),
 			}
 			if target.psKey == "" {
 				continue
@@ -403,9 +435,11 @@ func discoverDashboardTargetsFromTrees(trees map[string]iSolarCloud.PsTree) ([]h
 				target.plantName = fmt.Sprintf("Plant %s", psID)
 			}
 			if device.DeviceType.Match(14) {
+				target.selectionSource = "preferred-device-type-14"
 				plantTargets = append(plantTargets, target)
 				continue
 			}
+			target.selectionSource = "fallback-first-valid-ps-key"
 			fallbackTargets = append(fallbackTargets, target)
 		}
 
@@ -446,10 +480,14 @@ func discoverDashboardTargetsFromTrees(trees map[string]iSolarCloud.PsTree) ([]h
 			title = fmt.Sprintf("%s (%s)", title, target.psID)
 		}
 		ret = append(ret, haDashboardTarget{
-			PsID:      target.psID,
-			PsKey:     target.psKey,
-			ViewTitle: title,
-			ViewPath:  dashboardSlug(target.psKey),
+			PsID:            target.psID,
+			PsKey:           target.psKey,
+			ViewTitle:       title,
+			ViewPath:        dashboardSlug(target.psKey),
+			PlantName:       target.plantName,
+			DeviceName:      target.deviceName,
+			DeviceType:      target.deviceType,
+			SelectionSource: target.selectionSource,
 		})
 	}
 
@@ -636,6 +674,14 @@ func countDashboardGoSungrowStates(states []haState) int {
 	return count
 }
 
+func dashboardDiagnosticContext(context string) string {
+	context = strings.TrimSpace(context)
+	if context == "" {
+		return "manual"
+	}
+	return context
+}
+
 func countDashboardBatteryTargets(targets []haDashboardTarget, states []haState) int {
 	count := 0
 	singleTarget := len(targets) == 1
@@ -645,6 +691,87 @@ func countDashboardBatteryTargets(targets []haDashboardTarget, states []haState)
 		}
 	}
 	return count
+}
+
+func buildDashboardTargetDiagnostics(targets []haDashboardTarget, states []haState) []dashboardTargetDiagnostics {
+	ret := make([]dashboardTargetDiagnostics, 0, len(targets))
+	singleTarget := len(targets) == 1
+	for _, target := range targets {
+		diagnostic := dashboardTargetDiagnostics{
+			PlantName:       target.PlantName,
+			DeviceName:      target.DeviceName,
+			PsID:            target.PsID,
+			PsKey:           target.PsKey,
+			ViewPath:        target.ViewPath,
+			DeviceType:      target.DeviceType,
+			SelectionSource: target.SelectionSource,
+		}
+		for _, state := range states {
+			candidate := strings.ToLower(strings.TrimSpace(state.EntityID))
+			if !strings.HasPrefix(candidate, "sensor.") || !strings.Contains(candidate, "gosungrow") {
+				continue
+			}
+			if _, ok := dashboardEntityPlantAffinity(candidate, target, singleTarget); !ok {
+				continue
+			}
+			diagnostic.GoSungrowStates++
+			diagnostic.ExampleGoSungrowStates = appendDashboardDiagnosticExample(diagnostic.ExampleGoSungrowStates, candidate, 3)
+			if dashboardStateMatchesTargetVirtualPrefix(candidate, target) {
+				diagnostic.VirtualStates++
+				diagnostic.ExampleVirtualStates = appendDashboardDiagnosticExample(diagnostic.ExampleVirtualStates, candidate, 3)
+			}
+		}
+		ret = append(ret, diagnostic)
+	}
+	return ret
+}
+
+func appendDashboardDiagnosticExample(values []string, value string, limit int) []string {
+	if len(values) >= limit {
+		return values
+	}
+	for _, entry := range values {
+		if entry == value {
+			return values
+		}
+	}
+	return append(values, value)
+}
+
+func dashboardStateMatchesTargetVirtualPrefix(candidate string, target haDashboardTarget) bool {
+	psKey := strings.ToLower(strings.TrimSpace(target.PsKey))
+	psID := strings.ToLower(strings.TrimSpace(target.PsID))
+	switch {
+	case psKey != "" && strings.Contains(candidate, "gosungrow_virtual_"+psKey+"_"):
+		return true
+	case psID != "" && strings.Contains(candidate, "gosungrow_virtual_"+psID+"_"):
+		return true
+	default:
+		return false
+	}
+}
+
+func dashboardTargetProfileWarnings(target dashboardTargetDiagnostics) []string {
+	warnings := make([]string, 0, 3)
+	if target.DeviceType != 14 && strings.HasPrefix(target.SelectionSource, "fallback") {
+		warnings = append(warnings, fmt.Sprintf("selected fallback non-ESS device_type=%d; full ESS virtual metrics may be unavailable", target.DeviceType))
+	} else if target.DeviceType != 14 {
+		warnings = append(warnings, fmt.Sprintf("selected non-ESS device_type=%d; some dashboard metrics may be unavailable", target.DeviceType))
+	}
+	if target.GoSungrowStates == 0 {
+		warnings = append(warnings, "no GoSungrow states matched this target in Home Assistant")
+	}
+	if target.VirtualStates == 0 {
+		warnings = append(warnings, "no target-specific gosungrow_virtual states were found")
+	}
+	return warnings
+}
+
+func dashboardRemapPreview(remapped []dashboardEntityRemap, limit int) []dashboardEntityRemap {
+	if len(remapped) <= limit {
+		return append([]dashboardEntityRemap(nil), remapped...)
+	}
+	return append([]dashboardEntityRemap(nil), remapped[:limit]...)
 }
 
 func dashboardSaveReason(saved bool, newConfig bool, changed bool, forceUpdate bool) string {
@@ -668,6 +795,7 @@ func printDashboardInstallDiagnostics(diagnostics dashboardInstallDiagnostics) {
 
 func writeDashboardInstallDiagnostics(w io.Writer, diagnostics dashboardInstallDiagnostics) {
 	fmt.Fprintln(w, "Dashboard diagnostics:")
+	fmt.Fprintf(w, "- context: %s\n", dashboardDiagnosticContext(diagnostics.DiagnosticContext))
 	if diagnostics.HAStatesLoadError != "" {
 		fmt.Fprintf(w, "- HA states loaded: failed (%s)\n", diagnostics.HAStatesLoadError)
 	} else {
@@ -687,6 +815,39 @@ func writeDashboardInstallDiagnostics(w io.Writer, diagnostics dashboardInstallD
 		fmt.Fprintln(w, "- battery detected: unknown")
 	}
 	fmt.Fprintf(w, "- dashboard saved: %s (%s)\n", dashboardYesNo(diagnostics.DashboardSaved), diagnostics.DashboardSaveReason)
+	if len(diagnostics.TargetDiagnostics) > 0 {
+		fmt.Fprintln(w, "Dashboard targets:")
+		for index, target := range diagnostics.TargetDiagnostics {
+			fmt.Fprintf(w, "- target[%d]: plant=%q device=%q ps_id=%s ps_key=%s device_type=%d selection=%s view=%s gosungrow_states=%d virtual_states=%d\n",
+				index+1,
+				target.PlantName,
+				target.DeviceName,
+				target.PsID,
+				target.PsKey,
+				target.DeviceType,
+				target.SelectionSource,
+				target.ViewPath,
+				target.GoSungrowStates,
+				target.VirtualStates,
+			)
+			for _, warning := range dashboardTargetProfileWarnings(target) {
+				fmt.Fprintf(w, "  warning: %s\n", warning)
+			}
+			if len(target.ExampleVirtualStates) > 0 {
+				fmt.Fprintf(w, "  example virtual states: %s\n", strings.Join(target.ExampleVirtualStates, ", "))
+			}
+			if len(target.ExampleGoSungrowStates) > 0 && len(target.ExampleVirtualStates) == 0 {
+				fmt.Fprintf(w, "  example gosungrow states: %s\n", strings.Join(target.ExampleGoSungrowStates, ", "))
+			}
+		}
+	}
+
+	if len(diagnostics.RemappedPreview) > 0 {
+		fmt.Fprintln(w, "Remapped dashboard refs:")
+		for _, remapped := range diagnostics.RemappedPreview {
+			fmt.Fprintf(w, "- %s: %s -> %s\n", remapped.Metric, remapped.From, remapped.To)
+		}
+	}
 
 	if len(diagnostics.UnresolvedRefs) == 0 {
 		return

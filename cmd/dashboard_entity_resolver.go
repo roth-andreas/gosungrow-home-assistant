@@ -299,13 +299,13 @@ func dashboardResolveFailureReason(ref dashboardEntityRef, states []haState, sin
 	case plantStates == 0:
 		return fmt.Sprintf("no GoSungrow entities matched ps_id %q or ps_key %q", ref.Target.PsID, ref.Target.PsKey)
 	case nameCandidates == 0:
-		return fmt.Sprintf("no candidate entity matched metric %q", ref.Metric)
+		return fmt.Sprintf("no candidate entity matched metric %q among %d target states", ref.Metric, plantStates)
 	case unitRejectedCandidates > 0:
-		return fmt.Sprintf("matching candidates existed, but none had a compatible %s unit", profile.Kind)
+		return fmt.Sprintf("matching candidates existed (%d), but none had a compatible %s unit", nameCandidates, profile.Kind)
 	case unusableCandidates > 0:
-		return "matching candidates existed, but none had a usable numeric state"
+		return fmt.Sprintf("matching candidates existed (%d), but none had a usable numeric state", nameCandidates)
 	default:
-		return fmt.Sprintf("no usable candidate entity matched metric %q", ref.Metric)
+		return fmt.Sprintf("no usable candidate entity matched metric %q (%d name candidates, %d unit rejections, %d numeric-state rejections)", ref.Metric, nameCandidates, unitRejectedCandidates, unusableCandidates)
 	}
 }
 

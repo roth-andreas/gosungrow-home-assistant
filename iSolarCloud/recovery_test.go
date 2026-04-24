@@ -2,6 +2,7 @@ package iSolarCloud
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -58,6 +59,37 @@ func TestShouldRecoverGatewayError(t *testing.T) {
 	for _, tc := range tests {
 		if got := ShouldRecoverGatewayError(tc.err); got != tc.want {
 			t.Fatalf("%s: got %v want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestSummarizeLoginAttemptFailuresGroupsByHost(t *testing.T) {
+	err := SummarizeLoginAttemptFailures([]LoginAttemptFailure{
+		{
+			Attempt: LoginAttempt{Host: "https://gateway.isolarcloud.eu", AppKey: DefaultApiAppKey},
+			Err:     errors.New("dial tcp: lookup gateway.isolarcloud.eu on 127.0.0.11:53: server misbehaving"),
+		},
+		{
+			Attempt: LoginAttempt{Host: "https://gateway.isolarcloud.eu", AppKey: OldLoginAppKey},
+			Err:     errors.New("dial tcp: lookup gateway.isolarcloud.eu on 127.0.0.11:53: server misbehaving"),
+		},
+		{
+			Attempt: LoginAttempt{Host: "https://augateway.isolarcloud.com", AppKey: DefaultApiAppKey},
+			Err:     errors.New("dial tcp: lookup augateway.isolarcloud.com on 127.0.0.11:53: no such host"),
+		},
+	})
+	if err == nil {
+		t.Fatal("expected summarized error")
+	}
+
+	msg := err.Error()
+	for _, expected := range []string{
+		"all login recovery attempts failed:",
+		"https://gateway.isolarcloud.eu (2 attempts): dial tcp: lookup gateway.isolarcloud.eu on 127.0.0.11:53: server misbehaving",
+		"https://augateway.isolarcloud.com (1 attempts): dial tcp: lookup augateway.isolarcloud.com on 127.0.0.11:53: no such host",
+	} {
+		if !strings.Contains(msg, expected) {
+			t.Fatalf("expected summary to contain %q, got %q", expected, msg)
 		}
 	}
 }

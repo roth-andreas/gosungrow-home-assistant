@@ -61,6 +61,7 @@ install_managed_dashboard() {
     "--url-path=${DEFAULT_DASHBOARD_URL_PATH}"
     "--title=${DEFAULT_DASHBOARD_TITLE}"
     "--language=${GOSUNGROW_DASHBOARD_LANGUAGE:-auto}"
+    "--diagnostic-context=${action}"
   )
 
   if ! GoSungrow "${dashboard_args[@]}"; then

@@ -2,6 +2,7 @@ package iSolarCloud
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api"
@@ -15,6 +16,11 @@ const (
 type LoginAttempt struct {
 	Host   string
 	AppKey string
+}
+
+type LoginAttemptFailure struct {
+	Attempt LoginAttempt
+	Err     error
 }
 
 func NormalizeLoginAppKey(appKey string) string {
@@ -88,6 +94,63 @@ func ShouldRecoverGatewayError(err error) bool {
 		strings.Contains(msg, "i/o timeout")
 }
 
+func SummarizeLoginAttemptFailures(failures []LoginAttemptFailure) error {
+	if len(failures) == 0 {
+		return nil
+	}
+
+	type hostSummary struct {
+		Attempts int
+		Messages []string
+	}
+
+	order := make([]string, 0, len(failures))
+	summaries := make(map[string]*hostSummary, len(failures))
+	for _, failure := range failures {
+		host := strings.TrimSpace(failure.Attempt.Host)
+		if host == "" {
+			host = "<unknown-host>"
+		}
+		summary, ok := summaries[host]
+		if !ok {
+			summary = &hostSummary{}
+			summaries[host] = summary
+			order = append(order, host)
+		}
+		summary.Attempts++
+
+		msg := ""
+		if failure.Err != nil {
+			msg = strings.TrimSpace(failure.Err.Error())
+		}
+		if msg == "" {
+			msg = "unknown error"
+		}
+		duplicate := false
+		for _, existing := range summary.Messages {
+			if existing == msg {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate && len(summary.Messages) < 2 {
+			summary.Messages = append(summary.Messages, msg)
+		}
+	}
+
+	parts := make([]string, 0, len(order))
+	for _, host := range order {
+		summary := summaries[host]
+		message := strings.Join(summary.Messages, " | ")
+		if len(summary.Messages) == 0 {
+			message = "unknown error"
+		}
+		parts = append(parts, host+" ("+strconv.Itoa(summary.Attempts)+" attempts): "+message)
+	}
+
+	return errors.New("all login recovery attempts failed: " + strings.Join(parts, "; "))
+}
+
 func (sg *SunGrow) recoverGatewaySession(force bool) error {
 	if sg == nil {
 		return errors.New("sungrow instance not configured")
@@ -108,6 +171,7 @@ func (sg *SunGrow) recoverGatewaySession(force bool) error {
 	var firstRetriableErr error
 	var lastErr error
 	exhaustedRetriable := true
+	failures := make([]LoginAttemptFailure, 0, len(attempts))
 
 	sg.recovering = true
 	defer func() {
@@ -144,6 +208,10 @@ func (sg *SunGrow) recoverGatewaySession(force bool) error {
 			return nil
 		} else {
 			lastErr = err
+			failures = append(failures, LoginAttemptFailure{
+				Attempt: attempt,
+				Err:     err,
+			})
 			if !ShouldRecoverGatewayError(err) {
 				exhaustedRetriable = false
 				break
@@ -155,6 +223,10 @@ func (sg *SunGrow) recoverGatewaySession(force bool) error {
 	}
 
 	if exhaustedRetriable && firstRetriableErr != nil {
+		if summaryErr := SummarizeLoginAttemptFailures(failures); summaryErr != nil {
+			sg.Error = summaryErr
+			return summaryErr
+		}
 		sg.Error = firstRetriableErr
 		return firstRetriableErr
 	}
