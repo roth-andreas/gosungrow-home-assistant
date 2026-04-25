@@ -285,7 +285,7 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		diagnostics.BatteryDetectionKnown = true
 		diagnostics.BatteryTargetsFound = countDashboardBatteryTargets(targets, states)
 		diagnostics.TargetDiagnostics = buildDashboardTargetDiagnostics(targets, states)
-		config = pruneDashboardForMissingBattery(config, targets, states)
+		config = pruneDashboardForUnavailableMetrics(config, targets, states)
 		config, remapReport = remapDashboardEntitiesWithReport(config, targets, states)
 	}
 	diagnostics.DashboardRefsFound = remapReport.TotalRefs
@@ -419,6 +419,8 @@ func discoverDashboardTargetsFromTrees(trees map[string]iSolarCloud.PsTree) ([]h
 	for _, psID := range psIDs {
 		tree := trees[psID]
 		plantTargets := make([]deviceTarget, 0)
+		bestFallbackIndex := -1
+		bestFallbackRank := 1 << 30
 		fallbackTargets := make([]deviceTarget, 0)
 		for _, device := range tree.Devices {
 			target := deviceTarget{
@@ -435,16 +437,21 @@ func discoverDashboardTargetsFromTrees(trees map[string]iSolarCloud.PsTree) ([]h
 				target.plantName = fmt.Sprintf("Plant %s", psID)
 			}
 			if device.DeviceType.Match(14) {
-				target.selectionSource = "preferred-device-type-14"
+				target.selectionSource = dashboardSelectionSourceForDeviceType(target.deviceType)
 				plantTargets = append(plantTargets, target)
 				continue
 			}
-			target.selectionSource = "fallback-first-valid-ps-key"
+			target.selectionSource = dashboardSelectionSourceForDeviceType(target.deviceType)
 			fallbackTargets = append(fallbackTargets, target)
+			rank := preferredSungrowDeviceTypeRank(target.deviceType)
+			if bestFallbackIndex == -1 || rank < bestFallbackRank {
+				bestFallbackIndex = len(fallbackTargets) - 1
+				bestFallbackRank = rank
+			}
 		}
 
-		if len(plantTargets) == 0 && len(fallbackTargets) > 0 {
-			plantTargets = append(plantTargets, fallbackTargets[0])
+		if len(plantTargets) == 0 && bestFallbackIndex >= 0 {
+			plantTargets = append(plantTargets, fallbackTargets[bestFallbackIndex])
 		}
 		if len(plantTargets) == 0 {
 			continue

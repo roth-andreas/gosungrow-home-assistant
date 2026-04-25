@@ -2,23 +2,13 @@ package cmd
 
 import "strings"
 
-func pruneDashboardForMissingBattery(config map[string]any, targets []haDashboardTarget, states []haState) map[string]any {
+func pruneDashboardForUnavailableMetrics(config map[string]any, targets []haDashboardTarget, states []haState) map[string]any {
 	if len(config) == 0 || len(targets) == 0 || len(states) == 0 {
 		return config
 	}
 
-	singleTarget := len(targets) == 1
-	batteryByTarget := make(map[string]bool, len(targets))
-	anyMissingBattery := false
-	for _, target := range targets {
-		psKey := strings.ToLower(strings.TrimSpace(target.PsKey))
-		hasBattery := dashboardTargetHasBattery(target, states, singleTarget)
-		batteryByTarget[psKey] = hasBattery
-		if !hasBattery {
-			anyMissingBattery = true
-		}
-	}
-	if !anyMissingBattery {
+	unsupportedByTarget := dashboardUnsupportedMetricsByTarget(config, targets, states)
+	if len(unsupportedByTarget) == 0 {
 		return config
 	}
 
@@ -41,13 +31,14 @@ func pruneDashboardForMissingBattery(config map[string]any, targets []haDashboar
 			prunedViews = append(prunedViews, rawView)
 			continue
 		}
-		hasBattery := batteryByTarget[strings.ToLower(strings.TrimSpace(target.PsKey))]
-		if hasBattery {
+
+		unsupported := unsupportedByTarget[strings.ToLower(strings.TrimSpace(target.PsKey))]
+		if len(unsupported) == 0 {
 			prunedViews = append(prunedViews, rawView)
 			continue
 		}
 
-		prunedView, viewChanged := pruneBatteryFromView(viewMap)
+		prunedView, viewChanged := pruneUnsupportedMetricsFromView(viewMap, unsupported)
 		if viewChanged {
 			changed = true
 		}
@@ -63,6 +54,65 @@ func pruneDashboardForMissingBattery(config map[string]any, targets []haDashboar
 		ret[key] = value
 	}
 	ret["views"] = prunedViews
+	return ret
+}
+
+func pruneDashboardForMissingBattery(config map[string]any, targets []haDashboardTarget, states []haState) map[string]any {
+	return pruneDashboardForUnavailableMetrics(config, targets, states)
+}
+
+func dashboardUnsupportedMetricsByTarget(config map[string]any, targets []haDashboardTarget, states []haState) map[string]map[string]struct{} {
+	refs := collectLegacyDashboardEntityRefs(config, targets)
+	if len(refs) == 0 {
+		return nil
+	}
+
+	metricsByTarget := make(map[string]map[string]struct{}, len(targets))
+	for _, ref := range refs {
+		psKey := strings.ToLower(strings.TrimSpace(ref.Target.PsKey))
+		if psKey == "" {
+			continue
+		}
+		if metricsByTarget[psKey] == nil {
+			metricsByTarget[psKey] = make(map[string]struct{})
+		}
+		metricsByTarget[psKey][strings.ToLower(strings.TrimSpace(ref.Metric))] = struct{}{}
+	}
+
+	if len(metricsByTarget) == 0 {
+		return nil
+	}
+
+	singleTarget := len(targets) == 1
+	stateByID := dashboardStateByEntityID(states)
+	ret := make(map[string]map[string]struct{})
+	for _, target := range targets {
+		psKey := strings.ToLower(strings.TrimSpace(target.PsKey))
+		metrics := metricsByTarget[psKey]
+		if len(metrics) == 0 {
+			continue
+		}
+
+		hasBattery := dashboardTargetHasBattery(target, states, singleTarget)
+		unsupported := make(map[string]struct{})
+		for metric := range metrics {
+			if isBatteryDashboardMetric(metric) && !hasBattery {
+				unsupported[metric] = struct{}{}
+				continue
+			}
+			if resolveDashboardMetricEntity(target, metric, states, stateByID, singleTarget) == "" {
+				unsupported[metric] = struct{}{}
+			}
+		}
+
+		if len(unsupported) > 0 {
+			ret[psKey] = unsupported
+		}
+	}
+
+	if len(ret) == 0 {
+		return nil
+	}
 	return ret
 }
 
@@ -95,6 +145,9 @@ func isBatteryCapabilityState(candidate string, state haState) bool {
 	if isBatterySocEntityReference(candidate) && (unit == "" || strings.TrimSpace(unit) == "%") {
 		return true
 	}
+	if isBatteryPowerCapabilityEntityReference(candidate) && (unit == "" || isDashboardPowerUnit(unit)) {
+		return true
+	}
 	return false
 }
 
@@ -104,8 +157,32 @@ func isBatterySocEntityReference(entityID string) bool {
 		strings.Contains(candidate, "_soc_") ||
 		strings.Contains(candidate, "_p13141") ||
 		strings.Contains(candidate, "_p13142") ||
+		strings.Contains(candidate, "_p83129") ||
+		strings.Contains(candidate, "_p83252") ||
 		strings.Contains(candidate, "_battery_level") ||
 		strings.Contains(candidate, "_battery_charge_percent")
+}
+
+func isBatteryPowerCapabilityEntityReference(entityID string) bool {
+	candidate := strings.ToLower(strings.TrimSpace(entityID))
+	return strings.Contains(candidate, "_battery_power") ||
+		strings.Contains(candidate, "_battery_charge_power") ||
+		strings.Contains(candidate, "_battery_discharge_power") ||
+		strings.Contains(candidate, "_es_power") ||
+		strings.Contains(candidate, "_p13126") ||
+		strings.Contains(candidate, "_p13150") ||
+		strings.Contains(candidate, "_p83081") ||
+		strings.Contains(candidate, "_p83128") ||
+		strings.Contains(candidate, "optical_storage")
+}
+
+func isBatteryDashboardMetric(metric string) bool {
+	switch strings.ToLower(strings.TrimSpace(metric)) {
+	case "battery_power", "p13141", "p13174", "pv_to_battery_power", "battery_to_load_power":
+		return true
+	default:
+		return false
+	}
 }
 
 func dashboardTargetForView(view map[string]any, targets []haDashboardTarget) (haDashboardTarget, bool) {
@@ -165,7 +242,7 @@ func dashboardTargetForView(view map[string]any, targets []haDashboardTarget) (h
 	return haDashboardTarget{}, false
 }
 
-func pruneBatteryFromView(view map[string]any) (map[string]any, bool) {
+func pruneUnsupportedMetricsFromView(view map[string]any, unsupported map[string]struct{}) (map[string]any, bool) {
 	ret := make(map[string]any, len(view))
 	for key, value := range view {
 		ret[key] = value
@@ -181,7 +258,7 @@ func pruneBatteryFromView(view map[string]any) (map[string]any, bool) {
 				continue
 			}
 
-			prunedSection, keepSection, sectionChanged := pruneBatteryFromSection(sectionMap)
+			prunedSection, keepSection, sectionChanged := pruneUnsupportedMetricsFromSection(sectionMap, unsupported)
 			if sectionChanged {
 				changed = true
 			}
@@ -191,12 +268,11 @@ func pruneBatteryFromView(view map[string]any) (map[string]any, bool) {
 				changed = true
 			}
 		}
-
 		ret["sections"] = prunedSections
 	}
 
 	if rawCards, ok := view["cards"].([]any); ok {
-		prunedCards, cardsChanged := pruneBatteryFromCards(rawCards)
+		prunedCards, cardsChanged := pruneUnsupportedMetricsFromCards(rawCards, unsupported)
 		if cardsChanged {
 			changed = true
 		}
@@ -206,7 +282,7 @@ func pruneBatteryFromView(view map[string]any) (map[string]any, bool) {
 	return ret, changed
 }
 
-func pruneBatteryFromSection(section map[string]any) (map[string]any, bool, bool) {
+func pruneUnsupportedMetricsFromSection(section map[string]any, unsupported map[string]struct{}) (map[string]any, bool, bool) {
 	ret := make(map[string]any, len(section))
 	for key, value := range section {
 		ret[key] = value
@@ -217,7 +293,7 @@ func pruneBatteryFromSection(section map[string]any) (map[string]any, bool, bool
 		return ret, true, false
 	}
 
-	prunedCards, changed := pruneBatteryFromCards(rawCards)
+	prunedCards, changed := pruneUnsupportedMetricsFromCards(rawCards, unsupported)
 	ret["cards"] = prunedCards
 	if !hasNonHeadingCards(prunedCards) {
 		return ret, false, true
@@ -226,7 +302,7 @@ func pruneBatteryFromSection(section map[string]any) (map[string]any, bool, bool
 	return ret, true, changed
 }
 
-func pruneBatteryFromCards(cards []any) ([]any, bool) {
+func pruneUnsupportedMetricsFromCards(cards []any, unsupported map[string]struct{}) ([]any, bool) {
 	ret := make([]any, 0, len(cards))
 	changed := false
 	for _, rawCard := range cards {
@@ -236,7 +312,7 @@ func pruneBatteryFromCards(cards []any) ([]any, bool) {
 			continue
 		}
 
-		prunedCard, keepCard, cardChanged := pruneBatteryFromCard(cardMap)
+		prunedCard, keepCard, cardChanged := pruneUnsupportedMetricsFromCard(cardMap, unsupported)
 		if cardChanged {
 			changed = true
 		}
@@ -250,7 +326,7 @@ func pruneBatteryFromCards(cards []any) ([]any, bool) {
 	return ret, changed
 }
 
-func pruneBatteryFromCard(card map[string]any) (map[string]any, bool, bool) {
+func pruneUnsupportedMetricsFromCard(card map[string]any, unsupported map[string]struct{}) (map[string]any, bool, bool) {
 	ret := make(map[string]any, len(card))
 	for key, value := range card {
 		ret[key] = value
@@ -259,7 +335,7 @@ func pruneBatteryFromCard(card map[string]any) (map[string]any, bool, bool) {
 	changed := false
 	cardType := strings.ToLower(strings.TrimSpace(stringValue(card["type"])))
 
-	if entity, ok := card["entity"].(string); ok && isBatteryEntityReference(entity) {
+	if entity, ok := card["entity"].(string); ok && isUnsupportedMetricEntityReference(entity, unsupported) {
 		return ret, false, true
 	}
 
@@ -267,19 +343,22 @@ func pruneBatteryFromCard(card map[string]any) (map[string]any, bool, bool) {
 		filtered := make(map[string]any, len(entitiesMap))
 		for key, value := range entitiesMap {
 			entity, isString := value.(string)
-			if isBatteryFlowEntityKey(key) || (isString && isBatteryEntityReference(entity)) {
+			if isString && isUnsupportedMetricEntityReference(entity, unsupported) {
 				changed = true
 				continue
 			}
 			filtered[key] = value
 		}
 		ret["entities"] = filtered
+		if len(filtered) == 0 && cardType != "heading" {
+			return ret, false, true
+		}
 	}
 
 	if entitiesList, ok := card["entities"].([]any); ok {
 		filteredEntities := make([]any, 0, len(entitiesList))
 		for _, entry := range entitiesList {
-			if isBatteryEntityListEntry(entry) {
+			if isUnsupportedMetricEntityListEntry(entry, unsupported) {
 				changed = true
 				continue
 			}
@@ -292,7 +371,7 @@ func pruneBatteryFromCard(card map[string]any) (map[string]any, bool, bool) {
 	}
 
 	if nestedCards, ok := card["cards"].([]any); ok {
-		filteredNested, nestedChanged := pruneBatteryFromCards(nestedCards)
+		filteredNested, nestedChanged := pruneUnsupportedMetricsFromCards(nestedCards, unsupported)
 		if nestedChanged {
 			changed = true
 		}
@@ -319,53 +398,32 @@ func hasNonHeadingCards(cards []any) bool {
 	return false
 }
 
-func isBatteryEntityListEntry(entry any) bool {
+func isUnsupportedMetricEntityListEntry(entry any, unsupported map[string]struct{}) bool {
 	switch typed := entry.(type) {
 	case map[string]any:
 		entity, ok := typed["entity"].(string)
-		return ok && isBatteryEntityReference(entity)
+		return ok && isUnsupportedMetricEntityReference(entity, unsupported)
 	case string:
-		return isBatteryEntityReference(typed)
+		return isUnsupportedMetricEntityReference(typed, unsupported)
 	default:
 		return false
 	}
 }
 
-func isBatteryFlowEntityKey(key string) bool {
-	switch strings.ToLower(strings.TrimSpace(key)) {
-	case "battery_power", "battery_soc", "pv_to_battery_power", "battery_to_load_power", "battery_to_home_power", "battery_to_heatpump_power":
-		return true
-	default:
+func isUnsupportedMetricEntityReference(entityID string, unsupported map[string]struct{}) bool {
+	if len(unsupported) == 0 {
 		return false
 	}
-}
 
-func isBatteryEntityReference(entityID string) bool {
 	candidate := strings.ToLower(strings.TrimSpace(entityID))
-	if candidate == "" {
+	if candidate == "" || !strings.Contains(candidate, "gosungrow_virtual_") {
 		return false
 	}
 
-	if strings.Contains(candidate, "_battery_") ||
-		strings.Contains(candidate, "battery_to_") ||
-		strings.Contains(candidate, "_to_battery_") ||
-		strings.HasSuffix(candidate, "_battery") ||
-		strings.HasSuffix(candidate, "_soc") ||
-		strings.Contains(candidate, "_soc_") ||
-		strings.Contains(candidate, "_p13141") ||
-		strings.Contains(candidate, "_p13142") ||
-		strings.Contains(candidate, "_p13174") ||
-		strings.Contains(candidate, "_p13150") ||
-		strings.Contains(candidate, "_p13126") {
-		return true
-	}
-
-	tokens := dashboardTokenSet(candidate)
-	if _, ok := tokens["battery"]; ok {
-		return true
-	}
-	if _, ok := tokens["soc"]; ok {
-		return true
+	for metric := range unsupported {
+		if strings.HasSuffix(candidate, "_"+metric) {
+			return true
+		}
 	}
 	return false
 }

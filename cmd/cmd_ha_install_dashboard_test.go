@@ -54,12 +54,12 @@ func TestDiscoverDashboardTargetsPrefersDeviceType14(t *testing.T) {
 	}
 }
 
-func TestDiscoverDashboardTargetsFallsBackToFirstValidPsKeyPerPlant(t *testing.T) {
+func TestDiscoverDashboardTargetsPrefersType11WhenNoEssTargetExists(t *testing.T) {
 	trees := map[string]iSolarCloud.PsTree{
 		"100": {
 			Devices: []getPsTreeMenu.Ps{
-				testPsTreeDevice("100", "", 11, "Roof", "Invalid Device"),
-				testPsTreeDevice("100", "100_11_1_1", 11, "Roof", "String Inverter"),
+				testPsTreeDevice("100", "100_22_247_1", 22, "Roof", "Communication Module"),
+				testPsTreeDevice("100", "100_11_0_0", 11, "Roof", "Plant"),
 				testPsTreeDevice("100", "100_12_1_1", 12, "Roof", "Battery"),
 			},
 		},
@@ -70,16 +70,16 @@ func TestDiscoverDashboardTargetsFallsBackToFirstValidPsKeyPerPlant(t *testing.T
 		t.Fatalf("discoverDashboardTargetsFromTrees: %v", err)
 	}
 	if len(targets) != 1 {
-		t.Fatalf("expected 1 fallback target, got %#v", targets)
+		t.Fatalf("expected 1 preferred non-ESS target, got %#v", targets)
 	}
-	if targets[0].PsKey != "100_11_1_1" {
-		t.Fatalf("expected first valid ps key fallback, got %#v", targets[0])
+	if targets[0].PsKey != "100_11_0_0" {
+		t.Fatalf("expected type 11 target, got %#v", targets[0])
 	}
 	if targets[0].DeviceType != 11 {
-		t.Fatalf("expected fallback device type 11, got %#v", targets[0])
+		t.Fatalf("expected preferred device type 11, got %#v", targets[0])
 	}
-	if targets[0].SelectionSource != "fallback-first-valid-ps-key" {
-		t.Fatalf("expected fallback selection source, got %#v", targets[0])
+	if targets[0].SelectionSource != "preferred-device-type-11" {
+		t.Fatalf("expected preferred type-11 selection source, got %#v", targets[0])
 	}
 }
 

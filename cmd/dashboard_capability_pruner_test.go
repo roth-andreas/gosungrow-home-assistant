@@ -241,3 +241,140 @@ func TestPruneDashboardForMissingBatteryDoesNotTreatPvToBatteryEnergyAsBatteryCa
 		t.Fatalf("expected pv_to_battery_power to be removed from no-battery flow card")
 	}
 }
+
+func TestPruneDashboardForUnavailableMetricsPrunesUnsupportedLegacyDirectionalFlows(t *testing.T) {
+	config := map[string]any{
+		"views": []any{
+			map[string]any{
+				"sections": []any{
+					map[string]any{
+						"type": "grid",
+						"cards": []any{
+							map[string]any{
+								"type": "custom:gosungrow-energy-flow-card-v2",
+								"entities": map[string]any{
+									"solar_power":        "sensor.gosungrow_virtual_100_11_0_0_pv_power",
+									"load_power":         "sensor.gosungrow_virtual_100_11_0_0_load_power",
+									"grid_power":         "sensor.gosungrow_virtual_100_11_0_0_grid_power",
+									"pv_to_load_power":   "sensor.gosungrow_virtual_100_11_0_0_pv_to_load_power",
+									"pv_to_grid_power":   "sensor.gosungrow_virtual_100_11_0_0_pv_to_grid_power",
+									"grid_to_load_power": "sensor.gosungrow_virtual_100_11_0_0_grid_to_load_power",
+								},
+							},
+						},
+					},
+					map[string]any{
+						"type": "grid",
+						"cards": []any{
+							map[string]any{"type": "heading", "heading": "Solar Allocation"},
+							map[string]any{
+								"type": "history-graph",
+								"entities": []any{
+									map[string]any{"entity": "sensor.gosungrow_virtual_100_11_0_0_pv_to_load_power"},
+									map[string]any{"entity": "sensor.gosungrow_virtual_100_11_0_0_pv_to_grid_power"},
+								},
+							},
+						},
+					},
+					map[string]any{
+						"type": "grid",
+						"cards": []any{
+							map[string]any{"type": "heading", "heading": "Today"},
+							map[string]any{"type": "tile", "entity": "sensor.gosungrow_virtual_100_11_0_0_p13112"},
+							map[string]any{"type": "tile", "entity": "sensor.gosungrow_virtual_100_11_0_0_p13173"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	targets := []haDashboardTarget{
+		{PsID: "100", PsKey: "100_11_0_0"},
+	}
+	states := []haState{
+		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83076_map", "3.10", "kW"),
+		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83106_map", "1.40", "kW"),
+		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83549", "0.30", "kW"),
+		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83022y", "18.60", "kWh"),
+		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83119_map", "5.10", "kWh"),
+	}
+
+	pruned := pruneDashboardForUnavailableMetrics(config, targets, states)
+	views := pruned["views"].([]any)
+	sections := views[0].(map[string]any)["sections"].([]any)
+	if len(sections) != 2 {
+		t.Fatalf("expected unsupported directional-flow section to be removed, got %d sections", len(sections))
+	}
+
+	flowCards := sections[0].(map[string]any)["cards"].([]any)
+	flowEntities := flowCards[0].(map[string]any)["entities"].(map[string]any)
+	if _, ok := flowEntities["pv_to_load_power"]; ok {
+		t.Fatalf("expected pv_to_load_power to be pruned from legacy flow card")
+	}
+	if _, ok := flowEntities["pv_to_grid_power"]; ok {
+		t.Fatalf("expected pv_to_grid_power to be pruned from legacy flow card")
+	}
+	if _, ok := flowEntities["grid_to_load_power"]; ok {
+		t.Fatalf("expected grid_to_load_power to be pruned from legacy flow card")
+	}
+	if _, ok := flowEntities["solar_power"]; !ok {
+		t.Fatalf("expected direct pv metric to remain on legacy flow card")
+	}
+
+	todayCards := sections[1].(map[string]any)["cards"].([]any)
+	if len(todayCards) != 3 {
+		t.Fatalf("expected supported daily tiles to remain, got %d cards", len(todayCards))
+	}
+}
+
+func TestPruneDashboardForUnavailableMetricsKeepsLegacyBatteryMetricsWhenSocExists(t *testing.T) {
+	config := map[string]any{
+		"views": []any{
+			map[string]any{
+				"sections": []any{
+					map[string]any{
+						"type": "grid",
+						"cards": []any{
+							map[string]any{
+								"type": "custom:gosungrow-energy-flow-card-v2",
+								"entities": map[string]any{
+									"battery_power": "sensor.gosungrow_virtual_100_11_0_0_battery_power",
+									"battery_soc":   "sensor.gosungrow_virtual_100_11_0_0_p13141",
+								},
+							},
+							map[string]any{
+								"type":   "tile",
+								"entity": "sensor.gosungrow_virtual_100_11_0_0_p13141",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	targets := []haDashboardTarget{
+		{PsID: "100", PsKey: "100_11_0_0"},
+	}
+	states := []haState{
+		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83081_map", "0.45", "kW"),
+		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83129", "72", "%"),
+	}
+
+	pruned := pruneDashboardForUnavailableMetrics(config, targets, states)
+	views := pruned["views"].([]any)
+	sections := views[0].(map[string]any)["sections"].([]any)
+	cards := sections[0].(map[string]any)["cards"].([]any)
+	flowEntities := cards[0].(map[string]any)["entities"].(map[string]any)
+
+	if got := flowEntities["battery_power"]; got != "sensor.gosungrow_virtual_100_11_0_0_battery_power" {
+		t.Fatalf("expected legacy battery_power to remain when legacy SOC exists, got %v", got)
+	}
+	if got := flowEntities["battery_soc"]; got != "sensor.gosungrow_virtual_100_11_0_0_p13141" {
+		t.Fatalf("expected legacy battery_soc to remain when legacy SOC exists, got %v", got)
+	}
+	if got := cards[1].(map[string]any)["entity"]; got != "sensor.gosungrow_virtual_100_11_0_0_p13141" {
+		t.Fatalf("expected battery tile to remain when legacy SOC exists, got %v", got)
+	}
+}

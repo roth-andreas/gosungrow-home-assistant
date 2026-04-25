@@ -198,6 +198,19 @@ func TestDescribeRealtimePsKeySelectionPrefersType14(t *testing.T) {
 	}
 }
 
+func TestDescribeRealtimePsKeySelectionPrefersType11OverCommunicationModuleFallback(t *testing.T) {
+	devices := getDeviceList.Devices{
+		testDeviceListDevice("100_22_247_1", 22),
+		testDeviceListDevice("100_11_0_0", 11),
+	}
+
+	got := describeRealtimePsKeySelection(devices)
+	want := "ps_key=100_11_0_0 device_type=11 source=device-type-11"
+	if got != want {
+		t.Fatalf("unexpected realtime selection: %q", got)
+	}
+}
+
 func TestFormatSungrowDeviceTypeSummary(t *testing.T) {
 	devices := getDeviceList.Devices{
 		testDeviceListDevice("", 22),

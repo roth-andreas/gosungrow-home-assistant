@@ -192,6 +192,94 @@ func TestRemapDashboardEntitiesMapsDailyEnergyPointAliases(t *testing.T) {
 	}
 }
 
+func TestRemapDashboardEntitiesMapsLegacyPlantPointAliases(t *testing.T) {
+	config := map[string]any{
+		"views": []any{
+			map[string]any{
+				"cards": []any{
+					map[string]any{
+						"type": "custom:gosungrow-energy-flow-card-v2",
+						"entities": map[string]any{
+							"solar_power":   "sensor.gosungrow_virtual_100_11_0_0_pv_power",
+							"load_power":    "sensor.gosungrow_virtual_100_11_0_0_load_power",
+							"grid_power":    "sensor.gosungrow_virtual_100_11_0_0_grid_power",
+							"battery_power": "sensor.gosungrow_virtual_100_11_0_0_battery_power",
+						},
+					},
+					map[string]any{
+						"type":   "tile",
+						"entity": "sensor.gosungrow_virtual_100_11_0_0_p13112",
+					},
+					map[string]any{
+						"type":   "tile",
+						"entity": "sensor.gosungrow_virtual_100_11_0_0_p13116",
+					},
+					map[string]any{
+						"type":   "tile",
+						"entity": "sensor.gosungrow_virtual_100_11_0_0_p13173",
+					},
+					map[string]any{
+						"type":   "tile",
+						"entity": "sensor.gosungrow_virtual_100_11_0_0_p13147",
+					},
+					map[string]any{
+						"type":   "tile",
+						"entity": "sensor.gosungrow_virtual_100_11_0_0_p13141",
+					},
+				},
+			},
+		},
+	}
+
+	targets := []haDashboardTarget{
+		{PsID: "100", PsKey: "100_11_0_0"},
+	}
+	states := []haState{
+		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83076_map", "3.10", "kW"),
+		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83106_map", "1.40", "kW"),
+		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83549", "0.30", "kW"),
+		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83081_map", "0.45", "kW"),
+		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83022y", "18.60", "kWh"),
+		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83097_map", "7.40", "kWh"),
+		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83119_map", "5.10", "kWh"),
+		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83102_map", "1.80", "kWh"),
+		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83129", "72", "%"),
+	}
+
+	remapped := remapDashboardEntities(config, targets, states)
+	views := remapped["views"].([]any)
+	cards := views[0].(map[string]any)["cards"].([]any)
+	flowEntities := cards[0].(map[string]any)["entities"].(map[string]any)
+
+	if got := flowEntities["solar_power"]; got != "sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83076_map" {
+		t.Fatalf("unexpected legacy pv_power remap: %v", got)
+	}
+	if got := flowEntities["load_power"]; got != "sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83106_map" {
+		t.Fatalf("unexpected legacy load_power remap: %v", got)
+	}
+	if got := flowEntities["grid_power"]; got != "sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83549" {
+		t.Fatalf("unexpected legacy grid_power remap: %v", got)
+	}
+	if got := flowEntities["battery_power"]; got != "sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83081_map" {
+		t.Fatalf("unexpected legacy battery_power remap: %v", got)
+	}
+	if got := cards[1].(map[string]any)["entity"]; got != "sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83022y" {
+		t.Fatalf("unexpected legacy p13112 remap: %v", got)
+	}
+	if got := cards[2].(map[string]any)["entity"]; got != "sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83097_map" {
+		t.Fatalf("unexpected legacy p13116 remap: %v", got)
+	}
+	if got := cards[3].(map[string]any)["entity"]; got != "sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83119_map" {
+		t.Fatalf("unexpected legacy p13173 remap: %v", got)
+	}
+	if got := cards[4].(map[string]any)["entity"]; got != "sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83102_map" {
+		t.Fatalf("unexpected legacy p13147 remap: %v", got)
+	}
+	if got := cards[5].(map[string]any)["entity"]; got != "sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83129" {
+		t.Fatalf("unexpected legacy p13141 remap: %v", got)
+	}
+}
+
 func TestRemapDashboardEntitiesDoesNotMapBatteryEnergyToPvYield(t *testing.T) {
 	config := map[string]any{
 		"views": []any{

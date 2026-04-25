@@ -456,21 +456,9 @@ func (c *CmdMqtt) collectAndPublish(newDay bool) error {
 }
 
 func (c *CmdMqtt) getRealtimePsKey() string {
-	for _, device := range c.Client.SungrowDevices {
-		psKey := strings.TrimSpace(device.PsKey.String())
-		if psKey == "" {
-			continue
-		}
-		if device.DeviceType.Value() == 14 {
-			return psKey
-		}
-	}
-
-	for _, device := range c.Client.SungrowDevices {
-		psKey := strings.TrimSpace(device.PsKey.String())
-		if psKey != "" {
-			return psKey
-		}
+	device, ok := preferredRealtimePsKeyDevice(c.Client.SungrowDevices)
+	if ok {
+		return strings.TrimSpace(device.PsKey.String())
 	}
 
 	return ""
@@ -1048,25 +1036,36 @@ func formatSungrowDeviceTypeSummary(devices getDeviceList.Devices) string {
 }
 
 func describeRealtimePsKeySelection(devices getDeviceList.Devices) string {
-	for _, device := range devices {
+	device, ok := preferredRealtimePsKeyDevice(devices)
+	if ok {
 		psKey := strings.TrimSpace(device.PsKey.String())
-		if psKey == "" {
-			continue
-		}
-		if device.DeviceType.Value() == 14 {
-			return fmt.Sprintf("ps_key=%s device_type=%d source=device-type-14", psKey, device.DeviceType.Value())
-		}
-	}
-
-	for _, device := range devices {
-		psKey := strings.TrimSpace(device.PsKey.String())
-		if psKey == "" {
-			continue
-		}
-		return fmt.Sprintf("ps_key=%s device_type=%d source=first-valid-ps-key-fallback", psKey, device.DeviceType.Value())
+		deviceType := device.DeviceType.Value()
+		return fmt.Sprintf("ps_key=%s device_type=%d source=%s", psKey, deviceType, realtimeSelectionSourceForDeviceType(deviceType))
 	}
 
 	return "no usable ps_key available"
+}
+
+func preferredRealtimePsKeyDevice(devices getDeviceList.Devices) (*getDeviceList.Device, bool) {
+	bestIndex := -1
+	bestRank := 1 << 30
+	for index := range devices {
+		psKey := strings.TrimSpace(devices[index].PsKey.String())
+		if psKey == "" {
+			continue
+		}
+
+		rank := preferredSungrowDeviceTypeRank(devices[index].DeviceType.Value())
+		if bestIndex == -1 || rank < bestRank {
+			bestIndex = index
+			bestRank = rank
+		}
+	}
+
+	if bestIndex < 0 {
+		return nil, false
+	}
+	return &devices[bestIndex], true
 }
 
 func defaultMqttEndpoints() (MqttEndPoints, error) {
