@@ -243,6 +243,10 @@ func (e *EndPoint) GetData() api.DataMap {
 			for _, point := range device.PointData {
 				name := point.PointId.String()
 				foo := entries.CopyPointFromName(name, epp, name, point.PointName.String())
+				if foo == nil {
+					e.debugMissingVirtualPoint(epp, name, name)
+					continue
+				}
 				foo.Value.Reset()
 				foo.Value.AddFloat("", point.Unit.String(), "", point.Value.Value())
 				// foo.SetUnit(point.Unit.String())
@@ -308,65 +312,75 @@ func (e *EndPoint) SetBatteryPoints(epp GoStruct.EndPointPath, entries api.DataM
 	for range Only.Once {
 		// /////////////////////////////////////////////////////// //
 		// Battery Power
-		batteryChargePower := entries.CopyPointFromName(epp.AddString("p13126"), epp, "battery_charge_power", "Battery Charge Power (p13126)")
+		batteryChargePower := e.copyVirtualPointFromName(entries, epp, "p13126", "battery_charge_power", "Battery Charge Power (p13126)")
 		// batteryChargePower.DataStructure.PointIcon = "mdi:battery"
-		batteryChargePower.DataStructure.PointUpdateFreq = GoStruct.UpdateFreq5Mins
+		setVirtualPointUpdateFreq(batteryChargePower, GoStruct.UpdateFreq5Mins)
 
-		batteryDischargePower := entries.CopyPointFromName(epp.AddString("p13150"), epp, "battery_discharge_power", "Battery Discharge Power (p13150)")
+		batteryDischargePower := e.copyVirtualPointFromName(entries, epp, "p13150", "battery_discharge_power", "Battery Discharge Power (p13150)")
 		// batteryDischargePower.DataStructure.PointIcon = "mdi:battery"
-		batteryDischargePower.DataStructure.PointUpdateFreq = GoStruct.UpdateFreq5Mins
+		setVirtualPointUpdateFreq(batteryDischargePower, GoStruct.UpdateFreq5Mins)
 
-		batteryPower := entries.CopyPoint(batteryChargePower, epp, "battery_power", "Battery Power (Calc)")
-		batteryPower.SetValue(entries.LowerUpper(batteryDischargePower, batteryChargePower))
-		// batteryPower.DataStructure.PointIcon = "mdi:battery"
-		batteryPower.DataStructure.PointUpdateFreq = GoStruct.UpdateFreq5Mins
+		if batteryChargePower != nil && batteryDischargePower != nil {
+			batteryPower := entries.CopyPoint(batteryChargePower, epp, "battery_power", "Battery Power (Calc)")
+			batteryPower.SetValue(entries.LowerUpper(batteryDischargePower, batteryChargePower))
+			// batteryPower.DataStructure.PointIcon = "mdi:battery"
+			batteryPower.DataStructure.PointUpdateFreq = GoStruct.UpdateFreq5Mins
 
-		batteryPowerActive := entries.CopyPoint(batteryPower, epp, "battery_power_active", "Battery Power Active (Calc)")
-		// batteryPowerActive.DataStructure.PointIcon = "mdi:battery"
-		_ = entries.MakeState(batteryPowerActive)
-		batteryPowerActive.DataStructure.PointUpdateFreq = GoStruct.UpdateFreq5Mins
+			batteryPowerActive := entries.CopyPoint(batteryPower, epp, "battery_power_active", "Battery Power Active (Calc)")
+			// batteryPowerActive.DataStructure.PointIcon = "mdi:battery"
+			_ = entries.MakeState(batteryPowerActive)
+			batteryPowerActive.DataStructure.PointUpdateFreq = GoStruct.UpdateFreq5Mins
+		}
 
 		// /////////////////////////////////////////////////////// //
-		batteryDischargeEnergy := entries.CopyPointFromName(epp.AddString("p13029"), epp, "battery_discharge_energy", "Battery Discharge Energy (p13029)")
+		batteryDischargeEnergy := e.copyVirtualPointFromName(entries, epp, "p13029", "battery_discharge_energy", "Battery Discharge Energy (p13029)")
 		// batteryDischargeEnergy.DataStructure.PointIcon = "mdi:battery"
-		batteryDischargeEnergy.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
+		setVirtualPointUpdateFreq(batteryDischargeEnergy, GoStruct.UpdateFreqDay)
 
-		batteryChargeEnergy := entries.CopyPointFromName(epp.AddString("p13174"), epp, "battery_charge_energy", "Battery Charge Energy (p13174)")
+		batteryChargeEnergy := e.copyVirtualPointFromName(entries, epp, "p13174", "battery_charge_energy", "Battery Charge Energy (p13174)")
 		// batteryChargeEnergy.DataStructure.PointIcon = "mdi:battery"
-		batteryChargeEnergy.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
+		setVirtualPointUpdateFreq(batteryChargeEnergy, GoStruct.UpdateFreqDay)
 
-		batteryEnergy := entries.CopyPoint(batteryChargeEnergy, epp, "battery_energy", "Battery Energy (Calc)")
-		batteryEnergy.SetValue(entries.LowerUpper(batteryChargeEnergy, batteryDischargeEnergy))
-		// batteryEnergy.DataStructure.PointIcon = "mdi:battery"
-		batteryEnergy.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
+		if batteryChargeEnergy != nil && batteryDischargeEnergy != nil {
+			batteryEnergy := entries.CopyPoint(batteryChargeEnergy, epp, "battery_energy", "Battery Energy (Calc)")
+			batteryEnergy.SetValue(entries.LowerUpper(batteryChargeEnergy, batteryDischargeEnergy))
+			// batteryEnergy.DataStructure.PointIcon = "mdi:battery"
+			batteryEnergy.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
 
-		batteryEnergyActive := entries.CopyPoint(batteryEnergy, epp, "battery_energy_active", "Battery Energy Active (Calc)")
-		// batteryEnergyActive.DataStructure.PointIcon = "mdi:battery"
-		batteryEnergyActive.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
-		_ = entries.MakeState(batteryEnergyActive)
+			batteryEnergyActive := entries.CopyPoint(batteryEnergy, epp, "battery_energy_active", "Battery Energy Active (Calc)")
+			// batteryEnergyActive.DataStructure.PointIcon = "mdi:battery"
+			batteryEnergyActive.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
+			_ = entries.MakeState(batteryEnergyActive)
+		}
 
 		dailyPvEnergy := entries.GetReflect(epp.AddString("p13112"))
-		batteryChargeEnergyPercent := entries.CopyPoint(dailyPvEnergy, epp, "battery_charge_energy_percent", "Battery Charge Percent (Calc)")
-		batteryChargeEnergyPercent.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
-		batteryChargeEnergyPercent.SetValue(entries.GetPercent(batteryChargeEnergy, dailyPvEnergy, 1))
-		batteryChargeEnergyPercent.SetUnit("%")
-		// batteryChargeEnergyPercent.DataStructure.PointIcon = "mdi:battery"
+		if batteryChargeEnergy != nil && dailyPvEnergy != nil {
+			batteryChargeEnergyPercent := entries.CopyPoint(dailyPvEnergy, epp, "battery_charge_energy_percent", "Battery Charge Percent (Calc)")
+			batteryChargeEnergyPercent.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
+			batteryChargeEnergyPercent.SetValue(entries.GetPercent(batteryChargeEnergy, dailyPvEnergy, 1))
+			batteryChargeEnergyPercent.SetUnit("%")
+			// batteryChargeEnergyPercent.DataStructure.PointIcon = "mdi:battery"
+		} else if dailyPvEnergy == nil {
+			e.debugMissingVirtualPoint(epp, "p13112", "battery_charge_energy_percent")
+		}
 
 		// /////////////////////////////////////////////////////// //
-		batteryToLoadPower := entries.CopyPoint(batteryDischargePower, epp, "battery_to_load_power", "Battery To Load Power (Calc)")
-		// batteryToLoadPower.DataStructure.PointIcon = "mdi:battery"
-		batteryToLoadPower.DataStructure.PointUpdateFreq = GoStruct.UpdateFreq5Mins
+		if batteryDischargePower != nil {
+			batteryToLoadPower := entries.CopyPoint(batteryDischargePower, epp, "battery_to_load_power", "Battery To Load Power (Calc)")
+			// batteryToLoadPower.DataStructure.PointIcon = "mdi:battery"
+			batteryToLoadPower.DataStructure.PointUpdateFreq = GoStruct.UpdateFreq5Mins
 
-		batteryToLoadPowerActive := entries.CopyPoint(batteryToLoadPower, epp, "battery_to_load_power_active", "Battery To Load Power Active (Calc)")
-		// batteryToLoadPowerActive.DataStructure.PointIcon = "mdi:battery"
-		batteryToLoadPowerActive.DataStructure.PointUpdateFreq = GoStruct.UpdateFreq5Mins
-		_ = entries.MakeState(batteryToLoadPowerActive)
+			batteryToLoadPowerActive := entries.CopyPoint(batteryToLoadPower, epp, "battery_to_load_power_active", "Battery To Load Power Active (Calc)")
+			// batteryToLoadPowerActive.DataStructure.PointIcon = "mdi:battery"
+			batteryToLoadPowerActive.DataStructure.PointUpdateFreq = GoStruct.UpdateFreq5Mins
+			_ = entries.MakeState(batteryToLoadPowerActive)
 
-		batteryToGridPowerActive := entries.CopyPoint(batteryDischargePower, epp, "battery_to_grid_power_active", "Battery To Grid Power Active (Calc)")
-		batteryToGridPowerActive.SetValue(0.0)
-		// batteryToGridPowerActive.DataStructure.PointIcon = "mdi:battery"
-		batteryToGridPowerActive.DataStructure.PointUpdateFreq = GoStruct.UpdateFreq5Mins
-		_ = entries.MakeState(batteryToGridPowerActive)
+			batteryToGridPowerActive := entries.CopyPoint(batteryDischargePower, epp, "battery_to_grid_power_active", "Battery To Grid Power Active (Calc)")
+			batteryToGridPowerActive.SetValue(0.0)
+			// batteryToGridPowerActive.DataStructure.PointIcon = "mdi:battery"
+			batteryToGridPowerActive.DataStructure.PointUpdateFreq = GoStruct.UpdateFreq5Mins
+			_ = entries.MakeState(batteryToGridPowerActive)
+		}
 	}
 }
 
@@ -374,147 +388,212 @@ func (e *EndPoint) SetPvPoints(epp GoStruct.EndPointPath, entries api.DataMap) {
 	for range Only.Once {
 		// /////////////////////////////////////////////////////// //
 		// PV Power
-		pvPower := entries.CopyPointFromName(epp.AddString("p13003"), epp, "pv_power", "Pv Power (p13003)")
+		pvPower := e.copyVirtualPointFromName(entries, epp, "p13003", "pv_power", "Pv Power (p13003)")
 
-		pvPowerActive := entries.CopyPoint(pvPower, epp, "pv_power_active", "Pv Power Active (p13003)")
-		_ = entries.MakeState(pvPowerActive)
+		if pvPower != nil {
+			pvPowerActive := entries.CopyPoint(pvPower, epp, "pv_power_active", "Pv Power Active (p13003)")
+			_ = entries.MakeState(pvPowerActive)
+		}
 
-		pvToGridPower := entries.CopyPointFromName(epp.AddString("p13121"), epp, "pv_to_grid_power", "Pv To Grid Power (p13121)")
+		pvToGridPower := e.copyVirtualPointFromName(entries, epp, "p13121", "pv_to_grid_power", "Pv To Grid Power (p13121)")
 
-		PvToGridPowerActive := entries.CopyPoint(pvToGridPower, epp, "pv_to_grid_power_active", "Pv To Grid Power Active (p13121)")
-		_ = entries.MakeState(PvToGridPowerActive)
+		if pvToGridPower != nil {
+			PvToGridPowerActive := entries.CopyPoint(pvToGridPower, epp, "pv_to_grid_power_active", "Pv To Grid Power Active (p13121)")
+			_ = entries.MakeState(PvToGridPowerActive)
+		}
 
-		pvToBatteryPower := entries.CopyPointFromName(epp.AddString("p13126"), epp, "pv_to_battery_power", "Pv To Battery Power (p13126)")
+		pvToBatteryPower := e.copyVirtualPointFromName(entries, epp, "p13126", "pv_to_battery_power", "Pv To Battery Power (p13126)")
 
-		pvToBatteryPowerActive := entries.CopyPoint(pvToBatteryPower, epp, "pv_to_battery_power_active", "Pv To Battery Power Active (p13126)")
-		pvToBatteryPowerActive.SetValue(pvToBatteryPower.GetValueFloat())
-		_ = entries.MakeState(pvToBatteryPowerActive)
+		if pvToBatteryPower != nil {
+			pvToBatteryPowerActive := entries.CopyPoint(pvToBatteryPower, epp, "pv_to_battery_power_active", "Pv To Battery Power Active (p13126)")
+			pvToBatteryPowerActive.SetValue(pvToBatteryPower.GetValueFloat())
+			_ = entries.MakeState(pvToBatteryPowerActive)
+		}
 
-		pvToLoadPower := entries.CopyPoint(pvPower, epp, "pv_to_load_power", "Pv To Load Power (Calc)")
-		one := pvPower.GetValueFloat()
-		two := pvToBatteryPower.GetValueFloat()
-		three := pvToGridPower.GetValueFloat()
-		pvToLoadPower.SetValue(one - two - three)
-		pvToLoadPower.SetValuePrecision(3)
+		if pvPower != nil && pvToBatteryPower != nil && pvToGridPower != nil {
+			pvToLoadPower := entries.CopyPoint(pvPower, epp, "pv_to_load_power", "Pv To Load Power (Calc)")
+			one := pvPower.GetValueFloat()
+			two := pvToBatteryPower.GetValueFloat()
+			three := pvToGridPower.GetValueFloat()
+			pvToLoadPower.SetValue(one - two - three)
+			pvToLoadPower.SetValuePrecision(3)
 
-		pvToLoadPowerActive := entries.CopyPoint(pvToLoadPower, epp, "pv_to_load_power_active", "Pv To Load Power Active (Calc)")
-		_ = entries.MakeState(pvToLoadPowerActive)
+			pvToLoadPowerActive := entries.CopyPoint(pvToLoadPower, epp, "pv_to_load_power_active", "Pv To Load Power Active (Calc)")
+			_ = entries.MakeState(pvToLoadPowerActive)
+		}
 
-		pvDailyEnergy := entries.CopyPointFromName(epp.AddString("p13112"), epp, "pv_daily_energy", "Pv Daily Energy (p13112)")
-		pvDailyEnergy.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
+		pvDailyEnergy := e.copyVirtualPointFromName(entries, epp, "p13112", "pv_daily_energy", "Pv Daily Energy (p13112)")
+		setVirtualPointUpdateFreq(pvDailyEnergy, GoStruct.UpdateFreqDay)
 
-		pvToGridEnergy := entries.CopyPointFromName(epp.AddString("p13173"), epp, "pv_to_grid_energy", "Pv To Grid Energy (p13173)")
-		pvToGridEnergy.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
+		pvToGridEnergy := e.copyVirtualPointFromName(entries, epp, "p13173", "pv_to_grid_energy", "Pv To Grid Energy (p13173)")
+		setVirtualPointUpdateFreq(pvToGridEnergy, GoStruct.UpdateFreqDay)
 
-		pvToGridEnergyPercent := entries.CopyPoint(pvDailyEnergy, epp, "pv_to_grid_energy_percent", "Pv To Grid Energy Percent (Calc)")
-		pvToGridEnergyPercent.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
-		pvToGridEnergyPercent.SetValue(entries.GetPercent(pvToGridEnergy, pvDailyEnergy, 1))
-		pvToGridEnergyPercent.SetUnit("%")
+		if pvDailyEnergy != nil && pvToGridEnergy != nil {
+			pvToGridEnergyPercent := entries.CopyPoint(pvDailyEnergy, epp, "pv_to_grid_energy_percent", "Pv To Grid Energy Percent (Calc)")
+			pvToGridEnergyPercent.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
+			pvToGridEnergyPercent.SetValue(entries.GetPercent(pvToGridEnergy, pvDailyEnergy, 1))
+			pvToGridEnergyPercent.SetUnit("%")
+		}
 
-		pvToBatteryEnergy := entries.CopyPointFromName(epp.AddString("p13174"), epp, "pv_to_battery_energy", "Pv To Battery Energy (p13174)")
-		pvToBatteryEnergy.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
+		pvToBatteryEnergy := e.copyVirtualPointFromName(entries, epp, "p13174", "pv_to_battery_energy", "Pv To Battery Energy (p13174)")
+		setVirtualPointUpdateFreq(pvToBatteryEnergy, GoStruct.UpdateFreqDay)
 
-		totalDailyEnergy := entries.CopyPointFromName(epp.AddString("p13199"), epp, "total_daily_energy", "Total Daily Energy (p13199)")
-		totalDailyEnergy.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
+		totalDailyEnergy := e.copyVirtualPointFromName(entries, epp, "p13199", "total_daily_energy", "Total Daily Energy (p13199)")
+		setVirtualPointUpdateFreq(totalDailyEnergy, GoStruct.UpdateFreqDay)
 
 		// dailyPvEnergy(p13112) - pvToGridEnergy(p13173) - pvToBatteryEnergy(p13174)
 		// WRONG!!! - p13112 (Pv Daily Energy) - p13122 (Daily Feed-in Energy) - p13174 (Daily Battery Charging Energy from PV)
 		dailyFeedInEnergy := entries.GetReflect(epp.AddString("p13173"))
 		batteryChargeEnergy := entries.GetReflect(epp.AddString("p13174"))
-		selfConsumptionOfPv := entries.CopyPointFromName(epp.AddString("p13116"), epp, "pv_consumption_energy", "Pv Consumption Energy (Calc)")
-		selfConsumptionOfPv.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
-		tmp1 := pvDailyEnergy.GetValueFloat() - dailyFeedInEnergy.GetValueFloat() - batteryChargeEnergy.GetValueFloat()
-		selfConsumptionOfPv.SetValue(tmp1)
-		selfConsumptionOfPv.SetValuePrecision(3)
+		if pvDailyEnergy != nil && dailyFeedInEnergy != nil && batteryChargeEnergy != nil {
+			selfConsumptionOfPv := e.copyVirtualPointFromName(entries, epp, "p13116", "pv_consumption_energy", "Pv Consumption Energy (Calc)")
+			setVirtualPointUpdateFreq(selfConsumptionOfPv, GoStruct.UpdateFreqDay)
+			if selfConsumptionOfPv != nil {
+				tmp1 := pvDailyEnergy.GetValueFloat() - dailyFeedInEnergy.GetValueFloat() - batteryChargeEnergy.GetValueFloat()
+				selfConsumptionOfPv.SetValue(tmp1)
+				selfConsumptionOfPv.SetValuePrecision(3)
 
-		selfConsumptionOfPvPercent := entries.CopyPointFromName(epp.AddString("p13116"), epp, "pv_consumption_energy_percent", "Pv Consumption Energy Percent (Calc)")
-		selfConsumptionOfPvPercent.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
-		selfConsumptionOfPvPercent.SetValue(entries.GetPercent(selfConsumptionOfPv, pvDailyEnergy, 1))
-		selfConsumptionOfPvPercent.SetUnit("%")
+				selfConsumptionOfPvPercent := e.copyVirtualPointFromName(entries, epp, "p13116", "pv_consumption_energy_percent", "Pv Consumption Energy Percent (Calc)")
+				setVirtualPointUpdateFreq(selfConsumptionOfPvPercent, GoStruct.UpdateFreqDay)
+				if selfConsumptionOfPvPercent != nil {
+					selfConsumptionOfPvPercent.SetValue(entries.GetPercent(selfConsumptionOfPv, pvDailyEnergy, 1))
+					selfConsumptionOfPvPercent.SetUnit("%")
+				}
+			}
+		}
 
 		// WRONG!!! - pvToLoadPercent := entries.CopyPointFromName(epp.AddString("p13144"), epp, "pv_to_load_energy_percent", "Pv To Load Energy Percent (p13144)")
 		// WRONG!!! - pvToLoadEnergy := entries.CopyPointFromName(epp.AddString("p13116"), epp, "pv_to_load_energy", "Pv To Load Energy (p13116)")
 		gridToLoadEnergy := entries.GetReflect(epp.AddString("p13147"))
-		pvToLoadEnergy := entries.CopyPointFromName(epp.AddString("p13116"), epp, "pv_to_load_energy", "Pv To Load Energy (Calc)")
-		pvToLoadEnergy.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
-		tmp2 := totalDailyEnergy.GetValueFloat() - gridToLoadEnergy.GetValueFloat()
-		pvToLoadEnergy.SetValue(tmp2)
-		pvToLoadEnergy.SetValuePrecision(3)
+		var pvToLoadEnergy *GoStruct.Reflect
+		if totalDailyEnergy != nil && gridToLoadEnergy != nil {
+			pvToLoadEnergy = e.copyVirtualPointFromName(entries, epp, "p13116", "pv_to_load_energy", "Pv To Load Energy (Calc)")
+			setVirtualPointUpdateFreq(pvToLoadEnergy, GoStruct.UpdateFreqDay)
+			if pvToLoadEnergy != nil {
+				tmp2 := totalDailyEnergy.GetValueFloat() - gridToLoadEnergy.GetValueFloat()
+				pvToLoadEnergy.SetValue(tmp2)
+				pvToLoadEnergy.SetValuePrecision(3)
 
-		pvToLoadEnergyPercent := entries.CopyPoint(pvDailyEnergy, epp, "pv_to_load_energy_percent", "Pv To Load Energy Percent (Calc)")
-		pvToLoadEnergyPercent.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
-		pvToLoadEnergyPercent.SetValue(entries.GetPercent(pvToLoadEnergy, totalDailyEnergy, 1))
-		pvToLoadEnergyPercent.SetUnit("%")
+				if pvDailyEnergy != nil {
+					pvToLoadEnergyPercent := entries.CopyPoint(pvDailyEnergy, epp, "pv_to_load_energy_percent", "Pv To Load Energy Percent (Calc)")
+					pvToLoadEnergyPercent.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
+					pvToLoadEnergyPercent.SetValue(entries.GetPercent(pvToLoadEnergy, totalDailyEnergy, 1))
+					pvToLoadEnergyPercent.SetUnit("%")
+				}
+			}
+		}
 
 		gridToLoadDailyEnergy := entries.GetReflect(epp.AddString("p13147"))
-		pvDailyEnergyPercent := entries.CopyPoint(totalDailyEnergy, epp, "pv_daily_energy_percent", "Pv Daily Energy Percent (Calc)")
-		pvDailyEnergyPercent.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
-		dpe := totalDailyEnergy.GetValueFloat() - gridToLoadDailyEnergy.GetValueFloat()
-		pvDailyEnergyPercent.SetValue(api.GetPercent(dpe, totalDailyEnergy.GetValueFloat(), 1))
-		pvDailyEnergyPercent.SetUnit("%")
+		if totalDailyEnergy != nil && gridToLoadDailyEnergy != nil {
+			pvDailyEnergyPercent := entries.CopyPoint(totalDailyEnergy, epp, "pv_daily_energy_percent", "Pv Daily Energy Percent (Calc)")
+			pvDailyEnergyPercent.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
+			dpe := totalDailyEnergy.GetValueFloat() - gridToLoadDailyEnergy.GetValueFloat()
+			pvDailyEnergyPercent.SetValue(api.GetPercent(dpe, totalDailyEnergy.GetValueFloat(), 1))
+			pvDailyEnergyPercent.SetUnit("%")
+		}
 
-		pvEnergy := entries.CopyPointFromName(pvToLoadEnergy.PointId(), epp, "pv_energy", "Pv Energy (Calc)")
-		// pvDailyYield := entries.GetReflect(pvSelfConsumption.PointId())
-		pvEnergy.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
-		pvEnergy.SetValue(GoStruct.AddFloatValues(3, pvToLoadEnergy, pvToBatteryEnergy, pvToGridEnergy))
+		if pvToLoadEnergy != nil && pvToBatteryEnergy != nil && pvToGridEnergy != nil {
+			pvEnergy := entries.CopyPointFromName(pvToLoadEnergy.PointId(), epp, "pv_energy", "Pv Energy (Calc)")
+			// pvDailyYield := entries.GetReflect(pvSelfConsumption.PointId())
+			if pvEnergy != nil {
+				pvEnergy.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
+				pvEnergy.SetValue(GoStruct.AddFloatValues(3, pvToLoadEnergy, pvToBatteryEnergy, pvToGridEnergy))
+			}
+		}
 
 		// DailyFeedInEnergy - @TODO - This may differ from DailyFeedInEnergyPv
 		// _ = entries.CopyPointFromName(epp.AddString("p13122"), epp, "pv_to_grid2", "")
 
 		// TotalPvYield
-		pcTotalEnergy := entries.CopyPointFromName(epp.AddString("p13134"), epp, "pv_total_energy", "Pv Total Energy (p13134)")
-		pcTotalEnergy.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
+		pcTotalEnergy := e.copyVirtualPointFromName(entries, epp, "p13134", "pv_total_energy", "Pv Total Energy (p13134)")
+		setVirtualPointUpdateFreq(pcTotalEnergy, GoStruct.UpdateFreqDay)
 	}
 }
 
 func (e *EndPoint) SetGridPoints(epp GoStruct.EndPointPath, entries api.DataMap) {
 	for range Only.Once {
-		gridToLoadPower := entries.CopyPointFromName(epp.AddString("p13149"), epp, "grid_to_load_power", "Grid To Load Power (p13149)")
+		gridToLoadPower := e.copyVirtualPointFromName(entries, epp, "p13149", "grid_to_load_power", "Grid To Load Power (p13149)")
 
-		gridToLoadPowerActive := entries.CopyPoint(gridToLoadPower, epp, "grid_to_load_power_active", "Grid To Load Power Active (p13149)")
-		_ = entries.MakeState(gridToLoadPowerActive)
+		if gridToLoadPower != nil {
+			gridToLoadPowerActive := entries.CopyPoint(gridToLoadPower, epp, "grid_to_load_power_active", "Grid To Load Power Active (p13149)")
+			_ = entries.MakeState(gridToLoadPowerActive)
+		}
 
-		gridToLoadEnergy := entries.CopyPointFromName(epp.AddString("p13147"), epp, "grid_to_load_energy", "Grid To Load Energy (p13147)")
-		gridToLoadEnergy.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
+		gridToLoadEnergy := e.copyVirtualPointFromName(entries, epp, "p13147", "grid_to_load_energy", "Grid To Load Energy (p13147)")
+		setVirtualPointUpdateFreq(gridToLoadEnergy, GoStruct.UpdateFreqDay)
 
-		totalLoadEnergy := entries.CopyPointFromName(epp.AddString("p13199"), epp, "total_load_energy", "Total Load Energy (Calc)")
-		gridToLoadEnergyPercent := entries.CopyPoint(totalLoadEnergy, epp, "grid_to_load_energy_percent", "")
-		gridToLoadEnergyPercent.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
-		gridToLoadEnergyPercent.SetValue(entries.GetPercent(gridToLoadEnergy, totalLoadEnergy, 1))
-		gridToLoadEnergyPercent.SetUnit("%")
+		totalLoadEnergy := e.copyVirtualPointFromName(entries, epp, "p13199", "total_load_energy", "Total Load Energy (Calc)")
+		setVirtualPointUpdateFreq(totalLoadEnergy, GoStruct.UpdateFreqDay)
+		if totalLoadEnergy != nil && gridToLoadEnergy != nil {
+			gridToLoadEnergyPercent := entries.CopyPoint(totalLoadEnergy, epp, "grid_to_load_energy_percent", "")
+			gridToLoadEnergyPercent.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
+			gridToLoadEnergyPercent.SetValue(entries.GetPercent(gridToLoadEnergy, totalLoadEnergy, 1))
+			gridToLoadEnergyPercent.SetUnit("%")
+		}
 
-		pvToGridPower := entries.CopyPointFromName(epp.AddString("p13121"), epp, "pv_to_grid_power", "Pv To Grid Power (p13121)")
-		gridPower := entries.CopyPoint(gridToLoadPower, epp, "grid_power", "Grid Power (Calc)")
-		gridPower.SetValue(entries.LowerUpper(pvToGridPower, gridToLoadPower))
+		pvToGridPower := e.copyVirtualPointFromName(entries, epp, "p13121", "pv_to_grid_power", "Pv To Grid Power (p13121)")
+		if gridToLoadPower != nil && pvToGridPower != nil {
+			gridPower := entries.CopyPoint(gridToLoadPower, epp, "grid_power", "Grid Power (Calc)")
+			gridPower.SetValue(entries.LowerUpper(pvToGridPower, gridToLoadPower))
 
-		gridPowerActive := entries.CopyPoint(gridPower, epp, "grid_power_active", "Grid Power Active (Calc)")
-		_ = entries.MakeState(gridPowerActive)
+			gridPowerActive := entries.CopyPoint(gridPower, epp, "grid_power_active", "Grid Power Active (Calc)")
+			_ = entries.MakeState(gridPowerActive)
+		}
 
-		gridToBatteryPowerActive := entries.CopyPoint(gridToLoadPower, epp, "grid_to_battery_power_active", "Grid To Battery Power Active (Calc)")
-		gridToBatteryPowerActive.SetValue(0.0)
-		_ = entries.MakeState(gridToBatteryPowerActive)
+		if gridToLoadPower != nil {
+			gridToBatteryPowerActive := entries.CopyPoint(gridToLoadPower, epp, "grid_to_battery_power_active", "Grid To Battery Power Active (Calc)")
+			gridToBatteryPowerActive.SetValue(0.0)
+			_ = entries.MakeState(gridToBatteryPowerActive)
+		}
 
-		pvToGridEnergy := entries.CopyPointFromName(epp.AddString("p13173"), epp, "pv_to_grid_energy", "Pv To Grid Energy (p13173)")
-		pvToGridEnergy.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
+		pvToGridEnergy := e.copyVirtualPointFromName(entries, epp, "p13173", "pv_to_grid_energy", "Pv To Grid Energy (p13173)")
+		setVirtualPointUpdateFreq(pvToGridEnergy, GoStruct.UpdateFreqDay)
 
-		gridEnergy := entries.CopyPoint(pvToGridEnergy, epp, "grid_energy", "Grid Energy (Calc)")
-		gridEnergy.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
-		gridEnergy.SetValue(entries.LowerUpper(pvToGridEnergy, gridToLoadEnergy))
+		if pvToGridEnergy != nil && gridToLoadEnergy != nil {
+			gridEnergy := entries.CopyPoint(pvToGridEnergy, epp, "grid_energy", "Grid Energy (Calc)")
+			gridEnergy.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
+			gridEnergy.SetValue(entries.LowerUpper(pvToGridEnergy, gridToLoadEnergy))
+		}
 	}
 }
 
 func (e *EndPoint) SetLoadPoints(epp GoStruct.EndPointPath, entries api.DataMap) {
 	for range Only.Once {
 		// Daily Load Energy Consumption
-		dailyTotalEnergy := entries.CopyPointFromName(epp.AddString("p13199"), epp, "daily_total_energy", "Daily Total Energy (p13199)")
-		dailyTotalEnergy.DataStructure.PointUpdateFreq = GoStruct.UpdateFreqDay
+		dailyTotalEnergy := e.copyVirtualPointFromName(entries, epp, "p13199", "daily_total_energy", "Daily Total Energy (p13199)")
+		setVirtualPointUpdateFreq(dailyTotalEnergy, GoStruct.UpdateFreqDay)
 
 		// Total Load Energy Consumption
 		// _ = entries.CopyPointFromName(epp.AddString("p13130"), epp, "total_energy_consumption", "")
 
-		loadPower := entries.CopyPointFromName(epp.AddString("p13119"), epp, "load_power", "Load Power (p13119)")
+		loadPower := e.copyVirtualPointFromName(entries, epp, "p13119", "load_power", "Load Power (p13119)")
 
-		loadPowerActive := entries.CopyPoint(loadPower, epp, "load_power_active", "Load Power Active (p13119)")
-		_ = entries.MakeState(loadPowerActive)
+		if loadPower != nil {
+			loadPowerActive := entries.CopyPoint(loadPower, epp, "load_power_active", "Load Power Active (p13119)")
+			_ = entries.MakeState(loadPowerActive)
+		}
 	}
+}
+
+func (e *EndPoint) copyVirtualPointFromName(entries api.DataMap, epp GoStruct.EndPointPath, sourcePoint string, pointID string, pointName string) *GoStruct.Reflect {
+	ref := epp.AddString(sourcePoint)
+	current := entries.CopyPointFromName(ref, epp, pointID, pointName)
+	if current == nil {
+		e.debugMissingVirtualPoint(epp, sourcePoint, pointID)
+	}
+	return current
+}
+
+func setVirtualPointUpdateFreq(point *GoStruct.Reflect, updateFreq string) {
+	if point == nil {
+		return
+	}
+	point.DataStructure.PointUpdateFreq = updateFreq
+}
+
+func (e *EndPoint) debugMissingVirtualPoint(epp GoStruct.EndPointPath, sourcePoint string, virtualPoint string) {
+	if e == nil || !e.IsDebug() {
+		return
+	}
+	fmt.Printf("Skipping virtual point %s for %s: source point %s is unavailable\n", virtualPoint, epp.String(), sourcePoint)
 }
