@@ -280,6 +280,71 @@ func TestRemapDashboardEntitiesMapsLegacyPlantPointAliases(t *testing.T) {
 	}
 }
 
+func TestRemapDashboardEntitiesPrefersLegacyMeterActivePowerForGridPower(t *testing.T) {
+	config := map[string]any{
+		"views": []any{
+			map[string]any{
+				"cards": []any{
+					map[string]any{
+						"type": "custom:gosungrow-energy-flow-card-v2",
+						"entities": map[string]any{
+							"grid_power": "sensor.gosungrow_virtual_100_11_0_0_grid_power",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	targets := []haDashboardTarget{
+		{PsID: "100", PsKey: "100_11_0_0"},
+	}
+	states := []haState{
+		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83549", "-0.30", "kW"),
+		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_meter1_information_meter_active_power", "-0.32", "kW"),
+	}
+
+	remapped := remapDashboardEntities(config, targets, states)
+	views := remapped["views"].([]any)
+	cards := views[0].(map[string]any)["cards"].([]any)
+	flowEntities := cards[0].(map[string]any)["entities"].(map[string]any)
+
+	if got := flowEntities["grid_power"]; got != "sensor.gosungrow_100_sungrow_gosungrow_meter1_information_meter_active_power" {
+		t.Fatalf("expected meter active power to win for legacy grid_power, got %v", got)
+	}
+}
+
+func TestRemapDashboardEntitiesPrefersLegacyInverterYieldForDailyPvYield(t *testing.T) {
+	config := map[string]any{
+		"views": []any{
+			map[string]any{
+				"cards": []any{
+					map[string]any{
+						"type":   "tile",
+						"entity": "sensor.gosungrow_virtual_100_11_0_0_p13112",
+					},
+				},
+			},
+		},
+	}
+
+	targets := []haDashboardTarget{
+		{PsID: "100", PsKey: "100_11_0_0"},
+	}
+	states := []haState{
+		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83022y", "29.20", "kWh"),
+		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_inverter1_information_yield_today", "30.60", "kWh"),
+	}
+
+	remapped := remapDashboardEntities(config, targets, states)
+	views := remapped["views"].([]any)
+	cards := views[0].(map[string]any)["cards"].([]any)
+
+	if got := cards[0].(map[string]any)["entity"]; got != "sensor.gosungrow_100_sungrow_gosungrow_inverter1_information_yield_today" {
+		t.Fatalf("expected inverter yield today to win for legacy p13112, got %v", got)
+	}
+}
+
 func TestRemapDashboardEntitiesDoesNotMapBatteryEnergyToPvYield(t *testing.T) {
 	config := map[string]any{
 		"views": []any{

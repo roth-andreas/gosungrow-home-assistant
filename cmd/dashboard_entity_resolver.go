@@ -225,7 +225,8 @@ func resolveDashboardMetricEntity(target haDashboardTarget, metric string, state
 			}
 		}
 
-		score := affinityScore + suffixScore + tokenScore + stateScore - forbiddenPenalty
+		sourcePreferenceScore := dashboardMetricSourcePreferenceScore(metric, candidate)
+		score := affinityScore + suffixScore + tokenScore + stateScore + sourcePreferenceScore - forbiddenPenalty
 		if strings.HasSuffix(candidate, "_active") {
 			score -= 4
 		}
@@ -250,6 +251,30 @@ func resolveDashboardMetricEntity(target haDashboardTarget, metric string, state
 	}
 
 	return bestCandidate
+}
+
+func dashboardMetricSourcePreferenceScore(metric string, candidate string) int {
+	metric = strings.ToLower(strings.TrimSpace(metric))
+	candidate = strings.ToLower(strings.TrimSpace(candidate))
+	switch metric {
+	case "grid_power":
+		switch {
+		case strings.Contains(candidate, "_p83032") || strings.Contains(candidate, "_meter_active_power") || strings.Contains(candidate, "_meter_ac_power"):
+			return 42
+		case strings.Contains(candidate, "_p83549") || strings.Contains(candidate, "_grid_active_power"):
+			return 18
+		}
+	case "p13112":
+		switch {
+		case strings.Contains(candidate, "_p83009") || strings.Contains(candidate, "_yield_today") || strings.Contains(candidate, "_today_yield"):
+			return 48
+		case strings.Contains(candidate, "_p83022") || strings.Contains(candidate, "_daily_yield_of_plant"):
+			return 18
+		case strings.Contains(candidate, "_p83018") || strings.Contains(candidate, "_theoretical"):
+			return -60
+		}
+	}
+	return 0
 }
 
 func dashboardResolveFailureReason(ref dashboardEntityRef, states []haState, singleTarget bool) string {
@@ -537,8 +562,8 @@ func dashboardMetricProfileFor(metric string) dashboardMetricProfile {
 		}
 	case "grid_power":
 		return dashboardMetricProfile{
-			Aliases:         []string{"grid_power", "grid_power_active", "net_grid_power", "p13149", "p13121", "p83549", "grid_active_power", "active_power", "total_active_power", "import_power", "export_power"},
-			TokenGroups:     [][]string{{"grid", "import", "export", "feed", "purchased"}, {"power"}},
+			Aliases:         []string{"grid_power", "grid_power_active", "net_grid_power", "p13149", "p13121", "p83032", "p83549", "meter_active_power", "meter_ac_power", "grid_active_power", "active_power", "total_active_power", "import_power", "export_power"},
+			TokenGroups:     [][]string{{"grid", "meter", "import", "export", "feed", "purchased"}, {"power"}},
 			ForbiddenTokens: []string{"battery"},
 			Kind:            dashboardMetricKindPower,
 		}
@@ -580,7 +605,7 @@ func dashboardMetricProfileFor(metric string) dashboardMetricProfile {
 		}
 	case "p13112":
 		return dashboardMetricProfile{
-			Aliases:     []string{"p13112", "p83022", "p83022y", "pv_daily_energy", "daily_pv_yield", "daily_pv_energy", "pv_yield", "daily_yield_of_plant", "daily_yield_by_inverter"},
+			Aliases:     []string{"p13112", "p83009", "yield_today", "today_yield", "daily_yield_by_inverter", "p83022", "p83022y", "pv_daily_energy", "daily_pv_yield", "daily_pv_energy", "pv_yield", "daily_yield_of_plant"},
 			TokenGroups: [][]string{{"pv", "solar"}, {"energy", "yield", "production"}},
 			Kind:        dashboardMetricKindEnergy,
 		}
