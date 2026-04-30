@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -30,7 +29,6 @@ const (
 	defaultDashboardURLPath    = "gosungrow-flow"
 	defaultDashboardTitle      = "GoSungrow Flow"
 	defaultDashboardIcon       = "mdi:solar-power"
-	defaultSupervisorCoreURL   = "http://supervisor/core"
 	dashboardTemplateFile      = "home-assistant-sungrow-flow.yaml"
 	dashboardStateFileName     = "dashboard_state.json"
 	dashboardCardFileName      = "gosungrow-energy-flow-card-v2.js"
@@ -42,7 +40,6 @@ type haDashboardInstallOptions struct {
 	AssetDir           string
 	HomeAssistantDir   string
 	HomeAssistantWSURL string
-	HomeAssistantURL   string
 	SupervisorToken    string
 	Language           string
 	DiagnosticContext  string
@@ -156,7 +153,6 @@ func (c *CmdHa) newInstallDashboardCommand() *cobra.Command {
 		AssetDir:           defaultHADashboardAssetDir,
 		HomeAssistantDir:   defaultHAConfigDir,
 		HomeAssistantWSURL: defaultHAWebsocketURL,
-		HomeAssistantURL:   defaultSupervisorCoreURL,
 		SupervisorToken:    os.Getenv("SUPERVISOR_TOKEN"),
 		Language:           "auto",
 		DiagnosticContext:  "manual",
@@ -187,7 +183,6 @@ func (c *CmdHa) newInstallDashboardCommand() *cobra.Command {
 	cmd.Flags().StringVar(&opts.AssetDir, "asset-dir", opts.AssetDir, "Directory containing the dashboard template and image assets.")
 	cmd.Flags().StringVar(&opts.HomeAssistantDir, "ha-config-dir", opts.HomeAssistantDir, "Home Assistant config directory containing the www folder.")
 	cmd.Flags().StringVar(&opts.HomeAssistantWSURL, "ha-ws-url", opts.HomeAssistantWSURL, "Home Assistant websocket endpoint.")
-	cmd.Flags().StringVar(&opts.HomeAssistantURL, "ha-url", opts.HomeAssistantURL, "Home Assistant base URL used to verify custom card assets.")
 	cmd.Flags().StringVar(&opts.SupervisorToken, "supervisor-token", opts.SupervisorToken, "Supervisor token used to access the Home Assistant websocket.")
 	cmd.Flags().StringVar(&opts.Language, "language", opts.Language, "Dashboard language (auto, en, de, sv, or locale such as de-DE).")
 	cmd.Flags().StringVar(&opts.DiagnosticContext, "diagnostic-context", opts.DiagnosticContext, "Diagnostic context label included in dashboard logs.")
@@ -199,7 +194,6 @@ func (c *CmdHa) newInstallDashboardCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&opts.ForceUpdate, "force-update", opts.ForceUpdate, "Replace an existing dashboard even if it was modified outside GoSungrow.")
 	_ = cmd.Flags().MarkHidden("supervisor-token")
 	_ = cmd.Flags().MarkHidden("ha-config-dir")
-	_ = cmd.Flags().MarkHidden("ha-url")
 	_ = cmd.Flags().MarkHidden("diagnostic-context")
 
 	return cmd
@@ -228,11 +222,7 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	if err != nil {
 		return err
 	}
-	if ok, verifyErr := verifyDashboardCardResource(opts.HomeAssistantURL, opts.SupervisorToken, resourceURL); verifyErr != nil || !ok {
-		fmt.Printf("Managed GoSungrow custom card copied to Home Assistant, but %s was not reachable during install; registering the local module resource anyway. If Home Assistant still shows \"Custom element not found\", hard-refresh the browser or reload the Home Assistant frontend.\n", resourceURL)
-	} else {
-		fmt.Printf("Managed GoSungrow custom card resource ready at %s.\n", resourceURL)
-	}
+	fmt.Printf("Managed GoSungrow custom card resource ready at %s. If Home Assistant still shows \"Custom element not found\", hard-refresh the browser or reload the Home Assistant frontend.\n", resourceURL)
 
 	statePath := dashboardStatePath()
 	state, err := loadDashboardState(statePath)
@@ -611,36 +601,6 @@ func uniqueNonEmptyStrings(values []string) []string {
 		ret = append(ret, value)
 	}
 	return ret
-}
-
-func verifyDashboardCardResource(homeAssistantURL string, supervisorToken string, resourceURL string) (bool, error) {
-	baseURL := strings.TrimRight(strings.TrimSpace(homeAssistantURL), "/")
-	if baseURL == "" {
-		return false, fmt.Errorf("home assistant url is empty")
-	}
-
-	parsed, err := url.Parse(resourceURL)
-	if err != nil {
-		return false, err
-	}
-
-	verifyURL := baseURL + parsed.Path
-	req, err := http.NewRequest(http.MethodGet, verifyURL, nil)
-	if err != nil {
-		return false, err
-	}
-	if strings.TrimSpace(supervisorToken) != "" {
-		req.Header.Set("Authorization", "Bearer "+supervisorToken)
-	}
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return false, err
-	}
-	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
-	return resp.StatusCode == http.StatusOK, nil
 }
 
 func targetPSKeys(targets []haDashboardTarget) []string {
