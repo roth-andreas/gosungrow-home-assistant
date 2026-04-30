@@ -277,28 +277,6 @@ func TestUniqueNonEmptyStrings(t *testing.T) {
 	}
 }
 
-func TestDashboardCardDataURI(t *testing.T) {
-	sourcePath := filepath.Join(t.TempDir(), dashboardCardFileName)
-	if err := os.WriteFile(sourcePath, []byte("console.log('gosungrow');"), 0600); err != nil {
-		t.Fatalf("write source: %v", err)
-	}
-
-	resourceURL, err := dashboardCardDataURI(sourcePath, "abc123")
-	if err != nil {
-		t.Fatalf("dashboardCardDataURI: %v", err)
-	}
-
-	if !strings.HasPrefix(resourceURL, "data:text/javascript;base64,") {
-		t.Fatalf("unexpected data uri prefix: %q", resourceURL)
-	}
-	if !strings.HasSuffix(resourceURL, "#v=abc123") {
-		t.Fatalf("unexpected data uri version suffix: %q", resourceURL)
-	}
-	if got := resourceURLBase(resourceURL); got != "data:text/javascript;base64," {
-		t.Fatalf("unexpected normalized resource base: %q", got)
-	}
-}
-
 func TestHAWSClientDashboardCalls(t *testing.T) {
 	upgrader := websocket.Upgrader{}
 	sawResourceUpdate := false
@@ -351,7 +329,7 @@ func TestHAWSClientDashboardCalls(t *testing.T) {
 			case "lovelace/resources":
 				response["result"] = []map[string]any{{
 					"id":   "resource-id",
-					"url":  "/local/gosungrow/gosungrow-energy-flow-card-v2.js?v=old",
+					"url":  "data:text/javascript;base64,Zm9v#v=old",
 					"type": "module",
 				}}
 			case "lovelace/resources/create", "lovelace/resources/update":
@@ -419,7 +397,7 @@ func TestHAWSClientDashboardCalls(t *testing.T) {
 	if err := client.SaveConfig(ctx, "gosungrow-flow", map[string]any{"title": "GoSungrow Flow", "views": []any{}}); err != nil {
 		t.Fatalf("SaveConfig: %v", err)
 	}
-	if err := client.EnsureResource(ctx, "data:text/javascript;base64,Zm9v#v=new", dashboardCardResourceType); err != nil {
+	if err := client.EnsureResource(ctx, "/local/gosungrow/gosungrow-energy-flow-card-v2.js?v=new", dashboardCardResourceType); err != nil {
 		t.Fatalf("EnsureResource: %v", err)
 	}
 	if !sawResourceUpdate {

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -225,18 +224,14 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 
 	templatePath := filepath.Join(opts.AssetDir, dashboardTemplateFile)
 
-	localResourceURL, assetVersion, err := installDashboardCardAsset(opts.AssetDir, opts.HomeAssistantDir)
+	resourceURL, _, err := installDashboardCardAsset(opts.AssetDir, opts.HomeAssistantDir)
 	if err != nil {
 		return err
 	}
-	resourceURL := localResourceURL
-	ok, verifyErr := verifyDashboardCardResource(opts.HomeAssistantURL, opts.SupervisorToken, localResourceURL)
-	if verifyErr != nil || !ok {
-		resourceURL, err = dashboardCardDataURI(filepath.Join(opts.AssetDir, dashboardCardFileName), assetVersion)
-		if err != nil {
-			return err
-		}
-		fmt.Printf("Managed GoSungrow custom card local asset unavailable; using embedded fallback resource.\n")
+	if ok, verifyErr := verifyDashboardCardResource(opts.HomeAssistantURL, opts.SupervisorToken, resourceURL); verifyErr != nil || !ok {
+		fmt.Printf("Managed GoSungrow custom card copied to Home Assistant, but %s was not reachable during install; registering the local module resource anyway. If Home Assistant still shows \"Custom element not found\", hard-refresh the browser or reload the Home Assistant frontend.\n", resourceURL)
+	} else {
+		fmt.Printf("Managed GoSungrow custom card resource ready at %s.\n", resourceURL)
 	}
 
 	statePath := dashboardStatePath()
@@ -646,20 +641,6 @@ func verifyDashboardCardResource(homeAssistantURL string, supervisorToken string
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, resp.Body)
 	return resp.StatusCode == http.StatusOK, nil
-}
-
-func dashboardCardDataURI(sourcePath string, version string) (string, error) {
-	data, err := os.ReadFile(sourcePath)
-	if err != nil {
-		return "", err
-	}
-
-	encoded := base64.StdEncoding.EncodeToString(data)
-	version = strings.TrimSpace(version)
-	if version == "" {
-		return "data:text/javascript;base64," + encoded, nil
-	}
-	return fmt.Sprintf("data:text/javascript;base64,%s#v=%s", encoded, version), nil
 }
 
 func targetPSKeys(targets []haDashboardTarget) []string {
