@@ -314,6 +314,40 @@ func TestRemapDashboardEntitiesPrefersLegacyMeterActivePowerForGridPower(t *test
 	}
 }
 
+func TestRemapDashboardEntitiesMapsReportedMeterP8018ForGridPower(t *testing.T) {
+	config := map[string]any{
+		"views": []any{
+			map[string]any{
+				"cards": []any{
+					map[string]any{
+						"type": "custom:gosungrow-energy-flow-card-v2",
+						"entities": map[string]any{
+							"grid_power": "sensor.gosungrow_virtual_1203332_22_247_1_grid_power",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	targets := []haDashboardTarget{
+		{PsID: "1203332", PsKey: "1203332_22_247_1"},
+	}
+	states := []haState{
+		dashboardTestState("sensor.gosungrow_1203332_sungrow_gosungrow_plant_information_p83549", "-0.30", "kW"),
+		dashboardTestState("sensor.gosungrow_virtual_1203332_7_1_1_p8018", "-0.32", "kW"),
+	}
+
+	remapped := remapDashboardEntities(config, targets, states)
+	views := remapped["views"].([]any)
+	cards := views[0].(map[string]any)["cards"].([]any)
+	flowEntities := cards[0].(map[string]any)["entities"].(map[string]any)
+
+	if got := flowEntities["grid_power"]; got != "sensor.gosungrow_virtual_1203332_7_1_1_p8018" {
+		t.Fatalf("expected reported meter p8018 to win for legacy grid_power, got %v", got)
+	}
+}
+
 func TestRemapDashboardEntitiesPrefersLegacyInverterYieldForDailyPvYield(t *testing.T) {
 	config := map[string]any{
 		"views": []any{
@@ -342,6 +376,68 @@ func TestRemapDashboardEntitiesPrefersLegacyInverterYieldForDailyPvYield(t *test
 
 	if got := cards[0].(map[string]any)["entity"]; got != "sensor.gosungrow_100_sungrow_gosungrow_inverter1_information_yield_today" {
 		t.Fatalf("expected inverter yield today to win for legacy p13112, got %v", got)
+	}
+}
+
+func TestRemapDashboardEntitiesMapsReportedInverterP1ForDailyPvYield(t *testing.T) {
+	config := map[string]any{
+		"views": []any{
+			map[string]any{
+				"cards": []any{
+					map[string]any{
+						"type":   "tile",
+						"entity": "sensor.gosungrow_virtual_1203332_22_247_1_p13112",
+					},
+				},
+			},
+		},
+	}
+
+	targets := []haDashboardTarget{
+		{PsID: "1203332", PsKey: "1203332_22_247_1"},
+	}
+	states := []haState{
+		dashboardTestState("sensor.gosungrow_1203332_sungrow_gosungrow_plant_information_p83022y", "29.20", "kWh"),
+		dashboardTestState("sensor.gosungrow_virtual_1203332_1_1_1_p1", "30.60", "kWh"),
+	}
+
+	remapped := remapDashboardEntities(config, targets, states)
+	views := remapped["views"].([]any)
+	cards := views[0].(map[string]any)["cards"].([]any)
+
+	if got := cards[0].(map[string]any)["entity"]; got != "sensor.gosungrow_virtual_1203332_1_1_1_p1" {
+		t.Fatalf("expected reported inverter p1 to win for legacy p13112, got %v", got)
+	}
+}
+
+func TestRemapDashboardEntitiesDoesNotMapNonInverterP1ForDailyPvYield(t *testing.T) {
+	config := map[string]any{
+		"views": []any{
+			map[string]any{
+				"cards": []any{
+					map[string]any{
+						"type":   "tile",
+						"entity": "sensor.gosungrow_virtual_1203332_22_247_1_p13112",
+					},
+				},
+			},
+		},
+	}
+
+	targets := []haDashboardTarget{
+		{PsID: "1203332", PsKey: "1203332_22_247_1"},
+	}
+	states := []haState{
+		dashboardTestState("sensor.gosungrow_virtual_1203332_7_1_1_p1", "30.60", "kWh"),
+		dashboardTestState("sensor.gosungrow_1203332_sungrow_gosungrow_plant_information_p83022y", "29.20", "kWh"),
+	}
+
+	remapped := remapDashboardEntities(config, targets, states)
+	views := remapped["views"].([]any)
+	cards := views[0].(map[string]any)["cards"].([]any)
+
+	if got := cards[0].(map[string]any)["entity"]; got != "sensor.gosungrow_1203332_sungrow_gosungrow_plant_information_p83022y" {
+		t.Fatalf("expected non-inverter p1 not to win for legacy p13112, got %v", got)
 	}
 }
 

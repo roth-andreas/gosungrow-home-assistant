@@ -259,13 +259,15 @@ func dashboardMetricSourcePreferenceScore(metric string, candidate string) int {
 	switch metric {
 	case "grid_power":
 		switch {
-		case strings.Contains(candidate, "_p83032") || strings.Contains(candidate, "_meter_active_power") || strings.Contains(candidate, "_meter_ac_power"):
+		case strings.Contains(candidate, "_p8018") || strings.Contains(candidate, "_p83032") || strings.Contains(candidate, "_meter_active_power") || strings.Contains(candidate, "_meter_ac_power"):
 			return 42
 		case strings.Contains(candidate, "_p83549") || strings.Contains(candidate, "_grid_active_power"):
 			return 18
 		}
 	case "p13112":
 		switch {
+		case strings.HasSuffix(candidate, "_p1") && dashboardCandidateHasInverterContext(candidate):
+			return 48
 		case strings.Contains(candidate, "_p83009") || strings.Contains(candidate, "_yield_today") || strings.Contains(candidate, "_today_yield"):
 			return 48
 		case strings.Contains(candidate, "_p83022") || strings.Contains(candidate, "_daily_yield_of_plant"):
@@ -472,6 +474,20 @@ func dashboardEntityContainsIdentifier(candidate string, identifier string) bool
 	return false
 }
 
+func dashboardCandidateHasInverterContext(candidate string) bool {
+	candidate = strings.ToLower(strings.TrimSpace(candidate))
+	if strings.Contains(candidate, "inverter") {
+		return true
+	}
+
+	const virtualPrefix = "sensor.gosungrow_virtual_"
+	if !strings.HasPrefix(candidate, virtualPrefix) {
+		return false
+	}
+	parts := strings.Split(strings.TrimPrefix(candidate, virtualPrefix), "_")
+	return len(parts) >= 5 && parts[1] == "1"
+}
+
 func dashboardMetricSuffixScore(candidate string, metric string, profile dashboardMetricProfile) (int, bool) {
 	if metric != "" && strings.HasSuffix(candidate, "_"+metric) {
 		return 240, true
@@ -480,6 +496,9 @@ func dashboardMetricSuffixScore(candidate string, metric string, profile dashboa
 	for index, alias := range profile.Aliases {
 		alias = strings.ToLower(strings.TrimSpace(alias))
 		if alias == "" {
+			continue
+		}
+		if metric == "p13112" && alias == "p1" && !dashboardCandidateHasInverterContext(candidate) {
 			continue
 		}
 		if strings.HasSuffix(candidate, "_"+alias) {
@@ -562,7 +581,7 @@ func dashboardMetricProfileFor(metric string) dashboardMetricProfile {
 		}
 	case "grid_power":
 		return dashboardMetricProfile{
-			Aliases:         []string{"grid_power", "grid_power_active", "net_grid_power", "p13149", "p13121", "p83032", "p83549", "meter_active_power", "meter_ac_power", "grid_active_power", "active_power", "total_active_power", "import_power", "export_power"},
+			Aliases:         []string{"grid_power", "grid_power_active", "net_grid_power", "p13149", "p13121", "p8018", "p83032", "p83549", "meter_active_power", "meter_ac_power", "grid_active_power", "active_power", "total_active_power", "import_power", "export_power"},
 			TokenGroups:     [][]string{{"grid", "meter", "import", "export", "feed", "purchased"}, {"power"}},
 			ForbiddenTokens: []string{"battery"},
 			Kind:            dashboardMetricKindPower,
@@ -605,7 +624,7 @@ func dashboardMetricProfileFor(metric string) dashboardMetricProfile {
 		}
 	case "p13112":
 		return dashboardMetricProfile{
-			Aliases:     []string{"p13112", "p83009", "yield_today", "today_yield", "daily_yield_by_inverter", "p83022", "p83022y", "pv_daily_energy", "daily_pv_yield", "daily_pv_energy", "pv_yield", "daily_yield_of_plant"},
+			Aliases:     []string{"p13112", "p83009", "yield_today", "today_yield", "daily_yield_by_inverter", "p1", "p83022", "p83022y", "pv_daily_energy", "daily_pv_yield", "daily_pv_energy", "pv_yield", "daily_yield_of_plant"},
 			TokenGroups: [][]string{{"pv", "solar"}, {"energy", "yield", "production"}},
 			Kind:        dashboardMetricKindEnergy,
 		}
