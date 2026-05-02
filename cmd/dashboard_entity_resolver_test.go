@@ -280,6 +280,74 @@ func TestRemapDashboardEntitiesMapsLegacyPlantPointAliases(t *testing.T) {
 	}
 }
 
+func TestRemapDashboardEntitiesMapsReportedInverterP24ForPvPower(t *testing.T) {
+	config := map[string]any{
+		"views": []any{
+			map[string]any{
+				"cards": []any{
+					map[string]any{
+						"type": "custom:gosungrow-energy-flow-card-v2",
+						"entities": map[string]any{
+							"solar_power": "sensor.gosungrow_virtual_1203332_22_247_1_pv_power",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	targets := []haDashboardTarget{
+		{PsID: "1203332", PsKey: "1203332_22_247_1"},
+	}
+	states := []haState{
+		dashboardTestState("sensor.gosungrow_1203332_sungrow_gosungrow_plant_information_p83076_map", "2.40", "kW"),
+		dashboardTestState("sensor.gosungrow_virtual_1203332_1_1_1_p24", "2.60", "kW"),
+	}
+
+	remapped := remapDashboardEntities(config, targets, states)
+	views := remapped["views"].([]any)
+	cards := views[0].(map[string]any)["cards"].([]any)
+	flowEntities := cards[0].(map[string]any)["entities"].(map[string]any)
+
+	if got := flowEntities["solar_power"]; got != "sensor.gosungrow_virtual_1203332_1_1_1_p24" {
+		t.Fatalf("expected reported inverter p24 to win for legacy pv_power, got %v", got)
+	}
+}
+
+func TestRemapDashboardEntitiesDoesNotMapNonInverterP24ForPvPower(t *testing.T) {
+	config := map[string]any{
+		"views": []any{
+			map[string]any{
+				"cards": []any{
+					map[string]any{
+						"type": "custom:gosungrow-energy-flow-card-v2",
+						"entities": map[string]any{
+							"solar_power": "sensor.gosungrow_virtual_1203332_22_247_1_pv_power",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	targets := []haDashboardTarget{
+		{PsID: "1203332", PsKey: "1203332_22_247_1"},
+	}
+	states := []haState{
+		dashboardTestState("sensor.gosungrow_virtual_1203332_7_1_1_p24", "2.60", "kW"),
+		dashboardTestState("sensor.gosungrow_1203332_sungrow_gosungrow_plant_information_p83076_map", "2.40", "kW"),
+	}
+
+	remapped := remapDashboardEntities(config, targets, states)
+	views := remapped["views"].([]any)
+	cards := views[0].(map[string]any)["cards"].([]any)
+	flowEntities := cards[0].(map[string]any)["entities"].(map[string]any)
+
+	if got := flowEntities["solar_power"]; got != "sensor.gosungrow_1203332_sungrow_gosungrow_plant_information_p83076_map" {
+		t.Fatalf("expected non-inverter p24 not to win for legacy pv_power, got %v", got)
+	}
+}
+
 func TestRemapDashboardEntitiesPrefersLegacyMeterActivePowerForGridPower(t *testing.T) {
 	config := map[string]any{
 		"views": []any{

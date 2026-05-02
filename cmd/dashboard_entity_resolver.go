@@ -257,6 +257,15 @@ func dashboardMetricSourcePreferenceScore(metric string, candidate string) int {
 	metric = strings.ToLower(strings.TrimSpace(metric))
 	candidate = strings.ToLower(strings.TrimSpace(candidate))
 	switch metric {
+	case "pv_power":
+		switch {
+		case strings.HasSuffix(candidate, "_p24") && dashboardCandidateHasInverterContext(candidate):
+			return 44
+		case strings.Contains(candidate, "_pv_power") || strings.Contains(candidate, "_solar_power") || strings.Contains(candidate, "_total_dc_power"):
+			return 48
+		case strings.Contains(candidate, "_p83076") || strings.Contains(candidate, "_p83033") || strings.Contains(candidate, "_p83002"):
+			return 18
+		}
 	case "grid_power":
 		switch {
 		case strings.Contains(candidate, "_p8018") || strings.Contains(candidate, "_p83032") || strings.Contains(candidate, "_meter_active_power") || strings.Contains(candidate, "_meter_ac_power"):
@@ -498,7 +507,7 @@ func dashboardMetricSuffixScore(candidate string, metric string, profile dashboa
 		if alias == "" {
 			continue
 		}
-		if metric == "p13112" && alias == "p1" && !dashboardCandidateHasInverterContext(candidate) {
+		if ((metric == "p13112" && alias == "p1") || (metric == "pv_power" && alias == "p24")) && !dashboardCandidateHasInverterContext(candidate) {
 			continue
 		}
 		if strings.HasSuffix(candidate, "_"+alias) {
@@ -569,7 +578,7 @@ func dashboardMetricProfileFor(metric string) dashboardMetricProfile {
 	switch strings.ToLower(strings.TrimSpace(metric)) {
 	case "pv_power":
 		return dashboardMetricProfile{
-			Aliases:     []string{"pv_power", "pv_power_active", "solar_power", "p13003", "p83076", "p83076_map", "p83033", "p83002", "total_dc_power", "dc_power", "plant_power", "inverter_ac_power", "total_active_power", "active_power"},
+			Aliases:     []string{"pv_power", "pv_power_active", "solar_power", "p13003", "p24", "p83076", "p83076_map", "p83033", "p83002", "total_dc_power", "dc_power", "plant_power", "inverter_ac_power", "total_active_power", "active_power"},
 			TokenGroups: [][]string{{"pv", "solar"}, {"power"}},
 			Kind:        dashboardMetricKindPower,
 		}
