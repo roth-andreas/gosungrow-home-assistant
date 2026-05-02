@@ -576,6 +576,56 @@ func TestRemapDashboardEntitiesReportsUnresolvedRefs(t *testing.T) {
 	if !strings.Contains(report.Unresolved[0].Reason, "compatible power unit") {
 		t.Fatalf("unexpected unresolved reason: %q", report.Unresolved[0].Reason)
 	}
+	if len(report.Traces) != 1 {
+		t.Fatalf("expected one resolver trace, got %#v", report.Traces)
+	}
+	if len(report.Traces[0].Candidates) != 1 {
+		t.Fatalf("expected wrong-unit candidate in trace, got %#v", report.Traces[0].Candidates)
+	}
+	if !strings.Contains(report.Traces[0].Candidates[0].Reason, "unit") {
+		t.Fatalf("expected unit rejection reason in trace, got %#v", report.Traces[0].Candidates[0])
+	}
+}
+
+func TestRemapDashboardEntitiesReportsResolvedTraceAndSource(t *testing.T) {
+	config := map[string]any{
+		"views": []any{
+			map[string]any{
+				"cards": []any{
+					map[string]any{
+						"type":   "tile",
+						"entity": "sensor.gosungrow_virtual_1203332_1_1_1_pv_power",
+					},
+				},
+			},
+		},
+	}
+
+	targets := []haDashboardTarget{
+		{PsID: "1203332", PsKey: "1203332_1_1_1"},
+	}
+	states := []haState{
+		dashboardTestState("sensor.gosungrow_virtual_1203332_1_1_1_p24", "2.60", "kW"),
+	}
+
+	remapped, report := remapDashboardEntitiesWithReport(config, targets, states)
+	views := remapped["views"].([]any)
+	cards := views[0].(map[string]any)["cards"].([]any)
+	if got := cards[0].(map[string]any)["entity"]; got != "sensor.gosungrow_virtual_1203332_1_1_1_p24" {
+		t.Fatalf("unexpected remapped entity: %v", got)
+	}
+	if len(report.Remapped) != 1 || report.Remapped[0].Source != "inverter-level" {
+		t.Fatalf("expected remap source, got %#v", report.Remapped)
+	}
+	if len(report.Traces) != 1 {
+		t.Fatalf("expected one trace, got %#v", report.Traces)
+	}
+	if report.Traces[0].Resolved != "sensor.gosungrow_virtual_1203332_1_1_1_p24" {
+		t.Fatalf("unexpected trace resolution: %#v", report.Traces[0])
+	}
+	if len(report.Traces[0].Candidates) != 1 || report.Traces[0].Candidates[0].Score <= 0 {
+		t.Fatalf("expected scored candidate trace, got %#v", report.Traces[0].Candidates)
+	}
 }
 
 func TestRemapDashboardEntitiesDoesNotMapFeedInEnergyToPvYield(t *testing.T) {

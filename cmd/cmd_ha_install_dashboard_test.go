@@ -52,6 +52,12 @@ func TestDiscoverDashboardTargetsPrefersDeviceType14(t *testing.T) {
 	if targets[0].SelectionSource != "preferred-device-type-14" {
 		t.Fatalf("expected preferred type-14 selection, got %#v", targets[0])
 	}
+	if len(targets[0].PlantDevices) != 2 {
+		t.Fatalf("expected all plant devices in diagnostics metadata, got %#v", targets[0].PlantDevices)
+	}
+	if !targets[0].PlantDevices[1].Selected {
+		t.Fatalf("expected selected target to be marked in plant devices, got %#v", targets[0].PlantDevices)
+	}
 }
 
 func TestDiscoverDashboardTargetsPrefersType11WhenNoEssTargetExists(t *testing.T) {
@@ -488,8 +494,10 @@ func TestWriteDashboardInstallDiagnosticsIncludesSummaryAndUnresolvedRefs(t *tes
 				From:   "sensor.gosungrow_virtual_123_pv_power",
 				To:     "sensor.gosungrow_123_pv_information_pv_power",
 				Metric: "pv_power",
+				Source: "inverter-level",
 			},
 		},
+		Debug:                 true,
 		BatteryDetectionKnown: true,
 		BatteryTargetsFound:   0,
 		BatteryTargetsTotal:   1,
@@ -502,12 +510,60 @@ func TestWriteDashboardInstallDiagnosticsIncludesSummaryAndUnresolvedRefs(t *tes
 				ViewPath:        "1203332-22-247-1",
 				DeviceType:      22,
 				SelectionSource: "fallback-first-valid-ps-key",
+				PlantDevices: []dashboardPlantDevice{
+					{
+						PlantName:       "Roof",
+						DeviceName:      "Large inverter",
+						PsID:            "1203332",
+						PsKey:           "1203332_1_1_1",
+						DeviceType:      1,
+						SelectionSource: "preferred-device-type-1",
+					},
+					{
+						PlantName:       "Roof",
+						DeviceName:      "String inverter",
+						PsID:            "1203332",
+						PsKey:           "1203332_22_247_1",
+						DeviceType:      22,
+						Selected:        true,
+						SelectionSource: "fallback-first-valid-ps-key",
+					},
+				},
 				GoSungrowStates: 97,
 				VirtualStates:   0,
 				ExampleGoSungrowStates: []string{
 					"sensor.gosungrow_1203332_pv_information_pv_power",
 					"sensor.gosungrow_1203332_grid_information_grid_power",
 				},
+			},
+		},
+		MetricTraces: []dashboardMetricTrace{
+			{
+				Placeholder: "sensor.gosungrow_virtual_123_pv_power",
+				Metric:      "pv_power",
+				TargetPsKey: "1203332_22_247_1",
+				Resolved:    "sensor.gosungrow_123_pv_information_pv_power",
+				Source:      "inverter-level",
+				Candidates: []dashboardMetricCandidate{
+					{
+						Entity: "sensor.gosungrow_123_pv_information_pv_power",
+						Metric: "pv_power",
+						Score:  240,
+						State:  "2.60",
+						Unit:   "kW",
+						Source: "inverter-level",
+						Reason: "usable candidate",
+					},
+				},
+			},
+		},
+		AggregateHints: []dashboardAggregateHint{
+			{
+				Metric: "pv_power",
+				Entity: "sensor.gosungrow_123_pv_information_pv_power",
+				State:  "2.60",
+				Unit:   "kW",
+				Source: "inverter-level",
 			},
 		},
 		DashboardSaved:      true,
@@ -534,10 +590,18 @@ func TestWriteDashboardInstallDiagnosticsIncludesSummaryAndUnresolvedRefs(t *tes
 		"Dashboard targets:",
 		"- target[1]: plant=\"Roof\" device=\"String inverter\" ps_id=1203332 ps_key=1203332_22_247_1 device_type=22 selection=fallback-first-valid-ps-key view=1203332-22-247-1 gosungrow_states=97 virtual_states=0",
 		"warning: selected fallback non-ESS device_type=22; full ESS virtual metrics may be unavailable",
+		"warning: selected fallback target while other inverter-like devices exist",
 		"warning: no target-specific gosungrow_virtual states were found",
 		"example gosungrow states: sensor.gosungrow_1203332_pv_information_pv_power, sensor.gosungrow_1203332_grid_information_grid_power",
+		"plant devices:",
+		"available ps_id=1203332 ps_key=1203332_1_1_1 device=\"Large inverter\" device_type=1 selection=preferred-device-type-1",
+		"selected ps_id=1203332 ps_key=1203332_22_247_1 device=\"String inverter\" device_type=22 selection=fallback-first-valid-ps-key",
 		"Remapped dashboard refs:",
-		"- pv_power: sensor.gosungrow_virtual_123_pv_power -> sensor.gosungrow_123_pv_information_pv_power",
+		"- pv_power [inverter-level]: sensor.gosungrow_virtual_123_pv_power -> sensor.gosungrow_123_pv_information_pv_power",
+		"Potential aggregate sources:",
+		"- pv_power [inverter-level] state=2.60 kW entity=sensor.gosungrow_123_pv_information_pv_power",
+		"Dashboard metric candidates:",
+		"candidate score=240 source=inverter-level state=2.60 kW entity=sensor.gosungrow_123_pv_information_pv_power reason=usable candidate",
 		"Unresolved dashboard refs:",
 		"- sensor.gosungrow_virtual_123_pv_power: no usable candidate entity matched metric \"pv_power\"",
 	} {

@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -24,6 +25,7 @@ type dashboardEntityRemap struct {
 	From   string
 	To     string
 	Metric string
+	Source string
 }
 
 type dashboardUnresolvedEntityRef struct {
@@ -32,10 +34,30 @@ type dashboardUnresolvedEntityRef struct {
 	Reason string
 }
 
+type dashboardMetricCandidate struct {
+	Entity string
+	Metric string
+	Score  int
+	State  string
+	Unit   string
+	Source string
+	Reason string
+}
+
+type dashboardMetricTrace struct {
+	Placeholder string
+	Metric      string
+	TargetPsKey string
+	Resolved    string
+	Source      string
+	Candidates  []dashboardMetricCandidate
+}
+
 type dashboardRemapReport struct {
 	TotalRefs  int
 	Remapped   []dashboardEntityRemap
 	Unresolved []dashboardUnresolvedEntityRef
+	Traces     []dashboardMetricTrace
 }
 
 const (
@@ -76,7 +98,8 @@ func remapDashboardEntitiesWithReport(config map[string]any, targets []haDashboa
 	replacements := make(map[string]string)
 	singleTarget := len(targets) == 1
 	for _, ref := range refs {
-		resolved := resolveDashboardEntityRef(ref, states, stateByID, singleTarget)
+		resolved, trace := resolveDashboardEntityRefWithTrace(ref, states, stateByID, singleTarget)
+		report.Traces = append(report.Traces, trace)
 		if resolved == "" {
 			report.Unresolved = append(report.Unresolved, dashboardUnresolvedEntityRef{
 				Entity: ref.Entity,
@@ -93,6 +116,7 @@ func remapDashboardEntitiesWithReport(config map[string]any, targets []haDashboa
 			From:   ref.Entity,
 			To:     resolved,
 			Metric: ref.Metric,
+			Source: dashboardMetricSourceCategory(ref.Target, ref.Metric, resolved),
 		})
 	}
 	if len(replacements) == 0 {
@@ -166,10 +190,21 @@ func parseLegacyDashboardEntityRef(entity string, targets []haDashboardTarget) (
 }
 
 func resolveDashboardEntityRef(ref dashboardEntityRef, states []haState, stateByID map[string]haState, singleTarget bool) string {
-	return resolveDashboardMetricEntity(ref.Target, ref.Metric, states, stateByID, singleTarget)
+	resolved, _ := resolveDashboardEntityRefWithTrace(ref, states, stateByID, singleTarget)
+	return resolved
+}
+
+func resolveDashboardEntityRefWithTrace(ref dashboardEntityRef, states []haState, stateByID map[string]haState, singleTarget bool) (string, dashboardMetricTrace) {
+	resolved, trace := resolveDashboardMetricEntityWithTrace(ref.Target, ref.Metric, ref.Entity, states, stateByID, singleTarget)
+	return resolved, trace
 }
 
 func resolveDashboardMetricEntity(target haDashboardTarget, metric string, states []haState, stateByID map[string]haState, singleTarget bool) string {
+	resolved, _ := resolveDashboardMetricEntityWithTrace(target, metric, "", states, stateByID, singleTarget)
+	return resolved
+}
+
+func resolveDashboardMetricEntityWithTrace(target haDashboardTarget, metric string, placeholder string, states []haState, stateByID map[string]haState, singleTarget bool) (string, dashboardMetricTrace) {
 	if stateByID == nil {
 		stateByID = dashboardStateByEntityID(states)
 	}
@@ -178,6 +213,12 @@ func resolveDashboardMetricEntity(target haDashboardTarget, metric string, state
 	psID := strings.ToLower(strings.TrimSpace(target.PsID))
 	metric = strings.ToLower(strings.TrimSpace(metric))
 	profile := dashboardMetricProfileFor(metric)
+	trace := dashboardMetricTrace{
+		Placeholder: placeholder,
+		Metric:      metric,
+		TargetPsKey: target.PsKey,
+		Candidates:  make([]dashboardMetricCandidate, 0),
+	}
 
 	legacy := []string{
 		"sensor.gosungrow_virtual_" + psKey + "_" + metric,
@@ -186,62 +227,42 @@ func resolveDashboardMetricEntity(target haDashboardTarget, metric string, state
 	for _, candidate := range legacy {
 		state, ok := stateByID[candidate]
 		if ok && dashboardStateMatchesMetricKind(state, profile) {
-			return candidate
+			trace.Resolved = candidate
+			trace.Source = dashboardMetricSourceCategory(target, metric, candidate)
+			trace.Candidates = appendDashboardMetricCandidate(trace.Candidates, dashboardMetricCandidate{
+				Entity: candidate,
+				Metric: metric,
+				Score:  9999,
+				State:  state.State,
+				Unit:   dashboardStateUnit(state),
+				Source: trace.Source,
+				Reason: "exact dashboard virtual entity exists",
+			}, 5)
+			return candidate, trace
 		}
 	}
 
 	bestCandidate := ""
 	bestScore := -1
 	for _, state := range states {
-		candidate := strings.ToLower(strings.TrimSpace(state.EntityID))
-		if !strings.HasPrefix(candidate, "sensor.") {
-			continue
-		}
-		if !strings.Contains(candidate, "gosungrow") {
-			continue
-		}
-
-		affinityScore, ok := dashboardEntityPlantAffinity(candidate, target, singleTarget)
-		if !ok {
-			continue
-		}
-
-		suffixScore, hasSuffixMatch := dashboardMetricSuffixScore(candidate, metric, profile)
-		tokenScore, hasTokenMatch := dashboardMetricTokenScore(candidate, profile)
-		if !hasSuffixMatch && !hasTokenMatch {
-			continue
-		}
-		stateScore, ok := dashboardMetricStateScore(state, profile)
-		if !ok {
-			continue
-		}
-
-		forbiddenPenalty := 0
-		if hasTokenMatch {
-			for _, forbidden := range profile.ForbiddenTokens {
-				if dashboardTokenExists(candidate, forbidden) {
-					forbiddenPenalty += 28
-				}
+		candidate, score, reason, ok := dashboardScoreMetricCandidate(target, metric, profile, state, singleTarget)
+		if candidate == "" {
+			if rejected, rejectedOK := dashboardRejectedMetricCandidate(target, metric, profile, state, singleTarget); rejectedOK {
+				trace.Candidates = appendDashboardMetricCandidate(trace.Candidates, rejected, 5)
 			}
+			continue
 		}
-
-		sourcePreferenceScore := dashboardMetricSourcePreferenceScore(metric, candidate)
-		score := affinityScore + suffixScore + tokenScore + stateScore + sourcePreferenceScore - forbiddenPenalty
-		if strings.HasSuffix(candidate, "_active") {
-			score -= 4
-		}
-		if strings.Contains(candidate, "_virtual_") {
-			score += 16
-		}
-		if strings.Contains(candidate, "_information_") {
-			score += 6
-		}
-		if strings.HasPrefix(candidate, "sensor.gosungrow_") {
-			score += 8
-		}
-
-		if !hasSuffixMatch && hasTokenMatch {
-			score -= 24
+		trace.Candidates = appendDashboardMetricCandidate(trace.Candidates, dashboardMetricCandidate{
+			Entity: candidate,
+			Metric: metric,
+			Score:  score,
+			State:  state.State,
+			Unit:   dashboardStateUnit(state),
+			Source: dashboardMetricSourceCategory(target, metric, candidate),
+			Reason: reason,
+		}, 5)
+		if !ok {
+			continue
 		}
 
 		if bestCandidate == "" || score > bestScore || (score == bestScore && len(candidate) < len(bestCandidate)) {
@@ -250,7 +271,159 @@ func resolveDashboardMetricEntity(target haDashboardTarget, metric string, state
 		}
 	}
 
-	return bestCandidate
+	trace.Resolved = bestCandidate
+	trace.Source = dashboardMetricSourceCategory(target, metric, bestCandidate)
+	return bestCandidate, trace
+}
+
+func dashboardRejectedMetricCandidate(target haDashboardTarget, metric string, profile dashboardMetricProfile, state haState, singleTarget bool) (dashboardMetricCandidate, bool) {
+	candidate := strings.ToLower(strings.TrimSpace(state.EntityID))
+	if !strings.HasPrefix(candidate, "sensor.") || !strings.Contains(candidate, "gosungrow") {
+		return dashboardMetricCandidate{}, false
+	}
+
+	suffixScore, hasSuffixMatch := dashboardMetricSuffixScore(candidate, metric, profile)
+	tokenScore, hasTokenMatch := dashboardMetricTokenScore(candidate, profile)
+	if !hasSuffixMatch && !hasTokenMatch {
+		return dashboardMetricCandidate{}, false
+	}
+
+	if _, ok := dashboardEntityPlantAffinity(candidate, target, singleTarget); !ok {
+		return dashboardMetricCandidate{
+			Entity: candidate,
+			Metric: metric,
+			Score:  suffixScore + tokenScore,
+			State:  state.State,
+			Unit:   dashboardStateUnit(state),
+			Source: "wrong-target",
+			Reason: "wrong target affinity",
+		}, true
+	}
+
+	if reason := dashboardMetricStateRejectionReason(state, profile); reason != "" {
+		return dashboardMetricCandidate{
+			Entity: candidate,
+			Metric: metric,
+			Score:  suffixScore + tokenScore,
+			State:  state.State,
+			Unit:   dashboardStateUnit(state),
+			Source: dashboardMetricSourceCategory(target, metric, candidate),
+			Reason: reason,
+		}, true
+	}
+
+	return dashboardMetricCandidate{}, false
+}
+
+func dashboardScoreMetricCandidate(target haDashboardTarget, metric string, profile dashboardMetricProfile, state haState, singleTarget bool) (string, int, string, bool) {
+	candidate := strings.ToLower(strings.TrimSpace(state.EntityID))
+	if !strings.HasPrefix(candidate, "sensor.") || !strings.Contains(candidate, "gosungrow") {
+		return "", 0, "", false
+	}
+
+	affinityScore, ok := dashboardEntityPlantAffinity(candidate, target, singleTarget)
+	if !ok {
+		return "", 0, "", false
+	}
+
+	suffixScore, hasSuffixMatch := dashboardMetricSuffixScore(candidate, metric, profile)
+	tokenScore, hasTokenMatch := dashboardMetricTokenScore(candidate, profile)
+	if !hasSuffixMatch && !hasTokenMatch {
+		return "", 0, "", false
+	}
+
+	stateScore, stateOK := dashboardMetricStateScore(state, profile)
+	forbiddenPenalty := 0
+	if hasTokenMatch {
+		for _, forbidden := range profile.ForbiddenTokens {
+			if dashboardTokenExists(candidate, forbidden) {
+				forbiddenPenalty += 28
+			}
+		}
+	}
+
+	sourcePreferenceScore := dashboardMetricSourcePreferenceScore(metric, candidate)
+	score := affinityScore + suffixScore + tokenScore + stateScore + sourcePreferenceScore - forbiddenPenalty
+	if strings.HasSuffix(candidate, "_active") {
+		score -= 4
+	}
+	if strings.Contains(candidate, "_virtual_") {
+		score += 16
+	}
+	if strings.Contains(candidate, "_information_") {
+		score += 6
+	}
+	if strings.HasPrefix(candidate, "sensor.gosungrow_") {
+		score += 8
+	}
+	if !hasSuffixMatch && hasTokenMatch {
+		score -= 24
+	}
+
+	if !stateOK {
+		return candidate, score, dashboardMetricStateRejectionReason(state, profile), false
+	}
+	if forbiddenPenalty > 0 {
+		return candidate, score, "usable but penalized by forbidden token", true
+	}
+	return candidate, score, "usable candidate", true
+}
+
+func appendDashboardMetricCandidate(values []dashboardMetricCandidate, value dashboardMetricCandidate, limit int) []dashboardMetricCandidate {
+	if value.Entity == "" {
+		return values
+	}
+	for index, entry := range values {
+		if entry.Entity == value.Entity {
+			if value.Score > entry.Score {
+				values[index] = value
+			}
+			return values
+		}
+	}
+	values = append(values, value)
+	sort.SliceStable(values, func(i, j int) bool {
+		if values[i].Score == values[j].Score {
+			return len(values[i].Entity) < len(values[j].Entity)
+		}
+		return values[i].Score > values[j].Score
+	})
+	if len(values) > limit {
+		return values[:limit]
+	}
+	return values
+}
+
+func dashboardMetricSourceCategory(target haDashboardTarget, metric string, candidate string) string {
+	candidate = strings.ToLower(strings.TrimSpace(candidate))
+	metric = strings.ToLower(strings.TrimSpace(metric))
+	if candidate == "" {
+		return "unresolved"
+	}
+
+	psKey := strings.ToLower(strings.TrimSpace(target.PsKey))
+	psID := strings.ToLower(strings.TrimSpace(target.PsID))
+	if psKey != "" && candidate == "sensor.gosungrow_virtual_"+psKey+"_"+metric {
+		return "exact-virtual"
+	}
+	if psID != "" && candidate == "sensor.gosungrow_virtual_"+psID+"_"+metric {
+		return "exact-virtual"
+	}
+
+	switch {
+	case strings.Contains(candidate, "_p8018") || strings.Contains(candidate, "meter"):
+		return "meter-level"
+	case dashboardCandidateHasInverterContext(candidate) || strings.Contains(candidate, "inverter"):
+		return "inverter-level"
+	case strings.Contains(candidate, "plant") || strings.Contains(candidate, "_p83"):
+		return "plant-level"
+	case strings.Contains(candidate, "_virtual_"):
+		return "legacy-virtual"
+	case strings.Contains(candidate, "gosungrow"):
+		return "legacy-alias"
+	default:
+		return "unknown"
+	}
 }
 
 func dashboardMetricSourcePreferenceScore(metric string, candidate string) int {

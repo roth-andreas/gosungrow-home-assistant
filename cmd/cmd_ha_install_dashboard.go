@@ -60,6 +60,7 @@ type haDashboardTarget struct {
 	DeviceName      string
 	DeviceType      int64
 	SelectionSource string
+	PlantDevices    []dashboardPlantDevice
 }
 
 type haDashboardState struct {
@@ -90,6 +91,7 @@ type haState struct {
 
 type dashboardInstallDiagnostics struct {
 	DiagnosticContext     string
+	Debug                 bool
 	HAStatesLoaded        int
 	HAStatesLoadError     string
 	GoSungrowStatesFound  int
@@ -97,6 +99,8 @@ type dashboardInstallDiagnostics struct {
 	RemappedRefs          int
 	RemappedPreview       []dashboardEntityRemap
 	UnresolvedRefs        []dashboardUnresolvedEntityRef
+	MetricTraces          []dashboardMetricTrace
+	AggregateHints        []dashboardAggregateHint
 	BatteryDetectionKnown bool
 	BatteryTargetsFound   int
 	BatteryTargetsTotal   int
@@ -113,10 +117,29 @@ type dashboardTargetDiagnostics struct {
 	ViewPath               string
 	DeviceType             int64
 	SelectionSource        string
+	PlantDevices           []dashboardPlantDevice
 	GoSungrowStates        int
 	VirtualStates          int
 	ExampleGoSungrowStates []string
 	ExampleVirtualStates   []string
+}
+
+type dashboardPlantDevice struct {
+	PlantName       string
+	DeviceName      string
+	PsID            string
+	PsKey           string
+	DeviceType      int64
+	Selected        bool
+	SelectionSource string
+}
+
+type dashboardAggregateHint struct {
+	Metric string
+	Entity string
+	State  string
+	Unit   string
+	Source string
 }
 
 type haWSCallError struct {
@@ -255,6 +278,7 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 
 	diagnostics := dashboardInstallDiagnostics{
 		DiagnosticContext:   dashboardDiagnosticContext(opts.DiagnosticContext),
+		Debug:               dashboardDebugEnabled(),
 		BatteryTargetsTotal: len(targets),
 		DashboardSaveReason: "unchanged",
 		TargetDiagnostics:   buildDashboardTargetDiagnostics(targets, nil),
@@ -270,6 +294,7 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		diagnostics.BatteryDetectionKnown = true
 		diagnostics.BatteryTargetsFound = countDashboardBatteryTargets(targets, states)
 		diagnostics.TargetDiagnostics = buildDashboardTargetDiagnostics(targets, states)
+		diagnostics.AggregateHints = buildDashboardAggregateHints(targets, states)
 		config = pruneDashboardForUnavailableMetrics(config, targets, states)
 		config, remapReport = remapDashboardEntitiesWithReport(config, targets, states)
 	}
@@ -277,6 +302,7 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	diagnostics.RemappedRefs = len(remapReport.Remapped)
 	diagnostics.RemappedPreview = dashboardRemapPreview(remapReport.Remapped, 5)
 	diagnostics.UnresolvedRefs = remapReport.Unresolved
+	diagnostics.MetricTraces = remapReport.Traces
 
 	desiredHash, err := hashCanonicalJSON(config)
 	if err != nil {
@@ -397,6 +423,7 @@ func discoverDashboardTargetsFromTrees(trees map[string]iSolarCloud.PsTree) ([]h
 		deviceName      string
 		deviceType      int64
 		selectionSource string
+		plantDevices    []dashboardPlantDevice
 	}
 
 	collected := make([]deviceTarget, 0)
@@ -404,6 +431,7 @@ func discoverDashboardTargetsFromTrees(trees map[string]iSolarCloud.PsTree) ([]h
 	for _, psID := range psIDs {
 		tree := trees[psID]
 		plantTargets := make([]deviceTarget, 0)
+		plantDevices := make([]dashboardPlantDevice, 0)
 		bestFallbackIndex := -1
 		bestFallbackRank := 1 << 30
 		fallbackTargets := make([]deviceTarget, 0)
@@ -421,12 +449,19 @@ func discoverDashboardTargetsFromTrees(trees map[string]iSolarCloud.PsTree) ([]h
 			if target.plantName == "" {
 				target.plantName = fmt.Sprintf("Plant %s", psID)
 			}
+			target.selectionSource = dashboardSelectionSourceForDeviceType(target.deviceType)
+			plantDevices = append(plantDevices, dashboardPlantDevice{
+				PlantName:       target.plantName,
+				DeviceName:      target.deviceName,
+				PsID:            target.psID,
+				PsKey:           target.psKey,
+				DeviceType:      target.deviceType,
+				SelectionSource: target.selectionSource,
+			})
 			if device.DeviceType.Match(14) {
-				target.selectionSource = dashboardSelectionSourceForDeviceType(target.deviceType)
 				plantTargets = append(plantTargets, target)
 				continue
 			}
-			target.selectionSource = dashboardSelectionSourceForDeviceType(target.deviceType)
 			fallbackTargets = append(fallbackTargets, target)
 			rank := preferredSungrowDeviceTypeRank(target.deviceType)
 			if bestFallbackIndex == -1 || rank < bestFallbackRank {
@@ -440,6 +475,10 @@ func discoverDashboardTargetsFromTrees(trees map[string]iSolarCloud.PsTree) ([]h
 		}
 		if len(plantTargets) == 0 {
 			continue
+		}
+
+		for index := range plantTargets {
+			plantTargets[index].plantDevices = markSelectedDashboardPlantDevices(plantDevices, plantTargets[index].psKey)
 		}
 
 		collected = append(collected, plantTargets...)
@@ -480,10 +519,22 @@ func discoverDashboardTargetsFromTrees(trees map[string]iSolarCloud.PsTree) ([]h
 			DeviceName:      target.deviceName,
 			DeviceType:      target.deviceType,
 			SelectionSource: target.selectionSource,
+			PlantDevices:    target.plantDevices,
 		})
 	}
 
 	return ret, nil
+}
+
+func markSelectedDashboardPlantDevices(devices []dashboardPlantDevice, selectedPsKey string) []dashboardPlantDevice {
+	ret := make([]dashboardPlantDevice, 0, len(devices))
+	selectedPsKey = strings.TrimSpace(selectedPsKey)
+	for _, device := range devices {
+		entry := device
+		entry.Selected = selectedPsKey != "" && strings.EqualFold(strings.TrimSpace(device.PsKey), selectedPsKey)
+		ret = append(ret, entry)
+	}
+	return ret
 }
 
 func renderDashboardConfig(templatePath string, dashboardTitle string, targets []haDashboardTarget, localeBundle dashboardLocaleBundle) (map[string]any, error) {
@@ -630,6 +681,18 @@ func dashboardDiagnosticContext(context string) string {
 	return context
 }
 
+func dashboardDebugEnabled() bool {
+	if cmds.Debug {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("GOSUNGROW_DEBUG"))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
 func countDashboardBatteryTargets(targets []haDashboardTarget, states []haState) int {
 	count := 0
 	singleTarget := len(targets) == 1
@@ -653,6 +716,7 @@ func buildDashboardTargetDiagnostics(targets []haDashboardTarget, states []haSta
 			ViewPath:        target.ViewPath,
 			DeviceType:      target.DeviceType,
 			SelectionSource: target.SelectionSource,
+			PlantDevices:    append([]dashboardPlantDevice(nil), target.PlantDevices...),
 		}
 		for _, state := range states {
 			candidate := strings.ToLower(strings.TrimSpace(state.EntityID))
@@ -670,6 +734,67 @@ func buildDashboardTargetDiagnostics(targets []haDashboardTarget, states []haSta
 			}
 		}
 		ret = append(ret, diagnostic)
+	}
+	return ret
+}
+
+func buildDashboardAggregateHints(targets []haDashboardTarget, states []haState) []dashboardAggregateHint {
+	if len(targets) == 0 || len(states) == 0 {
+		return nil
+	}
+
+	metrics := []string{"pv_power", "p13112", "grid_power"}
+	singleTarget := len(targets) == 1
+	seen := make(map[string]struct{})
+	candidates := make([]dashboardMetricCandidate, 0)
+	for _, target := range targets {
+		for _, metric := range metrics {
+			profile := dashboardMetricProfileFor(metric)
+			for _, state := range states {
+				entity, score, reason, ok := dashboardScoreMetricCandidate(target, metric, profile, state, singleTarget)
+				if !ok || entity == "" {
+					continue
+				}
+				key := metric + "\x00" + entity
+				if _, exists := seen[key]; exists {
+					continue
+				}
+				seen[key] = struct{}{}
+				candidates = append(candidates, dashboardMetricCandidate{
+					Entity: entity,
+					Metric: metric,
+					Score:  score,
+					State:  state.State,
+					Unit:   dashboardStateUnit(state),
+					Source: dashboardMetricSourceCategory(target, metric, entity),
+					Reason: reason,
+				})
+			}
+		}
+	}
+
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].Score == candidates[j].Score {
+			return candidates[i].Entity < candidates[j].Entity
+		}
+		return candidates[i].Score > candidates[j].Score
+	})
+
+	ret := make([]dashboardAggregateHint, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.Metric == "" {
+			continue
+		}
+		ret = append(ret, dashboardAggregateHint{
+			Metric: candidate.Metric,
+			Entity: candidate.Entity,
+			State:  candidate.State,
+			Unit:   candidate.Unit,
+			Source: candidate.Source,
+		})
+		if len(ret) >= 12 {
+			break
+		}
 	}
 	return ret
 }
@@ -706,6 +831,23 @@ func dashboardTargetProfileWarnings(target dashboardTargetDiagnostics) []string 
 	} else if target.DeviceType != 14 {
 		warnings = append(warnings, fmt.Sprintf("selected non-ESS device_type=%d; some dashboard metrics may be unavailable", target.DeviceType))
 	}
+	inverterLike := 0
+	unselectedInverterLike := 0
+	for _, device := range target.PlantDevices {
+		if !dashboardPlantDeviceLooksInverterLike(device) {
+			continue
+		}
+		inverterLike++
+		if !device.Selected {
+			unselectedInverterLike++
+		}
+	}
+	if inverterLike > 1 {
+		warnings = append(warnings, fmt.Sprintf("multiple inverter-like devices found for this plant (%d); aggregation may be needed", inverterLike))
+	}
+	if strings.HasPrefix(target.SelectionSource, "fallback") && unselectedInverterLike > 0 {
+		warnings = append(warnings, "selected fallback target while other inverter-like devices exist")
+	}
 	if target.GoSungrowStates == 0 {
 		warnings = append(warnings, "no GoSungrow states matched this target in Home Assistant")
 	}
@@ -713,6 +855,19 @@ func dashboardTargetProfileWarnings(target dashboardTargetDiagnostics) []string 
 		warnings = append(warnings, "no target-specific gosungrow_virtual states were found")
 	}
 	return warnings
+}
+
+func dashboardPlantDeviceLooksInverterLike(device dashboardPlantDevice) bool {
+	name := strings.ToLower(strings.TrimSpace(device.DeviceName + " " + device.SelectionSource))
+	if strings.Contains(name, "inverter") {
+		return true
+	}
+	switch device.DeviceType {
+	case 1, 11, 14:
+		return true
+	default:
+		return false
+	}
 }
 
 func dashboardRemapPreview(remapped []dashboardEntityRemap, limit int) []dashboardEntityRemap {
@@ -787,13 +942,68 @@ func writeDashboardInstallDiagnostics(w io.Writer, diagnostics dashboardInstallD
 			if len(target.ExampleGoSungrowStates) > 0 && len(target.ExampleVirtualStates) == 0 {
 				fmt.Fprintf(w, "  example gosungrow states: %s\n", strings.Join(target.ExampleGoSungrowStates, ", "))
 			}
+			if len(target.PlantDevices) > 0 {
+				fmt.Fprintln(w, "  plant devices:")
+				for _, device := range target.PlantDevices {
+					status := "available"
+					if device.Selected {
+						status = "selected"
+					}
+					fmt.Fprintf(w, "    - %s ps_id=%s ps_key=%s device=%q device_type=%d selection=%s\n",
+						status,
+						device.PsID,
+						device.PsKey,
+						device.DeviceName,
+						device.DeviceType,
+						device.SelectionSource,
+					)
+				}
+			}
 		}
 	}
 
 	if len(diagnostics.RemappedPreview) > 0 {
 		fmt.Fprintln(w, "Remapped dashboard refs:")
 		for _, remapped := range diagnostics.RemappedPreview {
-			fmt.Fprintf(w, "- %s: %s -> %s\n", remapped.Metric, remapped.From, remapped.To)
+			fmt.Fprintf(w, "- %s [%s]: %s -> %s\n", remapped.Metric, remapped.Source, remapped.From, remapped.To)
+		}
+	}
+
+	if len(diagnostics.AggregateHints) > 0 {
+		fmt.Fprintln(w, "Potential aggregate sources:")
+		for _, hint := range diagnostics.AggregateHints {
+			unitSuffix := ""
+			if hint.Unit != "" {
+				unitSuffix = " " + hint.Unit
+			}
+			fmt.Fprintf(w, "- %s [%s] state=%s%s entity=%s\n", hint.Metric, hint.Source, hint.State, unitSuffix, hint.Entity)
+		}
+	}
+
+	if diagnostics.Debug && len(diagnostics.MetricTraces) > 0 {
+		fmt.Fprintln(w, "Dashboard metric candidates:")
+		for _, trace := range diagnostics.MetricTraces {
+			fmt.Fprintf(w, "- metric=%s target=%s placeholder=%s resolved=%s source=%s\n",
+				trace.Metric,
+				trace.TargetPsKey,
+				trace.Placeholder,
+				trace.Resolved,
+				trace.Source,
+			)
+			for _, candidate := range trace.Candidates {
+				unitSuffix := ""
+				if candidate.Unit != "" {
+					unitSuffix = " " + candidate.Unit
+				}
+				fmt.Fprintf(w, "  candidate score=%d source=%s state=%s%s entity=%s reason=%s\n",
+					candidate.Score,
+					candidate.Source,
+					candidate.State,
+					unitSuffix,
+					candidate.Entity,
+					candidate.Reason,
+				)
+			}
 		}
 	}
 
