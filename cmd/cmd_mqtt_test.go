@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/getDeviceList"
@@ -187,12 +188,12 @@ func TestMergeDefaultMqttEndpointsLeavesCurrentDefaultsUnchanged(t *testing.T) {
 
 func TestDescribeRealtimePsKeySelectionPrefersType14(t *testing.T) {
 	devices := getDeviceList.Devices{
-		testDeviceListDevice("100_11_1_1", 11),
-		testDeviceListDevice("100_14_1_1", 14),
+		testDeviceListDevice("100", "100_11_1_1", 11),
+		testDeviceListDevice("100", "100_14_1_1", 14),
 	}
 
 	got := describeRealtimePsKeySelection(devices)
-	want := "ps_key=100_14_1_1 device_type=14 source=device-type-14"
+	want := "1 plant: ps_id=100 ps_key=100_14_1_1 device_type=14 source=device-type-14"
 	if got != want {
 		t.Fatalf("unexpected realtime selection: %q", got)
 	}
@@ -200,22 +201,119 @@ func TestDescribeRealtimePsKeySelectionPrefersType14(t *testing.T) {
 
 func TestDescribeRealtimePsKeySelectionPrefersType11OverCommunicationModuleFallback(t *testing.T) {
 	devices := getDeviceList.Devices{
-		testDeviceListDevice("100_22_247_1", 22),
-		testDeviceListDevice("100_11_0_0", 11),
+		testDeviceListDevice("100", "100_22_247_1", 22),
+		testDeviceListDevice("100", "100_11_0_0", 11),
 	}
 
 	got := describeRealtimePsKeySelection(devices)
-	want := "ps_key=100_11_0_0 device_type=11 source=device-type-11"
+	want := "1 plant: ps_id=100 ps_key=100_11_0_0 device_type=11 source=device-type-11"
 	if got != want {
 		t.Fatalf("unexpected realtime selection: %q", got)
 	}
 }
 
+func TestSelectRealtimePsKeyTargetsReturnsOneTargetPerPlant(t *testing.T) {
+	devices := getDeviceList.Devices{
+		testDeviceListDevice("200", "200_22_247_1", 22),
+		testDeviceListDevice("100", "100_11_0_0", 11),
+		testDeviceListDevice("200", "200_14_1_1", 14),
+		testDeviceListDevice("100", "100_14_1_1", 14),
+	}
+
+	targets := selectRealtimePsKeyTargets(devices)
+	if len(targets) != 2 {
+		t.Fatalf("expected two realtime targets, got %#v", targets)
+	}
+	if targets[0].PsID != "100" || targets[0].PsKey != "100_14_1_1" {
+		t.Fatalf("unexpected first target: %#v", targets[0])
+	}
+	if targets[1].PsID != "200" || targets[1].PsKey != "200_14_1_1" {
+		t.Fatalf("unexpected second target: %#v", targets[1])
+	}
+}
+
+func TestSelectRealtimePsKeyTargetsIgnoresDevicesWithoutPsKey(t *testing.T) {
+	devices := getDeviceList.Devices{
+		testDeviceListDevice("100", "", 14),
+		testDeviceListDevice("100", "100_11_0_0", 11),
+	}
+
+	targets := selectRealtimePsKeyTargets(devices)
+	if len(targets) != 1 {
+		t.Fatalf("expected one realtime target, got %#v", targets)
+	}
+	if targets[0].PsKey != "100_11_0_0" {
+		t.Fatalf("unexpected selected target: %#v", targets[0])
+	}
+}
+
+func TestSelectRealtimePsKeyTargetsDerivesPsIDFromPsKey(t *testing.T) {
+	devices := getDeviceList.Devices{
+		testDeviceListDevice("", "300_14_1_1", 14),
+	}
+
+	targets := selectRealtimePsKeyTargets(devices)
+	if len(targets) != 1 {
+		t.Fatalf("expected one realtime target, got %#v", targets)
+	}
+	if targets[0].PsID != "300" || targets[0].PsKey != "300_14_1_1" {
+		t.Fatalf("unexpected selected target: %#v", targets[0])
+	}
+}
+
+func TestDescribeRealtimePsKeySelectionIncludesMultiplePlants(t *testing.T) {
+	devices := getDeviceList.Devices{
+		testDeviceListDevice("200", "200_14_1_1", 14),
+		testDeviceListDevice("100", "100_11_0_0", 11),
+	}
+
+	got := describeRealtimePsKeySelection(devices)
+	if !strings.Contains(got, "2 plants") {
+		t.Fatalf("expected multi-plant summary, got %q", got)
+	}
+	if !strings.Contains(got, "ps_id=100 ps_key=100_11_0_0") || !strings.Contains(got, "ps_id=200 ps_key=200_14_1_1") {
+		t.Fatalf("expected both selected plants in summary, got %q", got)
+	}
+}
+
+func TestBuildMqttEndpointBatchesSplitsRealtimePerTarget(t *testing.T) {
+	batches := buildMqttEndpointBatches(
+		[]string{"queryDeviceList", realtimeEndpointName, "getPsList"},
+		[]realtimePsKeyTarget{
+			{PsID: "100", PsKey: "100_14_1_1"},
+			{PsID: "200", PsKey: "200_11_0_0"},
+		},
+	)
+
+	if len(batches) != 3 {
+		t.Fatalf("expected non-realtime plus two realtime batches, got %#v", batches)
+	}
+	if strings.Join(batches[0].Endpoints, ",") != "queryDeviceList,getPsList" || len(batches[0].Args) != 0 {
+		t.Fatalf("unexpected non-realtime batch: %#v", batches[0])
+	}
+	if strings.Join(batches[1].Endpoints, ",") != realtimeEndpointName || strings.Join(batches[1].Args, ",") != "PsKeyList:100_14_1_1" {
+		t.Fatalf("unexpected first realtime batch: %#v", batches[1])
+	}
+	if strings.Join(batches[2].Endpoints, ",") != realtimeEndpointName || strings.Join(batches[2].Args, ",") != "PsKeyList:200_11_0_0" {
+		t.Fatalf("unexpected second realtime batch: %#v", batches[2])
+	}
+}
+
+func TestBuildMqttEndpointBatchesSkipsRealtimeWithoutTargets(t *testing.T) {
+	batches := buildMqttEndpointBatches([]string{"queryDeviceList", realtimeEndpointName}, nil)
+	if len(batches) != 1 {
+		t.Fatalf("expected only non-realtime batch, got %#v", batches)
+	}
+	if strings.Join(batches[0].Endpoints, ",") != "queryDeviceList" {
+		t.Fatalf("unexpected batch: %#v", batches[0])
+	}
+}
+
 func TestFormatSungrowDeviceTypeSummary(t *testing.T) {
 	devices := getDeviceList.Devices{
-		testDeviceListDevice("", 22),
-		testDeviceListDevice("", 14),
-		testDeviceListDevice("", 22),
+		testDeviceListDevice("", "", 22),
+		testDeviceListDevice("", "", 14),
+		testDeviceListDevice("", "", 22),
 	}
 
 	got := formatSungrowDeviceTypeSummary(devices)
@@ -224,8 +322,9 @@ func TestFormatSungrowDeviceTypeSummary(t *testing.T) {
 	}
 }
 
-func testDeviceListDevice(psKey string, deviceType int64) getDeviceList.Device {
+func testDeviceListDevice(psID string, psKey string, deviceType int64) getDeviceList.Device {
 	var device getDeviceList.Device
+	device.PsId.SetString(psID)
 	device.PsKey.SetValue(psKey)
 	device.DeviceType.SetValue(deviceType)
 	return device

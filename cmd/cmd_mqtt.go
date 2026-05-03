@@ -35,6 +35,20 @@ const (
 	startupRetryMax    = 3
 )
 
+const realtimeEndpointName = "queryDeviceRealTimeDataByPsKeys"
+
+type realtimePsKeyTarget struct {
+	PsID            string
+	PsKey           string
+	DeviceType      int64
+	SelectionSource string
+}
+
+type mqttEndpointBatch struct {
+	Endpoints []string
+	Args      []string
+}
+
 var mqttApiLogin = func(force bool) error {
 	return cmds.Api.ApiLogin(force)
 }
@@ -203,7 +217,7 @@ func (c *CmdMqtt) MqttArgs(_ *cobra.Command, _ []string) error {
 
 		c.log.Info("Found SunGrow %d devices\n", len(c.Client.SungrowDevices))
 		c.log.Info("SunGrow device types: %s\n", formatSungrowDeviceTypeSummary(c.Client.SungrowDevices))
-		c.log.Info("Realtime source selection: %s\n", describeRealtimePsKeySelection(c.Client.SungrowDevices))
+		c.logRealtimePsKeySelections(c.Client.SungrowDevices)
 		c.Client.DeviceName = DefaultServiceName
 		_, c.Error = c.Client.SetDeviceConfig(
 			c.Client.DeviceName, c.Client.DeviceName,
@@ -418,6 +432,21 @@ func (c *CmdMqtt) Cron() error {
 }
 
 func (c *CmdMqtt) collectAndPublish(newDay bool) error {
+	batches := buildMqttEndpointBatches(c.endpoints.Names(), c.getRealtimePsKeyTargets())
+	for _, batch := range batches {
+		if err := c.collectAndPublishBatch(batch, newDay); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *CmdMqtt) collectAndPublishBatch(batch mqttEndpointBatch, newDay bool) error {
+	if len(batch.Endpoints) == 0 {
+		return nil
+	}
+
 	data := cmds.Api.SunGrow.NewSunGrowData()
 	data.SetCacheTimeout(c.optionFetchSchedule)
 
@@ -426,22 +455,8 @@ func (c *CmdMqtt) collectAndPublish(newDay bool) error {
 		return data.Error
 	}
 
-	endpoints := c.endpoints.Names()
-	psKey := c.getRealtimePsKey()
-	if psKey != "" {
-		data.SetArgs("PsKeyList:" + psKey)
-	} else {
-		filtered := make([]string, 0, len(endpoints))
-		for _, name := range endpoints {
-			if name == "queryDeviceRealTimeDataByPsKeys" {
-				continue
-			}
-			filtered = append(filtered, name)
-		}
-		endpoints = filtered
-	}
-
-	data.SetEndpoints(endpoints...)
+	data.SetArgs(batch.Args...)
+	data.SetEndpoints(batch.Endpoints...)
 	if err := data.GetData(); err != nil {
 		return err
 	}
@@ -455,13 +470,8 @@ func (c *CmdMqtt) collectAndPublish(newDay bool) error {
 	return nil
 }
 
-func (c *CmdMqtt) getRealtimePsKey() string {
-	device, ok := preferredRealtimePsKeyDevice(c.Client.SungrowDevices)
-	if ok {
-		return strings.TrimSpace(device.PsKey.String())
-	}
-
-	return ""
+func (c *CmdMqtt) getRealtimePsKeyTargets() []realtimePsKeyTarget {
+	return selectRealtimePsKeyTargets(c.Client.SungrowDevices)
 }
 
 func (c *CmdMqtt) isTokenInvalidError(err error) bool {
@@ -1035,37 +1045,154 @@ func formatSungrowDeviceTypeSummary(devices getDeviceList.Devices) string {
 	return strings.Join(parts, ", ")
 }
 
-func describeRealtimePsKeySelection(devices getDeviceList.Devices) string {
-	device, ok := preferredRealtimePsKeyDevice(devices)
-	if ok {
-		psKey := strings.TrimSpace(device.PsKey.String())
-		deviceType := device.DeviceType.Value()
-		return fmt.Sprintf("ps_key=%s device_type=%d source=%s", psKey, deviceType, realtimeSelectionSourceForDeviceType(deviceType))
+func (c *CmdMqtt) logRealtimePsKeySelections(devices getDeviceList.Devices) {
+	targets := selectRealtimePsKeyTargets(devices)
+	warnings := realtimePsKeySelectionWarnings(devices, targets)
+	c.log.Info("Realtime source selections: %s\n", describeRealtimePsKeySelection(devices))
+	for _, target := range targets {
+		c.log.Info("Realtime source target: ps_id=%s ps_key=%s device_type=%d source=%s\n", target.PsID, target.PsKey, target.DeviceType, target.SelectionSource)
 	}
-
-	return "no usable ps_key available"
+	for _, warning := range warnings {
+		c.log.Info("Realtime source warning: %s\n", warning)
+	}
 }
 
-func preferredRealtimePsKeyDevice(devices getDeviceList.Devices) (*getDeviceList.Device, bool) {
-	bestIndex := -1
-	bestRank := 1 << 30
-	for index := range devices {
-		psKey := strings.TrimSpace(devices[index].PsKey.String())
+func describeRealtimePsKeySelection(devices getDeviceList.Devices) string {
+	targets := selectRealtimePsKeyTargets(devices)
+	switch len(targets) {
+	case 0:
+		return "no usable ps_key available"
+	case 1:
+		target := targets[0]
+		return fmt.Sprintf("1 plant: ps_id=%s ps_key=%s device_type=%d source=%s", target.PsID, target.PsKey, target.DeviceType, target.SelectionSource)
+	default:
+		return fmt.Sprintf("%d plants: %s", len(targets), strings.Join(formatRealtimePsKeyTargets(targets), "; "))
+	}
+}
+
+func formatRealtimePsKeyTargets(targets []realtimePsKeyTarget) []string {
+	parts := make([]string, 0, len(targets))
+	for _, target := range targets {
+		parts = append(parts, fmt.Sprintf("ps_id=%s ps_key=%s device_type=%d source=%s", target.PsID, target.PsKey, target.DeviceType, target.SelectionSource))
+	}
+	return parts
+}
+
+func selectRealtimePsKeyTargets(devices getDeviceList.Devices) []realtimePsKeyTarget {
+	bestByPlant := make(map[string]realtimePsKeyTarget)
+	bestRankByPlant := make(map[string]int)
+	for _, device := range devices {
+		psKey := strings.TrimSpace(device.PsKey.String())
 		if psKey == "" {
 			continue
 		}
 
-		rank := preferredSungrowDeviceTypeRank(devices[index].DeviceType.Value())
-		if bestIndex == -1 || rank < bestRank {
-			bestIndex = index
-			bestRank = rank
+		psID := realtimeDevicePsID(device)
+		if psID == "" {
+			continue
+		}
+
+		deviceType := device.DeviceType.Value()
+		rank := preferredSungrowDeviceTypeRank(deviceType)
+		currentRank, exists := bestRankByPlant[psID]
+		if exists && (rank > currentRank || (rank == currentRank && psKey >= bestByPlant[psID].PsKey)) {
+			continue
+		}
+
+		bestRankByPlant[psID] = rank
+		bestByPlant[psID] = realtimePsKeyTarget{
+			PsID:            psID,
+			PsKey:           psKey,
+			DeviceType:      deviceType,
+			SelectionSource: realtimeSelectionSourceForDeviceType(deviceType),
 		}
 	}
 
-	if bestIndex < 0 {
-		return nil, false
+	psIDs := make([]string, 0, len(bestByPlant))
+	for psID := range bestByPlant {
+		psIDs = append(psIDs, psID)
 	}
-	return &devices[bestIndex], true
+	sort.Strings(psIDs)
+
+	targets := make([]realtimePsKeyTarget, 0, len(psIDs))
+	for _, psID := range psIDs {
+		targets = append(targets, bestByPlant[psID])
+	}
+	return targets
+}
+
+func realtimeDevicePsID(device getDeviceList.Device) string {
+	psID := strings.TrimSpace(device.PsId.String())
+	if psID != "" {
+		return psID
+	}
+
+	psKey := strings.TrimSpace(device.PsKey.String())
+	if psKey == "" {
+		return ""
+	}
+	parts := strings.Split(psKey, "_")
+	return strings.TrimSpace(parts[0])
+}
+
+func realtimePsKeySelectionWarnings(devices getDeviceList.Devices, targets []realtimePsKeyTarget) []string {
+	selected := make(map[string]struct{}, len(targets))
+	for _, target := range targets {
+		selected[target.PsID] = struct{}{}
+	}
+
+	seenPlants := make(map[string]struct{})
+	for _, device := range devices {
+		psID := realtimeDevicePsID(device)
+		if psID == "" {
+			continue
+		}
+		seenPlants[psID] = struct{}{}
+	}
+
+	psIDs := make([]string, 0, len(seenPlants))
+	for psID := range seenPlants {
+		if _, ok := selected[psID]; ok {
+			continue
+		}
+		psIDs = append(psIDs, psID)
+	}
+	sort.Strings(psIDs)
+
+	warnings := make([]string, 0, len(psIDs))
+	for _, psID := range psIDs {
+		warnings = append(warnings, fmt.Sprintf("ps_id=%s has no usable realtime ps_key", psID))
+	}
+	return warnings
+}
+
+func buildMqttEndpointBatches(endpoints []string, targets []realtimePsKeyTarget) []mqttEndpointBatch {
+	nonRealtime := make([]string, 0, len(endpoints))
+	hasRealtime := false
+	for _, endpoint := range endpoints {
+		if endpoint == realtimeEndpointName {
+			hasRealtime = true
+			continue
+		}
+		nonRealtime = append(nonRealtime, endpoint)
+	}
+
+	batches := make([]mqttEndpointBatch, 0, 1+len(targets))
+	if len(nonRealtime) > 0 {
+		batches = append(batches, mqttEndpointBatch{Endpoints: nonRealtime})
+	}
+	if hasRealtime {
+		for _, target := range targets {
+			if strings.TrimSpace(target.PsKey) == "" {
+				continue
+			}
+			batches = append(batches, mqttEndpointBatch{
+				Endpoints: []string{realtimeEndpointName},
+				Args:      []string{"PsKeyList:" + target.PsKey},
+			})
+		}
+	}
+	return batches
 }
 
 func defaultMqttEndpoints() (MqttEndPoints, error) {
