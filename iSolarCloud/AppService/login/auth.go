@@ -200,7 +200,7 @@ func (e *EndPoint) Print() {
 	fmt.Printf("User Id:\t%s\n", e.UserId())
 	fmt.Printf("User Name:\t%s\n", e.UserName())
 	fmt.Printf("Is Online:\t%v\n", e.IsOnline())
-	fmt.Printf("Token:\t%s\n", e.Token())
+	fmt.Printf("Token:\t%s\n", api.RedactSecret(e.Token()))
 	fmt.Printf("Token File:\t%s\n", e.Auth.TokenFile)
 }
 

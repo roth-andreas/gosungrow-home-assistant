@@ -31,11 +31,18 @@ func (req RequestCommon) String() string {
 	ret := "Request Data (Common)"
 	ret += fmt.Sprintf("UserID:\t%s\n", req.UserId)
 	ret += fmt.Sprintf("Appkey:\t%s\n", req.Appkey)
-	ret += fmt.Sprintf("Token:\t%s\n", req.Token)
+	ret += fmt.Sprintf("Token:\t%s\n", RedactSecret(req.Token))
 	ret += fmt.Sprintf("Lang:\t%s\n", req.Lang)
 	ret += fmt.Sprintf("SysCode:\t%s\n", req.SysCode)
 	ret += fmt.Sprintf("ValidFlag:\t%s\n", req.ValidFlag)
 	return ret
+}
+
+func RedactSecret(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return ""
+	}
+	return "<redacted>"
 }
 
 // CheckString RequestCommon checks
