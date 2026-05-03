@@ -411,6 +411,109 @@ func TestHAWSClientDashboardCalls(t *testing.T) {
 	}
 }
 
+func TestHAWSClientEnsureResourceUpdatesStaleManagedCardURLs(t *testing.T) {
+	tests := []struct {
+		name        string
+		existingURL string
+	}{
+		{
+			name:        "unversioned local resource",
+			existingURL: "/local/gosungrow/gosungrow-energy-flow-card-v2.js",
+		},
+		{
+			name:        "old versioned local resource",
+			existingURL: "/local/gosungrow/gosungrow-energy-flow-card-v2.js?v=old",
+		},
+		{
+			name:        "legacy basename-only resource",
+			existingURL: "/local/gosungrow-energy-flow-card-v2.js",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			upgrader := websocket.Upgrader{}
+			updatedURL := ""
+			created := false
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				conn, err := upgrader.Upgrade(w, r, nil)
+				if err != nil {
+					t.Fatalf("upgrade websocket: %v", err)
+				}
+				defer conn.Close()
+
+				if err := conn.WriteJSON(map[string]any{"type": "auth_required"}); err != nil {
+					t.Fatalf("write auth_required: %v", err)
+				}
+				var auth map[string]any
+				if err := conn.ReadJSON(&auth); err != nil {
+					t.Fatalf("read auth: %v", err)
+				}
+				if err := conn.WriteJSON(map[string]any{"type": "auth_ok"}); err != nil {
+					t.Fatalf("write auth_ok: %v", err)
+				}
+
+				for {
+					var request map[string]any
+					if err := conn.ReadJSON(&request); err != nil {
+						return
+					}
+
+					response := map[string]any{
+						"id":      request["id"],
+						"type":    "result",
+						"success": true,
+					}
+
+					switch request["type"] {
+					case "lovelace/resources":
+						response["result"] = []map[string]any{{
+							"id":   "resource-id",
+							"url":  tt.existingURL,
+							"type": dashboardCardResourceType,
+						}}
+					case "lovelace/resources/update":
+						updatedURL, _ = request["url"].(string)
+						if got := request["resource_id"]; got != "resource-id" {
+							t.Fatalf("unexpected resource id: %#v", request)
+						}
+						response["result"] = map[string]any{}
+					case "lovelace/resources/create":
+						created = true
+						response["result"] = map[string]any{}
+					default:
+						response["result"] = map[string]any{}
+					}
+
+					if err := conn.WriteJSON(response); err != nil {
+						t.Fatalf("write websocket response: %v", err)
+					}
+				}
+			}))
+			defer server.Close()
+
+			ctx := context.Background()
+			client, err := newHAWSClient(ctx, "ws"+strings.TrimPrefix(server.URL, "http"), "supervisor-token")
+			if err != nil {
+				t.Fatalf("newHAWSClient: %v", err)
+			}
+			defer client.Close()
+
+			newURL := "/local/gosungrow/gosungrow-energy-flow-card-v2.js?v=new"
+			if err := client.EnsureResource(ctx, newURL, dashboardCardResourceType); err != nil {
+				t.Fatalf("EnsureResource: %v", err)
+			}
+			if created {
+				t.Fatal("expected stale managed resource to be updated, not duplicated")
+			}
+			if updatedURL != newURL {
+				t.Fatalf("unexpected updated URL: got %q want %q", updatedURL, newURL)
+			}
+		})
+	}
+}
+
 func TestBundledDashboardTemplateRenders(t *testing.T) {
 	assetDir := filepath.Join("..", "addon", "gosungrow", "assets")
 	templatePath := filepath.Join(assetDir, dashboardTemplateFile)
