@@ -9,7 +9,7 @@ readonly DEFAULT_DASHBOARD_TITLE="GoSungrow Flow"
 optional_config() {
   local value
   value="$(bashio::config "$1")"
-  if [ "$value" = "null" ]; then
+  if [ "$value" = "null" ] || [ "$value" = "~" ]; then
     value=""
   fi
   printf '%s' "$value"
