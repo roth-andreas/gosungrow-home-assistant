@@ -11,7 +11,7 @@ Before installing `GoSungrow`, make sure Home Assistant already has:
 1. a running MQTT broker
 2. the `MQTT` integration under `Settings > Devices & services`
 
-For most users, that means installing and starting the `Mosquitto broker` app first.
+For most users, that means installing and starting the `Mosquitto broker` app first. If Home Assistant already uses an external MQTT broker, enter that broker in the optional MQTT settings instead.
 
 ## Install
 
@@ -32,6 +32,10 @@ Required:
 
 Optional:
 
+- `mqtt_host`: custom MQTT broker host; leave empty to use the Home Assistant MQTT service
+- `mqtt_port`: custom MQTT broker port; defaults to `1883`
+- `mqtt_username`: custom MQTT username; leave empty to use the Home Assistant MQTT service credentials
+- `mqtt_password`: custom MQTT password; leave empty to use the Home Assistant MQTT service credentials
 - `install_dashboard`: create or update the managed dashboard automatically
 - `dashboard_language`: `auto` (default) or explicit locale (`en`, `de`, `sv`)
 - `debug`: enable verbose logging
@@ -53,6 +57,7 @@ No Home Assistant restart is required for the managed dashboards.
 - Runtime state is stored in `/data/.GoSungrow`.
 - The managed dashboard state is stored in `/data/.GoSungrow/dashboard_state.json`.
 - If no entities appear, verify MQTT first.
-- The app uses the standard iSolarCloud host, app key, Home Assistant MQTT service, and managed dashboard path internally.
+- The app uses the standard iSolarCloud host, app key, and managed dashboard path internally.
+- MQTT uses the custom broker settings when `mqtt_host` is set, otherwise it falls back to the Home Assistant MQTT service.
 - Managed dashboard text follows Home Assistant language when available (fallback: English).
 - If you are updating from an older version with more options, open the app configuration once and save it to clear legacy fields.

@@ -3,6 +3,18 @@ configuration:
     name: iSolarCloud-användarnamn
   gosungrow_password:
     name: iSolarCloud-lösenord
+  mqtt_host:
+    name: MQTT-vard
+    description: Valfri egen MQTT-brokervard. Lamna tomt for att anvanda Home Assistant MQTT-tjansten.
+  mqtt_port:
+    name: MQTT-port
+    description: MQTT-brokerport.
+  mqtt_username:
+    name: MQTT-anvandarnamn
+    description: Valfritt MQTT-anvandarnamn. Lamna tomt for att anvanda Home Assistant MQTT-tjanstens uppgifter.
+  mqtt_password:
+    name: MQTT-losenord
+    description: Valfritt MQTT-losenord. Lamna tomt for att anvanda Home Assistant MQTT-tjanstens uppgifter.
   install_dashboard:
     name: Installera hanterad dashboard
   dashboard_language:

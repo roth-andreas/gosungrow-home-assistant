@@ -6,12 +6,37 @@ readonly DEFAULT_APPKEY="B0455FBE7AA0328DB57B59AA729F05D8"
 readonly DEFAULT_DASHBOARD_URL_PATH="gosungrow-flow"
 readonly DEFAULT_DASHBOARD_TITLE="GoSungrow Flow"
 
+optional_config() {
+  local value
+  value="$(bashio::config "$1")"
+  if [ "$value" = "null" ]; then
+    value=""
+  fi
+  printf '%s' "$value"
+}
+
 GOSUNGROW_USER="$(bashio::config 'gosungrow_user')"
 GOSUNGROW_PASSWORD="$(bashio::config 'gosungrow_password')"
-GOSUNGROW_MQTT_HOST="$(bashio::services mqtt 'host' 2>/dev/null || true)"
-GOSUNGROW_MQTT_PORT="$(bashio::services mqtt 'port' 2>/dev/null || true)"
-GOSUNGROW_MQTT_USER="$(bashio::services mqtt 'username' 2>/dev/null || true)"
-GOSUNGROW_MQTT_PASSWORD="$(bashio::services mqtt 'password' 2>/dev/null || true)"
+CUSTOM_MQTT_HOST="$(optional_config 'mqtt_host')"
+CUSTOM_MQTT_PORT="$(optional_config 'mqtt_port')"
+CUSTOM_MQTT_USER="$(optional_config 'mqtt_username')"
+CUSTOM_MQTT_PASSWORD="$(optional_config 'mqtt_password')"
+SUPERVISOR_MQTT_HOST="$(bashio::services mqtt 'host' 2>/dev/null || true)"
+SUPERVISOR_MQTT_PORT="$(bashio::services mqtt 'port' 2>/dev/null || true)"
+SUPERVISOR_MQTT_USER="$(bashio::services mqtt 'username' 2>/dev/null || true)"
+SUPERVISOR_MQTT_PASSWORD="$(bashio::services mqtt 'password' 2>/dev/null || true)"
+
+if [ -n "$CUSTOM_MQTT_HOST" ]; then
+  GOSUNGROW_MQTT_HOST="$CUSTOM_MQTT_HOST"
+  GOSUNGROW_MQTT_PORT="${CUSTOM_MQTT_PORT:-1883}"
+  GOSUNGROW_MQTT_USER="$CUSTOM_MQTT_USER"
+  GOSUNGROW_MQTT_PASSWORD="$CUSTOM_MQTT_PASSWORD"
+else
+  GOSUNGROW_MQTT_HOST="$SUPERVISOR_MQTT_HOST"
+  GOSUNGROW_MQTT_PORT="$SUPERVISOR_MQTT_PORT"
+  GOSUNGROW_MQTT_USER="$SUPERVISOR_MQTT_USER"
+  GOSUNGROW_MQTT_PASSWORD="$SUPERVISOR_MQTT_PASSWORD"
+fi
 
 if [ -z "$GOSUNGROW_USER" ]; then
   bashio::log.fatal 'Missing required option: gosungrow_user'
@@ -22,10 +47,14 @@ if [ -z "$GOSUNGROW_PASSWORD" ]; then
 fi
 
 if [ -z "$GOSUNGROW_MQTT_HOST" ]; then
-  bashio::log.fatal 'Home Assistant MQTT service not available. Install and start the Mosquitto broker app first.'
+  bashio::log.fatal 'No MQTT broker configured. Set mqtt_host in the app config or install/start the Home Assistant Mosquitto broker app.'
 fi
 
-bashio::log.info 'Using Home Assistant MQTT service settings.'
+if [ -n "$CUSTOM_MQTT_HOST" ]; then
+  bashio::log.info 'Using custom MQTT broker settings.'
+else
+  bashio::log.info 'Using Home Assistant MQTT service settings.'
+fi
 
 export GOSUNGROW_USER
 export GOSUNGROW_PASSWORD
@@ -96,12 +125,21 @@ run_mqtt_with_login_retry() {
   local log_file
   local rc
   local attempt
+  local mqtt_args
+
+  mqtt_args=(
+    mqtt run
+    "--mqtt-host=$GOSUNGROW_MQTT_HOST"
+    "--mqtt-port=${GOSUNGROW_MQTT_PORT:-1883}"
+    "--mqtt-user=$GOSUNGROW_MQTT_USER"
+    "--mqtt-password=$GOSUNGROW_MQTT_PASSWORD"
+  )
 
   attempt=0
   while true; do
     log_file="$(mktemp)"
     set +e
-    GoSungrow mqtt run 2>&1 | tee "$log_file"
+    GoSungrow "${mqtt_args[@]}" 2>&1 | tee "$log_file"
     rc=${PIPESTATUS[0]}
     set -e
 

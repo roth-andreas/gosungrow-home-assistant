@@ -3,6 +3,18 @@ configuration:
     name: iSolarCloud username
   gosungrow_password:
     name: iSolarCloud password
+  mqtt_host:
+    name: MQTT host
+    description: Optional custom MQTT broker host. Leave empty to use the Home Assistant MQTT service.
+  mqtt_port:
+    name: MQTT port
+    description: MQTT broker port.
+  mqtt_username:
+    name: MQTT username
+    description: Optional MQTT username. Leave empty to use the Home Assistant MQTT service credentials.
+  mqtt_password:
+    name: MQTT password
+    description: Optional MQTT password. Leave empty to use the Home Assistant MQTT service credentials.
   install_dashboard:
     name: Install managed dashboard
   dashboard_language:
