@@ -61,3 +61,18 @@ No Home Assistant restart is required for the managed dashboards.
 - MQTT uses the custom broker settings when `mqtt_host` is set, otherwise it falls back to the Home Assistant MQTT service.
 - Managed dashboard text follows Home Assistant language when available (fallback: English).
 - If you are updating from an older version with more options, open the app configuration once and save it to clear legacy fields.
+
+## Troubleshooting DNS Errors
+
+If the log contains `lookup gateway.isolarcloud.eu on 127.0.0.11:53: no such host` or `server misbehaving`, the add-on is running but Docker's internal DNS resolver cannot resolve iSolarCloud. GoSungrow keeps the MQTT service alive and retries on the next cycle, but it cannot fetch fresh data until DNS works again.
+
+Suggested checks:
+
+1. In Home Assistant, check `Settings > System > Network` and make sure DNS points to a reliable resolver.
+2. Restart the GoSungrow add-on after changing DNS.
+3. If other add-ons also fail to resolve internet hostnames, restart Home Assistant OS or the Docker host.
+4. If you use Pi-hole, AdGuard, a router DNS proxy, VPN DNS, or custom firewall rules, verify that the Home Assistant host can resolve `gateway.isolarcloud.eu` and `augateway.isolarcloud.com`.
+
+## Troubleshooting Startup JSON Errors
+
+After a sudden power loss, Home Assistant storage can occasionally contain an empty or truncated GoSungrow cache file. If startup logs show `unexpected end of JSON input`, restart the add-on once. GoSungrow removes empty cache files at startup and treats corrupt token or API response cache files as stale data, then logs in and fetches fresh data again.

@@ -215,6 +215,12 @@ func (e *EndPoint) readTokenFile() error {
 				e.Auth.newToken = true
 				e.Error = nil
 			}
+			if output.IsJSONSyntaxError(e.Error) {
+				_ = output.FileRemove(e.Auth.TokenFile)
+				e.Response = Response{}
+				e.Auth.newToken = true
+				e.Error = nil
+			}
 			break
 		}
 

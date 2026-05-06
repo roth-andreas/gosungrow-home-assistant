@@ -119,6 +119,7 @@ func (w *Web) Get(endpoint EndPoint) EndPoint {
 		}
 
 		isCached := false
+		fetchedFromApi := false
 		if w.WebCacheCheck(endpoint) {
 			isCached = true
 		}
@@ -126,14 +127,22 @@ func (w *Web) Get(endpoint EndPoint) EndPoint {
 		if isCached {
 			w.Body, w.Error = w.WebCacheRead(endpoint)
 			if w.Error != nil {
-				break
+				_ = w.WebCacheRemove(endpoint)
+				isCached = false
+				w.Body, w.Error = w.getApi(endpoint)
+				if w.Error != nil {
+					break
+				}
+				fetchedFromApi = true
 			}
 
-		} else {
+		}
+		if !isCached && !fetchedFromApi {
 			w.Body, w.Error = w.getApi(endpoint)
 			if w.Error != nil {
 				break
 			}
+			fetchedFromApi = true
 		}
 
 		if len(w.Body) == 0 {
@@ -141,6 +150,22 @@ func (w *Web) Get(endpoint EndPoint) EndPoint {
 			break
 		}
 		endpoint = endpoint.SetResponse(w.Body)
+		if endpoint.GetError() != nil {
+			if isCached && output.IsJSONSyntaxError(endpoint.GetError()) {
+				_ = w.WebCacheRemove(endpoint)
+				isCached = false
+				w.Body, w.Error = w.getApi(endpoint)
+				if w.Error != nil {
+					break
+				}
+				fetchedFromApi = true
+				if len(w.Body) == 0 {
+					w.Error = errors.New("empty http response")
+					break
+				}
+				endpoint = endpoint.SetResponse(w.Body)
+			}
+		}
 		if endpoint.GetError() != nil {
 			w.Error = endpoint.GetError()
 			break

@@ -76,6 +76,8 @@ GoSungrow config write \
   --user="$GOSUNGROW_USER" \
   --password="$GOSUNGROW_PASSWORD" >/dev/null
 
+find "$(dirname "$GOSUNGROW_CONFIG")" -maxdepth 1 -type f -name '*.json' -size 0 -delete 2>/dev/null || true
+
 bashio::log.info 'Refreshing iSolarCloud session.'
 GoSungrow api login >/dev/null
 

@@ -50,6 +50,29 @@ func TestCmdMqttIsRecoverableGatewayError(t *testing.T) {
 	}
 }
 
+func TestCmdMqttIsDockerDNSError(t *testing.T) {
+	c := NewCmdMqtt("")
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "docker dns server misbehaving", err: errors.New("dial tcp: lookup gateway.isolarcloud.eu on 127.0.0.11:53: server misbehaving"), want: true},
+		{name: "docker dns no such host", err: errors.New("dial tcp: lookup gateway.isolarcloud.eu on 127.0.0.11:53: no such host"), want: true},
+		{name: "docker dns temporary failure", err: errors.New("dial tcp: lookup gateway.isolarcloud.eu on 127.0.0.11:53: temporary failure in name resolution"), want: true},
+		{name: "non docker dns", err: errors.New("dial tcp: lookup gateway.isolarcloud.eu on 192.168.1.1:53: server misbehaving"), want: false},
+		{name: "other", err: errors.New("API httpResponse is 500 Internal Server Error"), want: false},
+	}
+
+	for _, tc := range tests {
+		if got := c.isDockerDNSError(tc.err); got != tc.want {
+			t.Fatalf("%s: got %v want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
 func TestCmdMqttRetryStartupRecoverableRelogsAndRetries(t *testing.T) {
 	c := NewCmdMqtt("")
 

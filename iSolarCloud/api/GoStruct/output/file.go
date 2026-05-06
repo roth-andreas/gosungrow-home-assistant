@@ -2,8 +2,11 @@ package output
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 )
 
 func ensureParentDir(filename string) error {
@@ -38,7 +41,44 @@ func PlainFileWrite(filename string, data []byte, mode os.FileMode) error {
 	if err := ensureParentDir(filename); err != nil {
 		return err
 	}
-	return os.WriteFile(filename, data, mode)
+
+	dir := filepath.Dir(filename)
+	base := filepath.Base(filename)
+	temp, err := os.CreateTemp(dir, "."+base+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tempName := temp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tempName)
+		}
+	}()
+
+	if _, err := temp.Write(data); err != nil {
+		_ = temp.Close()
+		return err
+	}
+	if err := temp.Chmod(mode); err != nil {
+		_ = temp.Close()
+		return err
+	}
+	if err := temp.Sync(); err != nil {
+		_ = temp.Close()
+		return err
+	}
+	if err := temp.Close(); err != nil {
+		return err
+	}
+	if runtime.GOOS == "windows" {
+		_ = os.Remove(filename)
+	}
+	if err := os.Rename(tempName, filename); err != nil {
+		return err
+	}
+	cleanup = false
+	return nil
 }
 
 func FileRemove(filename string) error {
@@ -52,4 +92,16 @@ func FileRemove(filename string) error {
 func FileExists(filename string) bool {
 	_, err := os.Stat(filename)
 	return err == nil
+}
+
+func IsJSONSyntaxError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var syntaxErr *json.SyntaxError
+	if strings.Contains(strings.ToLower(err.Error()), "unexpected end of json input") {
+		return true
+	}
+	return errors.As(err, &syntaxErr)
 }

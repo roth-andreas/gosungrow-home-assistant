@@ -71,6 +71,7 @@ type CmdMqtt struct {
 	log                 cmdLog.Log
 	optionSleepDelay    time.Duration
 	optionFetchSchedule time.Duration
+	dockerDNSHintLogged bool
 }
 
 func NewCmdMqtt(logLevel string) *CmdMqtt {
@@ -415,6 +416,7 @@ func (c *CmdMqtt) Cron() error {
 		}
 		if c.Error != nil && c.isRecoverableGatewayError(c.Error) {
 			c.log.Info("Recoverable API/gateway error during sync. Keeping service alive and retrying on next cycle: %s\n", c.Error)
+			c.logDockerDNSHint(c.Error)
 			c.Error = nil
 			break
 		}
@@ -512,6 +514,7 @@ func (c *CmdMqtt) retryStartupRecoverable(step string, fn func() error) error {
 		}
 
 		c.log.Info("Recoverable API/gateway error during %s (attempt %d/%d). Re-authenticating: %s\n", step, attempt, startupRetryMax, err)
+		c.logDockerDNSHint(err)
 		if loginErr := mqttApiLogin(true); loginErr != nil {
 			return loginErr
 		}
@@ -522,6 +525,27 @@ func (c *CmdMqtt) retryStartupRecoverable(step string, fn func() error) error {
 	}
 
 	return err
+}
+
+func (c *CmdMqtt) isDockerDNSError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "127.0.0.11:53") &&
+		(strings.Contains(msg, "no such host") ||
+			strings.Contains(msg, "temporary failure in name resolution") ||
+			strings.Contains(msg, "server misbehaving"))
+}
+
+func (c *CmdMqtt) logDockerDNSHint(err error) {
+	if c.dockerDNSHintLogged || !c.isDockerDNSError(err) {
+		return
+	}
+
+	c.dockerDNSHintLogged = true
+	c.log.Info("Docker DNS resolver 127.0.0.11 could not resolve iSolarCloud. This is usually a Home Assistant/Docker DNS issue; check Settings > System > Network DNS, restart the GoSungrow add-on, and restart Home Assistant/Docker if other add-ons also cannot resolve hostnames.\n")
 }
 
 func (c *CmdMqtt) Update(endpoint string, data api.DataMap, newDay bool) error {
