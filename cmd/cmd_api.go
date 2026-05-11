@@ -251,5 +251,5 @@ func buildLoginAttempts(host string, appKey string) []loginAttempt {
 }
 
 func shouldTryNextLoginAttempt(err error) bool {
-	return iSolarCloud.ShouldRecoverGatewayError(err)
+	return iSolarCloud.ShouldTryNextLoginAttempt(err)
 }

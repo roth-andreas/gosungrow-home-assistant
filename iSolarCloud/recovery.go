@@ -52,6 +52,7 @@ func BuildLoginAttempts(host string, appKey string) []LoginAttempt {
 		DefaultHost,
 		"https://gateway.isolarcloud.com",
 		"https://gateway.isolarcloud.eu",
+		"https://gateway.isolarcloud.com.hk",
 		"https://gateway.isolarcloud.com.cn",
 	}
 	appKeys := []string{
@@ -92,6 +93,22 @@ func ShouldRecoverGatewayError(err error) bool {
 		strings.Contains(msg, "connection refused") ||
 		strings.Contains(msg, "context deadline exceeded") ||
 		strings.Contains(msg, "i/o timeout")
+}
+
+func IsDockerDNSError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "127.0.0.11:53") &&
+		(strings.Contains(msg, "no such host") ||
+			strings.Contains(msg, "temporary failure in name resolution") ||
+			strings.Contains(msg, "server misbehaving"))
+}
+
+func ShouldTryNextLoginAttempt(err error) bool {
+	return ShouldRecoverGatewayError(err) && !IsDockerDNSError(err)
 }
 
 func SummarizeLoginAttemptFailures(failures []LoginAttemptFailure) error {
@@ -212,7 +229,7 @@ func (sg *SunGrow) recoverGatewaySession(force bool) error {
 				Attempt: attempt,
 				Err:     err,
 			})
-			if !ShouldRecoverGatewayError(err) {
+			if !ShouldTryNextLoginAttempt(err) {
 				exhaustedRetriable = false
 				break
 			}
@@ -265,7 +282,7 @@ func (sg *SunGrow) callEndpointWithRecovery(endpoint api.EndPoint) api.EndPoint 
 	}
 
 	sg.Error = endpoint.GetError()
-	if sg.IsLoggedOut() || sg.recovering || !ShouldRecoverGatewayError(sg.Error) || sg.AuthDetails == nil {
+	if sg.IsLoggedOut() || sg.recovering || !ShouldRecoverGatewayError(sg.Error) || IsDockerDNSError(sg.Error) || sg.AuthDetails == nil {
 		return endpoint
 	}
 

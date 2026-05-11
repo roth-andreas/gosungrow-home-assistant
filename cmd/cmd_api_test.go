@@ -42,7 +42,7 @@ func TestBuildLoginAttemptsPrioritizesConfiguredHostAndAppKey(t *testing.T) {
 	}
 
 	want := loginAttempt{
-		Host:   "https://gateway.isolarcloud.eu",
+		Host:   "https://gateway.isolarcloud.com.hk",
 		AppKey: iSolarCloud.LegacyLoginAppKey,
 	}
 	if !seen[want] {
@@ -60,7 +60,8 @@ func TestShouldTryNextLoginAttempt(t *testing.T) {
 		{name: "gateway rejected", err: errors.New("login rejected by gateway"), want: true},
 		{name: "wrong app key", err: errors.New("appkey is incorrect"), want: true},
 		{name: "dns no such host", err: errors.New("lookup augateway.isolarcloud.com: no such host"), want: true},
-		{name: "dns temporary failure", err: errors.New("dial tcp: lookup augateway.isolarcloud.com on 127.0.0.11:53: temporary failure in name resolution"), want: true},
+		{name: "docker dns temporary failure", err: errors.New("dial tcp: lookup augateway.isolarcloud.com on 127.0.0.11:53: temporary failure in name resolution"), want: false},
+		{name: "external dns temporary failure", err: errors.New("dial tcp: lookup augateway.isolarcloud.com on 192.168.1.1:53: temporary failure in name resolution"), want: true},
 		{name: "network timeout", err: errors.New("dial tcp 1.2.3.4:443: i/o timeout"), want: true},
 		{name: "network unreachable", err: errors.New("dial tcp: connect: network is unreachable"), want: true},
 		{name: "other error", err: errors.New("unexpected payload format"), want: false},

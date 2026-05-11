@@ -73,6 +73,32 @@ func TestCmdMqttIsDockerDNSError(t *testing.T) {
 	}
 }
 
+func TestCmdMqttShouldRestartAfterRepeatedDockerDNSErrors(t *testing.T) {
+	c := NewCmdMqtt("")
+	err := errors.New("dial tcp: lookup gateway.isolarcloud.eu on 127.0.0.11:53: server misbehaving")
+
+	for i := 1; i < dockerDNSRuntimeRestartThreshold; i++ {
+		if c.shouldRestartAfterDockerDNSError(err) {
+			t.Fatalf("attempt %d should not restart before threshold", i)
+		}
+	}
+	if !c.shouldRestartAfterDockerDNSError(err) {
+		t.Fatal("expected restart once Docker DNS failures reach threshold")
+	}
+}
+
+func TestCmdMqttShouldRestartAfterDockerDNSErrorResetsOnOtherError(t *testing.T) {
+	c := NewCmdMqtt("")
+	c.dockerDNSErrorCount = 1
+
+	if c.shouldRestartAfterDockerDNSError(errors.New("API httpResponse is 500 Internal Server Error")) {
+		t.Fatal("non-Docker-DNS error should not restart")
+	}
+	if c.dockerDNSErrorCount != 0 {
+		t.Fatalf("expected Docker DNS failure count reset, got %d", c.dockerDNSErrorCount)
+	}
+}
+
 func TestCmdMqttRetryStartupRecoverableRelogsAndRetries(t *testing.T) {
 	c := NewCmdMqtt("")
 

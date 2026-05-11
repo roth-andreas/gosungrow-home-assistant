@@ -35,7 +35,10 @@ const (
 	startupRetryMax    = 3
 )
 
-const realtimeEndpointName = "queryDeviceRealTimeDataByPsKeys"
+const (
+	realtimeEndpointName             = "queryDeviceRealTimeDataByPsKeys"
+	dockerDNSRuntimeRestartThreshold = 1
+)
 
 type realtimePsKeyTarget struct {
 	PsID            string
@@ -72,6 +75,7 @@ type CmdMqtt struct {
 	optionSleepDelay    time.Duration
 	optionFetchSchedule time.Duration
 	dockerDNSHintLogged bool
+	dockerDNSErrorCount int
 }
 
 func NewCmdMqtt(logLevel string) *CmdMqtt {
@@ -417,6 +421,9 @@ func (c *CmdMqtt) Cron() error {
 		if c.Error != nil && c.isRecoverableGatewayError(c.Error) {
 			c.log.Info("Recoverable API/gateway error during sync. Keeping service alive and retrying on next cycle: %s\n", c.Error)
 			c.logDockerDNSHint(c.Error)
+			if c.shouldRestartAfterDockerDNSError(c.Error) {
+				break
+			}
 			c.Error = nil
 			break
 		}
@@ -424,6 +431,7 @@ func (c *CmdMqtt) Cron() error {
 			break
 		}
 
+		c.dockerDNSErrorCount = 0
 		c.Client.LastRefresh = time.Now()
 	}
 
@@ -528,15 +536,7 @@ func (c *CmdMqtt) retryStartupRecoverable(step string, fn func() error) error {
 }
 
 func (c *CmdMqtt) isDockerDNSError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "127.0.0.11:53") &&
-		(strings.Contains(msg, "no such host") ||
-			strings.Contains(msg, "temporary failure in name resolution") ||
-			strings.Contains(msg, "server misbehaving"))
+	return iSolarCloud.IsDockerDNSError(err)
 }
 
 func (c *CmdMqtt) logDockerDNSHint(err error) {
@@ -546,6 +546,21 @@ func (c *CmdMqtt) logDockerDNSHint(err error) {
 
 	c.dockerDNSHintLogged = true
 	c.log.Info("Docker DNS resolver 127.0.0.11 could not resolve iSolarCloud. This is usually a Home Assistant/Docker DNS issue; check Settings > System > Network DNS, restart the GoSungrow add-on, and restart Home Assistant/Docker if other add-ons also cannot resolve hostnames.\n")
+}
+
+func (c *CmdMqtt) shouldRestartAfterDockerDNSError(err error) bool {
+	if !c.isDockerDNSError(err) {
+		c.dockerDNSErrorCount = 0
+		return false
+	}
+
+	c.dockerDNSErrorCount++
+	if c.dockerDNSErrorCount < dockerDNSRuntimeRestartThreshold {
+		return false
+	}
+
+	c.log.Info("Docker DNS has failed for %d consecutive sync cycles. Exiting mqtt run so the Home Assistant add-on wrapper can restart GoSungrow and refresh DNS state.\n", c.dockerDNSErrorCount)
+	return true
 }
 
 func (c *CmdMqtt) Update(endpoint string, data api.DataMap, newDay bool) error {

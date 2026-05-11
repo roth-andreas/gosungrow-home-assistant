@@ -158,10 +158,14 @@ run_mqtt_with_login_retry() {
 
     if grep -qiE 'er_token_login_invalid|need to login again|API httpResponse is 5[0-9]{2}|internal server error|bad gateway|service unavailable|gateway timeout|no such host|temporary failure in name resolution|server misbehaving|network is unreachable|connection refused|context deadline exceeded|i/o timeout' "$log_file"; then
       attempt=$((attempt + 1))
-      bashio::log.warning "Recoverable GoSungrow runtime error. Refreshing login and restarting mqtt run (attempt ${attempt})."
-      GoSungrow api login >/dev/null || true
+      if grep -qiE '127\.0\.0\.11:53' "$log_file"; then
+        bashio::log.warning "Docker DNS failed inside GoSungrow. Restarting mqtt run to refresh resolver state (attempt ${attempt})."
+      else
+        bashio::log.warning "Recoverable GoSungrow runtime error. Refreshing login and restarting mqtt run (attempt ${attempt})."
+        GoSungrow api login >/dev/null || true
+      fi
       rm -f "$log_file"
-      sleep 3
+      sleep $(( attempt < 10 ? attempt * 3 : 30 ))
       continue
     fi
 

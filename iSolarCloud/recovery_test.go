@@ -29,7 +29,7 @@ func TestBuildLoginAttemptsPrioritizesConfiguredHostAndAppKey(t *testing.T) {
 	}
 
 	want := LoginAttempt{
-		Host:   "https://gateway.isolarcloud.eu",
+		Host:   "https://gateway.isolarcloud.com.hk",
 		AppKey: LegacyLoginAppKey,
 	}
 	if !seen[want] {
@@ -60,6 +60,36 @@ func TestShouldRecoverGatewayError(t *testing.T) {
 		if got := ShouldRecoverGatewayError(tc.err); got != tc.want {
 			t.Fatalf("%s: got %v want %v", tc.name, got, tc.want)
 		}
+	}
+}
+
+func TestIsDockerDNSError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "docker dns server misbehaving", err: errors.New("dial tcp: lookup gateway.isolarcloud.eu on 127.0.0.11:53: server misbehaving"), want: true},
+		{name: "docker dns no such host", err: errors.New("dial tcp: lookup gateway.isolarcloud.eu on 127.0.0.11:53: no such host"), want: true},
+		{name: "docker dns temporary failure", err: errors.New("dial tcp: lookup gateway.isolarcloud.eu on 127.0.0.11:53: temporary failure in name resolution"), want: true},
+		{name: "external resolver", err: errors.New("dial tcp: lookup gateway.isolarcloud.eu on 192.168.1.1:53: server misbehaving"), want: false},
+		{name: "other", err: errors.New("API httpResponse is 500 Internal Server Error"), want: false},
+	}
+
+	for _, tc := range tests {
+		if got := IsDockerDNSError(tc.err); got != tc.want {
+			t.Fatalf("%s: got %v want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestShouldTryNextLoginAttemptSkipsDockerDNSFailures(t *testing.T) {
+	if ShouldTryNextLoginAttempt(errors.New("dial tcp: lookup gateway.isolarcloud.eu on 127.0.0.11:53: server misbehaving")) {
+		t.Fatal("Docker DNS failures should not fan out through all login attempts")
+	}
+	if !ShouldTryNextLoginAttempt(errors.New("API httpResponse is 500 Internal Server Error")) {
+		t.Fatal("regular recoverable gateway failures should still try fallback login attempts")
 	}
 }
 
