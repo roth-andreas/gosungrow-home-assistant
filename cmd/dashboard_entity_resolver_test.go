@@ -192,44 +192,6 @@ func TestRemapDashboardEntitiesMapsDailyEnergyPointAliases(t *testing.T) {
 	}
 }
 
-func TestRemapDashboardEntitiesMapsEnergySummaryAliases(t *testing.T) {
-	config := map[string]any{
-		"views": []any{
-			map[string]any{
-				"cards": []any{
-					map[string]any{
-						"type": "custom:gosungrow-energy-summary-card-v1",
-						"entities": map[string]any{
-							"consumption":  "sensor.gosungrow_virtual_1610907_22_247_1_p13199",
-							"from_battery": "sensor.gosungrow_virtual_1610907_22_247_1_p13029",
-						},
-					},
-				},
-			},
-		},
-	}
-
-	targets := []haDashboardTarget{
-		{PsID: "1610907", PsKey: "1610907_22_247_1"},
-	}
-	states := []haState{
-		dashboardTestState("sensor.gosungrow_1610907_sungrow_gosungrow_load_information_total_load_energy", "17.20", "kWh"),
-		dashboardTestState("sensor.gosungrow_1610907_sungrow_gosungrow_battery_information_battery_discharge_energy", "4.60", "kWh"),
-	}
-
-	remapped := remapDashboardEntities(config, targets, states)
-	views := remapped["views"].([]any)
-	cards := views[0].(map[string]any)["cards"].([]any)
-	entities := cards[0].(map[string]any)["entities"].(map[string]any)
-
-	if got := entities["consumption"]; got != "sensor.gosungrow_1610907_sungrow_gosungrow_load_information_total_load_energy" {
-		t.Fatalf("unexpected remapped consumption entity: %v", got)
-	}
-	if got := entities["from_battery"]; got != "sensor.gosungrow_1610907_sungrow_gosungrow_battery_information_battery_discharge_energy" {
-		t.Fatalf("unexpected remapped from_battery entity: %v", got)
-	}
-}
-
 func TestRemapDashboardEntitiesMapsLegacyPlantPointAliases(t *testing.T) {
 	config := map[string]any{
 		"views": []any{

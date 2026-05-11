@@ -101,59 +101,6 @@ func TestPruneDashboardForMissingBatteryPrunesBatteryCardsAndEntities(t *testing
 	}
 }
 
-func TestPruneDashboardForMissingBatteryPrunesSummaryBatteryRows(t *testing.T) {
-	config := map[string]any{
-		"views": []any{
-			map[string]any{
-				"sections": []any{
-					map[string]any{
-						"type": "grid",
-						"cards": []any{
-							map[string]any{
-								"type": "custom:gosungrow-energy-summary-card-v1",
-								"entities": map[string]any{
-									"production":   "sensor.gosungrow_virtual_100_14_1_1_p13112",
-									"consumption":  "sensor.gosungrow_virtual_100_14_1_1_p13199",
-									"to_grid":      "sensor.gosungrow_virtual_100_14_1_1_p13173",
-									"from_grid":    "sensor.gosungrow_virtual_100_14_1_1_p13147",
-									"to_battery":   "sensor.gosungrow_virtual_100_14_1_1_p13174",
-									"from_battery": "sensor.gosungrow_virtual_100_14_1_1_p13029",
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	targets := []haDashboardTarget{
-		{PsID: "100", PsKey: "100_14_1_1"},
-	}
-	states := []haState{
-		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_pv_information_pv_daily_energy", "9.0", "kWh"),
-		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_load_information_total_load_energy", "7.2", "kWh"),
-		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_grid_information_pv_to_grid_energy", "2.1", "kWh"),
-		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_grid_information_grid_to_load_energy", "1.8", "kWh"),
-	}
-
-	pruned := pruneDashboardForMissingBattery(config, targets, states)
-	views := pruned["views"].([]any)
-	sections := views[0].(map[string]any)["sections"].([]any)
-	cards := sections[0].(map[string]any)["cards"].([]any)
-	entities := cards[0].(map[string]any)["entities"].(map[string]any)
-
-	if _, ok := entities["to_battery"]; ok {
-		t.Fatal("expected to_battery to be pruned from summary card")
-	}
-	if _, ok := entities["from_battery"]; ok {
-		t.Fatal("expected from_battery to be pruned from summary card")
-	}
-	if len(entities) != 4 {
-		t.Fatalf("expected four non-battery summary entities to remain, got %#v", entities)
-	}
-}
-
 func TestPruneDashboardForMissingBatteryAppliesPerViewTarget(t *testing.T) {
 	config := map[string]any{
 		"views": []any{

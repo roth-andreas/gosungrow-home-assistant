@@ -1,6 +1,5 @@
 dashboard:
   view_overview: "\u00dcbersicht"
-  view_aggregates: Aggregate
   view_trends: Trends
   heading_live_flow: Live-Fluss
   heading_today: Heute
@@ -12,31 +11,18 @@ dashboard:
   heading_grid_exchange: Netzaustausch
   heading_battery_flow: Batteriefluss
   heading_battery_soc: Batterie-SOC
-  heading_energy_summary: Energieübersicht
   name_pv_yield: PV-Ertrag
   name_pv_to_load: PV zu Last
   name_pv_to_battery: PV zu Batterie
   name_pv_to_grid: PV zu Netz
   name_feed_in: Einspeisung
   name_grid_import: Netzbezug
-  name_production: Produktion
-  name_consumption: Verbrauch
-  name_to_grid: Ins Netz
-  name_from_grid: Aus dem Netz
-  name_to_battery: In Batterie
-  name_from_battery: Aus Batterie
   name_grid_to_load: Netz zu Last
   name_grid_net: Netz Netto
   name_battery_soc: Batterie-SOC
   name_battery_power: Batterieleistung
   name_charge: Laden
   name_discharge: Entladen
-  period_day: Tag
-  period_month: Monat
-  period_year: Jahr
-  unavailable: Nicht verfügbar
-  statistics_unavailable: Statistik nicht verfügbar
-  no_statistics: Noch keine Statistik
   name_pv: PV
   name_load: Last
   name_grid: Netz
