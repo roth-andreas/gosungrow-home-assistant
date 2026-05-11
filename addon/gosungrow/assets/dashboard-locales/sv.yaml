@@ -1,5 +1,6 @@
 dashboard:
   view_overview: "\u00d6versikt"
+  view_aggregates: Aggregat
   view_trends: Trender
   heading_live_flow: "Livefl\u00f6de"
   heading_today: Idag
@@ -11,18 +12,31 @@ dashboard:
   heading_grid_exchange: "N\u00e4tutbyte"
   heading_battery_flow: "Batterifl\u00f6de"
   heading_battery_soc: Batteri SOC
+  heading_energy_summary: Energisammanfattning
   name_pv_yield: PV-produktion
   name_pv_to_load: PV till last
   name_pv_to_battery: PV till batteri
   name_pv_to_grid: "PV till n\u00e4t"
   name_feed_in: Inmatning
   name_grid_import: "N\u00e4timport"
+  name_production: Produktion
+  name_consumption: Förbrukning
+  name_to_grid: "Till n\u00e4t"
+  name_from_grid: "Fr\u00e5n n\u00e4t"
+  name_to_battery: Till batteri
+  name_from_battery: Från batteri
   name_grid_to_load: "N\u00e4t till last"
   name_grid_net: "N\u00e4t netto"
   name_battery_soc: Batteri SOC
   name_battery_power: Batterieffekt
   name_charge: Laddning
   name_discharge: Urladdning
+  period_day: Dag
+  period_month: Månad
+  period_year: År
+  unavailable: Inte tillgänglig
+  statistics_unavailable: Statistik saknas
+  no_statistics: Ingen statistik än
   name_pv: PV
   name_load: Last
   name_grid: "N\u00e4t"

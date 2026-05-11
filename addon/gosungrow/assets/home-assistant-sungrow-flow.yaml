@@ -118,6 +118,49 @@ views:
               - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13147
                 name: Grid Import
 
+  - title: Aggregates
+    path: aggregates
+    icon: mdi:chart-bar
+    type: sections
+    max_columns: 2
+    dense_section_placement: true
+    sections:
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Energy Summary
+            icon: mdi:lightning-bolt-circle
+          - type: custom:gosungrow-energy-summary-card-v1
+            layout_options:
+              grid_columns: full
+              grid_rows: 6
+            buckets:
+              day: 14
+              month: 12
+              year: 5
+            labels:
+              title: Energy Summary
+              period_day: Day
+              period_month: Month
+              period_year: Year
+              unavailable: Unavailable
+              statistics_unavailable: Statistics unavailable
+              no_statistics: No statistics yet
+              name_production: Production
+              name_consumption: Consumption
+              name_to_grid: To Grid
+              name_from_grid: From Grid
+              name_to_battery: To Battery
+              name_from_battery: From Battery
+            entities:
+              production: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13112
+              consumption: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13199
+              to_grid: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13173
+              from_grid: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13147
+              to_battery: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13174
+              from_battery: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13029
+
   - title: Trends
     path: trends
     icon: mdi:chart-line
