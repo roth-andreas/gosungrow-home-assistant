@@ -29,12 +29,22 @@ This repository is based on the original [MickMake/GoSungrow](https://github.com
 
 1. Install and start the `Mosquitto broker` app in Home Assistant.
 2. Confirm `MQTT` appears under `Settings > Devices & services`.
-3. In the App Store, add this repository as a custom repository:
-   - `https://github.com/roth-andreas/gosungrow-home-assistant`
-4. Install `GoSungrow`.
-5. Enter your `gosungrow_user` and `gosungrow_password`.
-6. Start the app.
-7. Open the automatically created `GoSungrow Flow` dashboards from the sidebar.
+3. Go to `Settings > Apps > App Store`.
+4. Open the three dots menu in the top-right corner and choose `Repositories`.
+5. Click `+ Add repository` and paste:
+
+   ```text
+   https://github.com/roth-andreas/gosungrow-home-assistant
+   ```
+
+6. Click `Add`, then return to the `App Store`.
+7. Search for `GoSungrow`, open it, and click `Install`.
+8. Open the `Configuration` tab and enter your `gosungrow_user` and `gosungrow_password`.
+9. Make sure MQTT is available:
+   - For the Home Assistant Mosquitto broker, install/start Mosquitto and enable the MQTT integration.
+   - For an external broker, set `mqtt_host`, `mqtt_port`, `mqtt_username`, and `mqtt_password`.
+10. Start the app.
+11. Open the automatically created `GoSungrow Flow` dashboards from the sidebar.
 
 For almost everyone, the only app settings you need are:
 
