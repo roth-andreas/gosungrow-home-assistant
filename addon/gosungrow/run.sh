@@ -95,6 +95,10 @@ install_managed_dashboard() {
     "--diagnostic-context=${action}"
   )
 
+  if bashio::config.true 'dashboard_force_update'; then
+    dashboard_args+=("--force-update")
+  fi
+
   if ! GoSungrow "${dashboard_args[@]}"; then
     bashio::log.warning "Managed dashboard ${action} failed; continuing without changing Home Assistant dashboards."
     return 1

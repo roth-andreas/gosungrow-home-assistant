@@ -1,5 +1,5 @@
 name: GoSungrow
-version: 3.1.1
+version: 3.1.2
 slug: gosungrow
 url: https://github.com/roth-andreas/gosungrow-home-assistant
 image: ghcr.io/roth-andreas/gosungrow-addon-{arch}
@@ -26,6 +26,7 @@ options:
   mqtt_username: ""
   mqtt_password: ""
   install_dashboard: true
+  dashboard_force_update: false
   dashboard_language: auto
   debug: false
 schema:
@@ -36,5 +37,6 @@ schema:
   mqtt_username: str
   mqtt_password: password
   install_dashboard: bool
+  dashboard_force_update: bool
   dashboard_language: str
   debug: bool
