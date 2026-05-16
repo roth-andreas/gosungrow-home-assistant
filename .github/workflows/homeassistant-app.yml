@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - master
+      - "test-*"
     tags:
       - "v*"
     paths:
@@ -122,6 +123,19 @@ jobs:
         shell: bash
         run: echo "value=$(awk '/^version:/{print $2}' addon/gosungrow/config.yaml)" >> "$GITHUB_OUTPUT"
 
+      - name: Build image tags
+        id: image_tags
+        shell: bash
+        run: |
+          {
+            echo "value<<EOF"
+            echo "ghcr.io/${{ github.repository_owner }}/gosungrow-addon-${{ matrix.arch }}:${{ steps.version.outputs.value }}"
+            if [[ "${{ github.ref_type }}" == "tag" || "${{ github.ref_name }}" == "main" || "${{ github.ref_name }}" == "master" ]]; then
+              echo "ghcr.io/${{ github.repository_owner }}/gosungrow-addon-${{ matrix.arch }}:latest"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
@@ -133,6 +147,4 @@ jobs:
             BUILD_FROM=${{ matrix.build_from }}
             BUILD_ARCH=${{ matrix.arch }}
             BUILD_VERSION=${{ steps.version.outputs.value }}
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/gosungrow-addon-${{ matrix.arch }}:${{ steps.version.outputs.value }}
-            ghcr.io/${{ github.repository_owner }}/gosungrow-addon-${{ matrix.arch }}:latest
+          tags: ${{ steps.image_tags.outputs.value }}
