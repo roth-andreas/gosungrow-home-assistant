@@ -1021,6 +1021,7 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
         }
 
         .chart-wrap {
+          position: relative;
           margin-top: 14px;
           padding: 12px 10px 10px;
           border-radius: 8px;
@@ -1049,10 +1050,77 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
 
         .bar {
           opacity: 0.9;
+          transition: filter 120ms ease, opacity 120ms ease;
+        }
+
+        .bar[data-bucket-index] {
+          cursor: pointer;
+        }
+
+        .bar[data-bucket-index]:hover,
+        .bar[data-bucket-index]:focus-visible {
+          filter: brightness(1.14);
+          opacity: 1;
+          outline: none;
         }
 
         .bar.empty {
           opacity: 0;
+        }
+
+        .chart-tooltip {
+          position: absolute;
+          z-index: 2;
+          min-width: 190px;
+          max-width: min(260px, calc(100% - 16px));
+          padding: 10px 11px;
+          color: var(--primary-text-color);
+          background: var(--card-background-color, rgba(17, 24, 39, 0.96));
+          border: 1px solid rgba(148, 163, 184, 0.2);
+          border-radius: 8px;
+          box-shadow: 0 10px 28px rgba(0, 0, 0, 0.32);
+          pointer-events: none;
+          transform: translate3d(0, 0, 0);
+        }
+
+        .chart-tooltip.hidden {
+          display: none;
+        }
+
+        .tooltip-title {
+          margin-bottom: 7px;
+          font-size: 0.78rem;
+          font-weight: 750;
+        }
+
+        .tooltip-row {
+          display: grid;
+          grid-template-columns: 8px minmax(0, 1fr) auto;
+          align-items: center;
+          gap: 7px;
+          min-width: 0;
+          font-size: 0.76rem;
+          line-height: 1.45;
+        }
+
+        .tooltip-row .dot {
+          width: 8px;
+          height: 8px;
+        }
+
+        .tooltip-name {
+          min-width: 0;
+          overflow: hidden;
+          color: var(--secondary-text-color);
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .tooltip-value {
+          color: var(--primary-text-color);
+          font-variant-numeric: tabular-nums;
+          font-weight: 700;
+          white-space: nowrap;
         }
 
         .legend {
@@ -1121,6 +1189,7 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
         this._ensureStatistics();
       });
     });
+    this._bindChartTooltip(chart);
   }
 
   _renderPeriodButton(period, activePeriod) {
@@ -1193,7 +1262,8 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
             const heightValue = Math.max(0, (value / yMax) * plotHeight);
             const x = groupX + seriesIndex * (barWidth + barGap);
             const y = margin.top + plotHeight - heightValue;
-            return `<rect class="bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${heightValue.toFixed(1)}" rx="2" fill="${series.color}"></rect>`;
+            const label = `${bucket.label}, ${series.label}, ${this._formatEnergy(value, this._dayValue(this._entity(series.key)).unit || "kWh")}`;
+            return `<rect class="bar" data-bucket-index="${bucketIndex}" data-series-key="${this._escape(series.key)}" tabindex="0" role="img" aria-label="${this._escape(label)}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${heightValue.toFixed(1)}" rx="2" fill="${series.color}"></rect>`;
           })
           .join("");
       })
@@ -1222,9 +1292,107 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
           ${bars}
           ${labels}
         </svg>
+        <div class="chart-tooltip hidden" role="tooltip"></div>
         <div class="legend">${legend}</div>
       </div>
     `;
+  }
+
+  _bindChartTooltip(chart) {
+    if (!this.shadowRoot) {
+      return;
+    }
+    const tooltip = this.shadowRoot.querySelector(".chart-tooltip");
+    const bars = this.shadowRoot.querySelectorAll(".bar[data-bucket-index]");
+    if (!tooltip || !bars.length) {
+      return;
+    }
+
+    bars.forEach((bar) => {
+      const bucketIndex = Number.parseInt(bar.getAttribute("data-bucket-index"), 10);
+      if (!Number.isFinite(bucketIndex)) {
+        return;
+      }
+      bar.addEventListener("pointerenter", (event) => this._showChartTooltip(event, chart, bucketIndex));
+      bar.addEventListener("pointermove", (event) => this._showChartTooltip(event, chart, bucketIndex));
+      bar.addEventListener("pointerleave", () => this._hideChartTooltip());
+      bar.addEventListener("focus", (event) => this._showChartTooltip(event, chart, bucketIndex));
+      bar.addEventListener("blur", () => this._hideChartTooltip());
+    });
+  }
+
+  _tooltipRows(chart, bucketIndex) {
+    const bucket = chart?.buckets?.[bucketIndex];
+    if (!bucket) {
+      return [];
+    }
+    return chart.series
+      .map((series) => {
+        const value = series.values?.[bucketIndex];
+        if (!Number.isFinite(value)) {
+          return null;
+        }
+        const entityID = this._entity(series.key);
+        return {
+          key: series.key,
+          label: series.label,
+          color: series.color,
+          value,
+          display: this._formatEnergy(value, this._dayValue(entityID).unit || "kWh"),
+        };
+      })
+      .filter(Boolean);
+  }
+
+  _showChartTooltip(event, chart, bucketIndex) {
+    const tooltip = this.shadowRoot?.querySelector(".chart-tooltip");
+    const wrapper = this.shadowRoot?.querySelector(".chart-wrap");
+    const bucket = chart?.buckets?.[bucketIndex];
+    const rows = this._tooltipRows(chart, bucketIndex);
+    if (!tooltip || !wrapper || !bucket || rows.length === 0) {
+      return;
+    }
+
+    tooltip.innerHTML = `
+      <div class="tooltip-title">${this._escape(bucket.label)}</div>
+      ${rows
+        .map((row) => `
+          <div class="tooltip-row">
+            <span class="dot" style="background:${row.color};"></span>
+            <span class="tooltip-name">${this._escape(row.label)}</span>
+            <span class="tooltip-value">${this._escape(row.display)}</span>
+          </div>
+        `)
+        .join("")}
+    `;
+    tooltip.classList.remove("hidden");
+
+    const wrapperRect = wrapper.getBoundingClientRect();
+    const tooltipRect = tooltip.getBoundingClientRect();
+    const targetRect = event.currentTarget?.getBoundingClientRect?.();
+    const pointerX = Number.isFinite(event.clientX)
+      ? event.clientX - wrapperRect.left
+      : targetRect
+        ? targetRect.left + targetRect.width / 2 - wrapperRect.left
+        : wrapperRect.width / 2;
+    const pointerY = Number.isFinite(event.clientY)
+      ? event.clientY - wrapperRect.top
+      : targetRect
+        ? targetRect.top - wrapperRect.top
+        : wrapperRect.height / 2;
+    const padding = 8;
+    const left = Math.min(Math.max(pointerX + 12, padding), Math.max(padding, wrapperRect.width - tooltipRect.width - padding));
+    const top = Math.min(Math.max(pointerY - tooltipRect.height - 10, padding), Math.max(padding, wrapperRect.height - tooltipRect.height - padding));
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${top}px`;
+  }
+
+  _hideChartTooltip() {
+    const tooltip = this.shadowRoot?.querySelector(".chart-tooltip");
+    if (!tooltip) {
+      return;
+    }
+    tooltip.classList.add("hidden");
   }
 
   _metricDefinitions() {

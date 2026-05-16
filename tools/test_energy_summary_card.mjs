@@ -39,6 +39,14 @@ vm.runInContext(fs.readFileSync(assetPath, "utf8"), sandbox, { filename: assetPa
 
 const SummaryCard = registry.get("gosungrow-energy-summary-card-v1");
 const entityID = "sensor.gosungrow_daily_production";
+const metricEntities = {
+  production: "sensor.gosungrow_daily_production",
+  consumption: "sensor.gosungrow_daily_consumption",
+  to_grid: "sensor.gosungrow_daily_to_grid",
+  from_grid: "sensor.gosungrow_daily_from_grid",
+  to_battery: "sensor.gosungrow_daily_to_battery",
+  from_battery: "sensor.gosungrow_daily_from_battery",
+};
 
 function createCard(now, liveValue) {
   const card = new SummaryCard();
@@ -57,6 +65,31 @@ function createCard(now, liveValue) {
           },
         }
       : {},
+  };
+  card._now = () => new Date(now);
+  return card;
+}
+
+function createMultiMetricCard(now, liveValues) {
+  const card = new SummaryCard();
+  card._config = {
+    buckets: { day: 14, month: 12, year: 5 },
+    entities: metricEntities,
+  };
+  card._labels = {};
+  card._hass = {
+    locale: { language: "en-US" },
+    states: Object.fromEntries(
+      Object.entries(liveValues)
+        .filter(([, value]) => Number.isFinite(value))
+        .map(([key, value]) => [
+          metricEntities[key],
+          {
+            state: String(value),
+            attributes: { unit_of_measurement: "kWh" },
+          },
+        ]),
+    ),
   };
   card._now = () => new Date(now);
   return card;
@@ -167,4 +200,58 @@ test("recorder requests use daily statistics for every view", () => {
   card._ensureStatistics();
 
   assert.equal(request.period, "day");
+});
+
+test("rendered bars expose bucket metadata and keyboard focus", () => {
+  const card = createCard("2026-05-16T12:00:00.000Z", 7);
+  const chart = card._chartDisplay("day", card._metricDefinitions());
+  const markup = card._renderChart(chart);
+
+  assert.match(markup, /data-bucket-index="0"/);
+  assert.match(markup, /data-series-key="production"/);
+  assert.match(markup, /tabindex="0"/);
+  assert.match(markup, /role="img"/);
+  assert.match(markup, /aria-label="[^"]*Production[^"]*7\.00 kWh/);
+  assert.match(markup, /class="chart-tooltip hidden"/);
+});
+
+test("tooltip rows include all configured metrics with color, label, and formatted value", () => {
+  const card = createMultiMetricCard("2026-05-16T12:00:00.000Z", {
+    production: 12.34,
+    consumption: 8.9,
+    to_grid: 1.2,
+    from_grid: 0.4,
+    to_battery: 2.5,
+    from_battery: 3.6,
+  });
+  const chart = card._chartDisplay("day", card._metricDefinitions());
+  const rows = card._tooltipRows(chart, 0);
+
+  assert.equal(rows.length, 6);
+  assert.deepEqual(
+    Array.from(rows, (row) => row.label),
+    ["Production", "Consumption", "To Grid", "From Grid", "To Battery", "From Battery"],
+  );
+  assert.deepEqual(
+    Array.from(rows, (row) => row.color),
+    ["#f59e0b", "#38bdf8", "#8b5cf6", "#cbd5e1", "#ec4899", "#14b8a6"],
+  );
+  assert.deepEqual(
+    Array.from(rows, (row) => row.display),
+    ["12.3 kWh", "8.90 kWh", "1.20 kWh", "0.40 kWh", "2.50 kWh", "3.60 kWh"],
+  );
+});
+
+test("tooltip rows omit missing bucket values", () => {
+  const card = createMultiMetricCard("2026-05-16T12:00:00.000Z", {
+    production: 12.34,
+    to_grid: 1.2,
+  });
+  const chart = card._chartDisplay("day", card._metricDefinitions());
+  const rows = card._tooltipRows(chart, 0);
+
+  assert.deepEqual(
+    Array.from(rows, (row) => row.label),
+    ["Production", "To Grid"],
+  );
 });
