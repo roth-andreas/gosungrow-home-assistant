@@ -1269,14 +1269,14 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
     const cache = this._statsCache[this._cacheKey(period)] || {};
     const entry = cache.headline?.[entityID];
     if (!entry) {
-      return { value: NaN, unit: this._dayValue(entityID).unit || "kWh" };
+      return this._dayValue(entityID);
     }
     return entry;
   }
 
   _chartDisplay(period, metrics) {
     const cache = this._statsCache[this._cacheKey(period)];
-    const buckets = cache?.buckets || [];
+    const buckets = this._populatedBuckets(cache?.buckets || []);
     const series = metrics
       .map((metric) => {
         const entityID = this._entity(metric.key);
@@ -1292,7 +1292,43 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
         };
       })
       .filter(Boolean);
+    if (series.length === 0) {
+      return this._liveChartDisplay(period, metrics);
+    }
     return { buckets, series };
+  }
+
+  _liveChartDisplay(period, metrics) {
+    const now = this._now();
+    const bucket = {
+      key: this._bucketKey(period, now),
+      label: this._bucketLabel(period, now),
+      values: {},
+    };
+    const series = metrics
+      .map((metric) => {
+        const entityID = this._entity(metric.key);
+        const source = this._dayValue(entityID);
+        if (!Number.isFinite(source.value)) {
+          return null;
+        }
+        bucket.values[entityID] = source.value;
+        return {
+          key: metric.key,
+          label: metric.label,
+          color: metric.color,
+          values: [source.value],
+        };
+      })
+      .filter(Boolean);
+    return { buckets: series.length > 0 ? [bucket] : [], series };
+  }
+
+  _populatedBuckets(buckets) {
+    return buckets.filter((bucket) => {
+      const values = Object.values(bucket.values || {});
+      return values.some((value) => Number.isFinite(value));
+    });
   }
 
   _statisticsStatus(period) {
@@ -1300,10 +1336,20 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
     if (this._pendingKey === key) {
       return "";
     }
+    if (this._hasLiveMetricValues()) {
+      return "";
+    }
     if (this._statsCache[key]) {
       return "";
     }
     return this._label("statistics_unavailable", "Statistics unavailable");
+  }
+
+  _hasLiveMetricValues() {
+    return this._metricDefinitions().some((metric) => {
+      const entityID = this._entity(metric.key);
+      return Number.isFinite(this._dayValue(entityID).value);
+    });
   }
 
   _ensureStatistics() {
@@ -1328,7 +1374,7 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
         start_time: range.start.toISOString(),
         end_time: range.end.toISOString(),
         statistic_ids: entityIDs,
-        period: this._statisticsPeriod(this._period),
+        period: "day",
         types: ["sum", "state"],
       })
       .then((response) => {
@@ -1346,7 +1392,7 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
   }
 
   _periodRange(period) {
-    const now = new Date();
+    const now = this._now();
     const start = new Date(now);
     const count = this._bucketCount(period);
     if (period === "day") {
@@ -1365,11 +1411,7 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
   _statisticsRange(period) {
     const range = this._periodRange(period);
     const start = new Date(range.start);
-    if (period === "day") {
-      start.setDate(start.getDate() - 1);
-    } else {
-      start.setMonth(start.getMonth() - 1);
-    }
+    start.setDate(start.getDate() - 1);
     return { start, end: range.end };
   }
 
@@ -1387,14 +1429,11 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
     return defaults[period] || 12;
   }
 
-  _statisticsPeriod(period) {
-    return period === "day" ? "day" : "month";
-  }
-
   _parseStatistics(response, entityIDs, period) {
     const buckets = this._emptyBuckets(period);
     const bucketByKey = Object.fromEntries(buckets.map((bucket) => [bucket.key, bucket]));
     const headline = {};
+    const todayKey = this._bucketKey("day", this._now());
 
     entityIDs.forEach((entityID) => {
       const rows = Array.isArray(response?.[entityID]) ? response[entityID] : [];
@@ -1407,27 +1446,28 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
         .filter((row) => Number.isFinite(row.sum) || Number.isFinite(row.state))
         .sort((a, b) => a.start.localeCompare(b.start));
 
-      if (numericRows.length === 0) {
-        return;
+      if (numericRows.length > 0) {
+        const bucketRows = this._bucketRows(numericRows);
+        numericRows.forEach((row, rowIndex) => {
+          if (this._bucketKeyForStart("day", row.start) === todayKey) {
+            return;
+          }
+          const bucketKey = this._bucketKeyForStart(period, row.start);
+          const bucket = bucketByKey[bucketKey];
+          if (!bucket) {
+            return;
+          }
+          const value = bucketRows[rowIndex];
+          if (!Number.isFinite(value)) {
+            return;
+          }
+          const current = bucket.values[entityID];
+          bucket.values[entityID] = Number.isFinite(current) ? current + value : value;
+        });
       }
 
-      const bucketRows = this._bucketRows(numericRows);
-      numericRows.forEach((row) => {
-        const bucketKey = this._bucketKeyForStart(period, row.start);
-        const bucket = bucketByKey[bucketKey];
-        if (!bucket) {
-          return;
-        }
-        const rowIndex = numericRows.indexOf(row);
-        const value = bucketRows[rowIndex];
-        if (!Number.isFinite(value)) {
-          return;
-        }
-        const current = bucket.values[entityID];
-        bucket.values[entityID] = Number.isFinite(current) ? current + value : value;
-      });
-
-      const currentBucket = buckets[buckets.length - 1];
+      this._injectLiveValue(period, buckets, entityID);
+      const currentBucket = bucketByKey[this._bucketKey(period, this._now())];
       const currentValue = currentBucket?.values?.[entityID];
       if (Number.isFinite(currentValue)) {
         headline[entityID] = {
@@ -1438,6 +1478,20 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
     });
 
     return { headline, buckets };
+  }
+
+  _injectLiveValue(period, buckets, entityID) {
+    const source = this._dayValue(entityID);
+    if (!Number.isFinite(source.value)) {
+      return;
+    }
+    const bucketKey = this._bucketKey(period, this._now());
+    const bucket = buckets.find((candidate) => candidate.key === bucketKey);
+    if (!bucket) {
+      return;
+    }
+    const current = bucket.values[entityID];
+    bucket.values[entityID] = Number.isFinite(current) ? current + source.value : source.value;
   }
 
   _bucketRows(rows) {
@@ -1463,7 +1517,7 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
   }
 
   _emptyBuckets(period) {
-    const now = new Date();
+    const now = this._now();
     const count = this._bucketCount(period);
     const buckets = [];
     for (let offset = count - 1; offset >= 0; offset -= 1) {
@@ -1576,6 +1630,10 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
 
   _locale() {
     return this._hass?.locale?.language || this._hass?.language || navigator.language || "en-US";
+  }
+
+  _now() {
+    return new Date();
   }
 
   _escape(value) {
