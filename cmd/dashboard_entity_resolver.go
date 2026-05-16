@@ -834,19 +834,6 @@ func dashboardMetricProfileFor(metric string) dashboardMetricProfile {
 			TokenGroups: [][]string{{"grid", "import", "purchased"}, {"energy"}},
 			Kind:        dashboardMetricKindEnergy,
 		}
-	case "p13199":
-		return dashboardMetricProfile{
-			Aliases:         []string{"p13199", "total_daily_energy", "total_load_energy", "daily_total_energy", "load_energy", "consumption_energy", "house_energy", "home_energy", "daily_consumption_energy"},
-			TokenGroups:     [][]string{{"load", "home", "house", "consumption", "use", "total"}, {"energy"}},
-			ForbiddenTokens: []string{"pv", "grid", "battery", "feed", "export", "import"},
-			Kind:            dashboardMetricKindEnergy,
-		}
-	case "p13029":
-		return dashboardMetricProfile{
-			Aliases:     []string{"p13029", "battery_discharge_energy", "battery_to_load_energy", "discharge_energy", "energy_battery_discharge", "daily_battery_discharge_energy"},
-			TokenGroups: [][]string{{"battery", "es"}, {"energy"}, {"discharge", "discharging"}},
-			Kind:        dashboardMetricKindEnergy,
-		}
 	case "p13141":
 		return dashboardMetricProfile{
 			Aliases:     []string{"p13141", "p83129", "p83252", "battery_soc", "battery_level", "battery_charge_percent", "soc"},
