@@ -11,7 +11,7 @@ var Examples string
 const (
 	Description   = "GoSungrow for Home Assistant and Sungrow iSolarCloud MQTT publishing"
 	BinaryName    = "GoSungrow"
-	BinaryVersion = "3.0.36"
+	BinaryVersion = "3.1.0"
 	SourceRepo    = "github.com/roth-andreas/gosungrow-home-assistant"
 	BinaryRepo    = "github.com/roth-andreas/gosungrow-home-assistant"
 

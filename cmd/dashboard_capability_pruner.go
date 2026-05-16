@@ -178,7 +178,7 @@ func isBatteryPowerCapabilityEntityReference(entityID string) bool {
 
 func isBatteryDashboardMetric(metric string) bool {
 	switch strings.ToLower(strings.TrimSpace(metric)) {
-	case "battery_power", "p13141", "p13174", "pv_to_battery_power", "battery_to_load_power":
+	case "battery_power", "p13141", "p13174", "p13029", "pv_to_battery_power", "battery_to_load_power":
 		return true
 	default:
 		return false

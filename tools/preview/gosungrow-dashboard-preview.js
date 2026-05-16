@@ -14,6 +14,8 @@ const ENTITY_IDS = {
   dailyPvToBattery: "sensor.preview_daily_pv_to_battery",
   dailyFeedIn: "sensor.preview_daily_feed_in",
   dailyGridImport: "sensor.preview_daily_grid_import",
+  dailyConsumption: "sensor.preview_daily_consumption",
+  dailyBatteryDischarge: "sensor.preview_daily_battery_discharge",
 };
 
 const SERIES_COLORS = {
@@ -259,6 +261,18 @@ function renderView(state, scenario) {
     return root;
   }
 
+  if (state.view === "aggregates") {
+    const aggregates = document.createElement("div");
+    aggregates.innerHTML = `
+    <div class="summary-preview-card">
+      <div id="summary-mount"></div>
+    </div>
+    `;
+    root.appendChild(aggregates);
+    mountSummaryCard(root.querySelector("#summary-mount"), scenario);
+    return root;
+  }
+
   const trends = document.createElement("div");
   trends.innerHTML = `
     <div class="trends-grid">
@@ -293,6 +307,37 @@ function mountFlowCard(container, device, scenario) {
     },
   });
   card._isCompact = () => device === "mobile";
+  card.hass = buildHass(scenario);
+  container.appendChild(card);
+}
+
+function mountSummaryCard(container, scenario) {
+  const card = document.createElement("gosungrow-energy-summary-card-v1");
+  card.setConfig({
+    title: "Energy Summary",
+    labels: {
+      title: "Energy Summary",
+      period_day: "Day",
+      period_month: "Month",
+      period_year: "Year",
+      unavailable: "Unavailable",
+      statistics_unavailable: "Statistics unavailable",
+      name_production: "Production",
+      name_consumption: "Consumption",
+      name_to_grid: "To Grid",
+      name_from_grid: "From Grid",
+      name_to_battery: "To Battery",
+      name_from_battery: "From Battery",
+    },
+    entities: {
+      production: ENTITY_IDS.dailyPvYield,
+      consumption: ENTITY_IDS.dailyConsumption,
+      to_grid: ENTITY_IDS.dailyFeedIn,
+      from_grid: ENTITY_IDS.dailyGridImport,
+      to_battery: ENTITY_IDS.dailyPvToBattery,
+      from_battery: ENTITY_IDS.dailyBatteryDischarge,
+    },
+  });
   card.hass = buildHass(scenario);
   container.appendChild(card);
 }
@@ -559,6 +604,7 @@ function buildHass(scenario) {
   const home = scenario.flows.pvToLoad + scenario.flows.gridToLoad + scenario.flows.batteryToLoad;
   const grid = scenario.flows.gridToLoad - scenario.flows.pvToGrid;
   const battery = scenario.flows.batteryToLoad - scenario.flows.pvToBattery;
+  const aggregates = aggregateValues(scenario);
 
   return {
     locale: { language: "en-US" },
@@ -578,8 +624,104 @@ function buildHass(scenario) {
       [ENTITY_IDS.dailyPvToBattery]: stateObj(scenario.daily.pvToBattery, "kWh"),
       [ENTITY_IDS.dailyFeedIn]: stateObj(scenario.daily.feedIn, "kWh"),
       [ENTITY_IDS.dailyGridImport]: stateObj(scenario.daily.gridImport, "kWh"),
+      [ENTITY_IDS.dailyConsumption]: stateObj(aggregates.day.consumption, "kWh"),
+      [ENTITY_IDS.dailyBatteryDischarge]: stateObj(aggregates.day.from_battery, "kWh"),
+    },
+    callWS: (request) => {
+      if (request?.type !== "recorder/statistics_during_period") {
+        return Promise.resolve({});
+      }
+      return Promise.resolve(buildStatisticsResponse(request, aggregates));
     },
   };
+}
+
+function aggregateValues(scenario) {
+  const day = {
+    production: scenario.daily.pvYield,
+    consumption: scenario.daily.pvToLoad + scenario.daily.gridImport + scenario.flows.batteryToLoad * 2.6,
+    to_grid: scenario.daily.feedIn,
+    from_grid: scenario.daily.gridImport,
+    to_battery: scenario.daily.pvToBattery,
+    from_battery: scenario.flows.batteryToLoad * 2.6,
+  };
+  return {
+    day,
+    month: scaleAggregate(day, 18.4),
+    year: scaleAggregate(day, 214.6),
+  };
+}
+
+function scaleAggregate(values, factor) {
+  return Object.fromEntries(Object.entries(values).map(([key, value]) => [key, Number((value * factor).toFixed(2))]));
+}
+
+function buildStatisticsResponse(request, aggregates) {
+  const metricEntities = {
+    production: ENTITY_IDS.dailyPvYield,
+    consumption: ENTITY_IDS.dailyConsumption,
+    to_grid: ENTITY_IDS.dailyFeedIn,
+    from_grid: ENTITY_IDS.dailyGridImport,
+    to_battery: ENTITY_IDS.dailyPvToBattery,
+    from_battery: ENTITY_IDS.dailyBatteryDischarge,
+  };
+  const start = new Date(request.start_time);
+  const end = new Date(request.end_time);
+  const bucketStarts = request.period === "day" ? dailyBucketStarts(start, end) : monthlyBucketStarts(start, end);
+  const response = {};
+
+  Object.entries(metricEntities).forEach(([metric, entityID]) => {
+    response[entityID] = bucketStarts.map((date, index) => {
+      const value = bucketValue(metric, date, index, request.period, aggregates);
+      return {
+        start: date.toISOString(),
+        sum: Number(value.toFixed(2)),
+      };
+    });
+  });
+
+  return response;
+}
+
+function dailyBucketStarts(start, end) {
+  const current = new Date(start);
+  current.setHours(0, 0, 0, 0);
+  const limit = new Date(end);
+  const output = [];
+  while (current <= limit) {
+    output.push(new Date(current));
+    current.setDate(current.getDate() + 1);
+  }
+  return output;
+}
+
+function monthlyBucketStarts(start, end) {
+  const current = new Date(start);
+  current.setDate(1);
+  current.setHours(0, 0, 0, 0);
+  const limit = new Date(end);
+  const output = [];
+  while (current <= limit) {
+    output.push(new Date(current));
+    current.setMonth(current.getMonth() + 1);
+  }
+  return output;
+}
+
+function bucketValue(metric, date, index, period, aggregates) {
+  const base = period === "day" ? aggregates.day[metric] : aggregates.month[metric];
+  const seasonal = period === "day"
+    ? 0.72 + ((index % 7) * 0.08)
+    : 0.52 + Math.max(0.15, Math.sin(((date.getMonth() + 1) / 12) * Math.PI)) * 0.72;
+  const flowBias = {
+    production: 1,
+    consumption: 0.9,
+    to_grid: 0.75,
+    from_grid: 1.12,
+    to_battery: 0.82,
+    from_battery: 0.72,
+  }[metric] || 1;
+  return Math.max(0, base * seasonal * flowBias);
 }
 
 function renderTiles(daily, batterySoc) {

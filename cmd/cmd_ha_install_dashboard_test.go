@@ -534,13 +534,25 @@ func TestBundledDashboardTemplateRenders(t *testing.T) {
 	}
 
 	views, ok := config["views"].([]any)
-	if !ok || len(views) != 2 {
-		t.Fatalf("expected bundled dashboard to render 2 views, got %#v", config["views"])
+	if !ok || len(views) != 3 {
+		t.Fatalf("expected bundled dashboard to render 3 views, got %#v", config["views"])
+	}
+	if got := views[1].(map[string]any)["path"]; got != "aggregates" {
+		t.Fatalf("expected second bundled dashboard view to be aggregates, got %v", got)
+	}
+	if got := views[2].(map[string]any)["path"]; got != "trends" {
+		t.Fatalf("expected third bundled dashboard view to be trends, got %v", got)
 	}
 
 	text := string(rendered)
 	if !strings.Contains(text, "\"type\":\"custom:gosungrow-energy-flow-card-v2\"") {
 		t.Fatal("expected custom GoSungrow flow card in bundled dashboard")
+	}
+	if !strings.Contains(text, "\"type\":\"custom:gosungrow-energy-summary-card-v1\"") {
+		t.Fatal("expected custom GoSungrow energy summary card in bundled dashboard")
+	}
+	if !strings.Contains(text, "\"buckets\":{\"day\":14,\"month\":12,\"year\":5}") {
+		t.Fatal("expected summary card bucket defaults in bundled dashboard")
 	}
 	if !strings.Contains(text, "sensor.gosungrow_virtual_5072099_14_1_1_pv_to_grid_power") {
 		t.Fatal("expected pv_to_grid flow sensor in bundled dashboard")
@@ -553,6 +565,12 @@ func TestBundledDashboardTemplateRenders(t *testing.T) {
 	}
 	if !strings.Contains(text, "sensor.gosungrow_virtual_5072099_14_1_1_p13112") {
 		t.Fatal("expected daily PV yield sensor in bundled dashboard")
+	}
+	if !strings.Contains(text, "sensor.gosungrow_virtual_5072099_14_1_1_p13199") {
+		t.Fatal("expected summary consumption sensor in bundled dashboard")
+	}
+	if !strings.Contains(text, "sensor.gosungrow_virtual_5072099_14_1_1_p13029") {
+		t.Fatal("expected summary battery discharge sensor in bundled dashboard")
 	}
 }
 
@@ -584,6 +602,12 @@ func TestBundledDashboardTemplateRendersSwedishAndInjectsCardLabels(t *testing.T
 	}
 	if !strings.Contains(text, "\"labels\":{\"node_battery\":\"Batteri\"") && !strings.Contains(text, "\"node_battery\":\"Batteri\"") {
 		t.Fatal("expected localized flow-card labels to be injected")
+	}
+	if !strings.Contains(text, "\"title\":\"Energisammanfattning\"") {
+		t.Fatal("expected swedish localized summary card title")
+	}
+	if !strings.Contains(text, "\"period_month\":\"Månad\"") {
+		t.Fatal("expected swedish localized summary card labels")
 	}
 }
 
