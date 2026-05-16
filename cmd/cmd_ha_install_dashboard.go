@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -634,7 +635,8 @@ func installDashboardCardAsset(assetDir string, homeAssistantDir string) (string
 
 	sum := sha256.Sum256(data)
 	version := hex.EncodeToString(sum[:6])
-	return fmt.Sprintf("/local/%s/%s?v=%s", dashboardCardResourceDir, dashboardCardFileName, version), version, nil
+	encoded := base64.StdEncoding.EncodeToString(data)
+	return fmt.Sprintf("data:text/javascript;base64,%s#v=%s", encoded, version), version, nil
 }
 
 func uniqueNonEmptyStrings(values []string) []string {

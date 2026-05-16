@@ -256,8 +256,11 @@ func TestInstallDashboardCardAssetWritesVersionedResource(t *testing.T) {
 		t.Fatalf("installDashboardCardAsset: %v", err)
 	}
 
-	if !strings.HasPrefix(resourceURL, "/local/"+dashboardCardResourceDir+"/"+dashboardCardFileName+"?v=") {
+	if !strings.HasPrefix(resourceURL, "data:text/javascript;base64,") {
 		t.Fatalf("unexpected resource URL: %q", resourceURL)
+	}
+	if !strings.Contains(resourceURL, "#v=") {
+		t.Fatalf("expected version fragment in resource URL: %q", resourceURL)
 	}
 	if strings.TrimSpace(version) == "" {
 		t.Fatal("expected non-empty asset version")
