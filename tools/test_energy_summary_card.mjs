@@ -99,6 +99,10 @@ function row(date, sum) {
   return { start: `${date}T00:00:00.000Z`, sum };
 }
 
+function timestampRow(date, sum) {
+  return { start: new Date(`${date}T00:00:00.000Z`).getTime(), sum };
+}
+
 function chartFor(card, period, rows = []) {
   const cache = card._parseStatistics({ [entityID]: rows }, [entityID], period);
   card._statsCache[card._cacheKey(period)] = cache;
@@ -170,6 +174,21 @@ test("second day keeps the first completed recorder day when no baseline exists"
   assert.deepEqual(bucketKeys(yearChart), ["2026"]);
   assert.deepEqual(values(yearChart), [10]);
   assert.equal(card._headlineStatValue("year", entityID).value, 10);
+});
+
+test("recorder rows with Home Assistant millisecond timestamps are parsed", () => {
+  const card = createCard("2026-05-17T12:00:00.000Z", 3);
+  const rows = [
+    timestampRow("2026-05-16", 7),
+    timestampRow("2026-05-17", 100),
+  ];
+
+  const dayChart = chartFor(card, "day", rows);
+  assert.deepEqual(bucketKeys(dayChart), ["2026-05-16", "2026-05-17"]);
+  assert.deepEqual(values(dayChart), [7, 3]);
+
+  const monthChart = chartFor(card, "month", rows);
+  assert.deepEqual(values(monthChart), [10]);
 });
 
 test("month boundary keeps previous month total and starts current month from live day", () => {

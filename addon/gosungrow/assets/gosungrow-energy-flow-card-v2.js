@@ -1607,12 +1607,12 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
       const rows = Array.isArray(response?.[entityID]) ? response[entityID] : [];
       const numericRows = rows
         .map((row) => ({
-          start: typeof row.start === "string" ? row.start : "",
+          start: row?.start,
           sum: Number.parseFloat(row?.sum),
           state: Number.parseFloat(row?.state),
         }))
-        .filter((row) => Number.isFinite(row.sum) || Number.isFinite(row.state))
-        .sort((a, b) => a.start.localeCompare(b.start));
+        .filter((row) => this._isValidStatisticStart(row.start) && (Number.isFinite(row.sum) || Number.isFinite(row.state)))
+        .sort((a, b) => this._timeForStatisticStart(a.start) - this._timeForStatisticStart(b.start));
 
       if (numericRows.length > 0) {
         const bucketRows = this._bucketRows(numericRows);
@@ -1715,6 +1715,17 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
       return "";
     }
     return this._bucketKey(period, date);
+  }
+
+  _isValidStatisticStart(value) {
+    return Number.isFinite(this._timeForStatisticStart(value));
+  }
+
+  _timeForStatisticStart(value) {
+    if (typeof value !== "string" && typeof value !== "number") {
+      return NaN;
+    }
+    return new Date(value).getTime();
   }
 
   _bucketKey(period, date) {
