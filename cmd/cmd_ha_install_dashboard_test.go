@@ -548,45 +548,71 @@ func TestBundledDashboardTemplateRenders(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected overview view map, got %#v", views[0])
 	}
-	if got := fmt.Sprint(overview["max_columns"]); got != "6" {
-		t.Fatalf("expected overview max_columns=6, got %v", got)
+	if got := fmt.Sprint(overview["max_columns"]); got != "4" {
+		t.Fatalf("expected overview max_columns=4, got %v", got)
 	}
 	overviewSections, ok := overview["sections"].([]any)
-	if !ok || len(overviewSections) < 2 {
+	if !ok || len(overviewSections) < 1 {
 		t.Fatalf("expected overview sections, got %#v", overview["sections"])
 	}
-	for index := 0; index < 2; index++ {
-		section, ok := overviewSections[index].(map[string]any)
-		if !ok {
-			t.Fatalf("expected overview section %d map, got %#v", index, overviewSections[index])
-		}
-		if got := fmt.Sprint(section["column_span"]); got != "3" {
-			t.Fatalf("expected overview section %d column_span=3, got %v", index, got)
-		}
-		cards, ok := section["cards"].([]any)
-		if !ok || len(cards) < 2 {
-			t.Fatalf("expected overview section %d cards, got %#v", index, section["cards"])
-		}
-		card, ok := cards[1].(map[string]any)
-		if !ok {
-			t.Fatalf("expected overview section %d custom card map, got %#v", index, cards[1])
-		}
-		layout, ok := card["layout_options"].(map[string]any)
-		if !ok {
-			t.Fatalf("expected overview section %d layout options, got %#v", index, card["layout_options"])
-		}
-		if got := fmt.Sprint(layout["grid_rows"]); got != "9" {
-			t.Fatalf("expected overview section %d grid_rows=9, got %v", index, got)
-		}
+	overviewSection, ok := overviewSections[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected overview section map, got %#v", overviewSections[0])
 	}
-	for index := 2; index < 5; index++ {
-		section, ok := overviewSections[index].(map[string]any)
-		if !ok {
-			t.Fatalf("expected overview chart section %d map, got %#v", index, overviewSections[index])
-		}
-		if got := fmt.Sprint(section["column_span"]); got != "2" {
-			t.Fatalf("expected overview chart section %d column_span=2, got %v", index, got)
-		}
+	if got := fmt.Sprint(overviewSection["column_span"]); got != "4" {
+		t.Fatalf("expected overview section column_span=4, got %v", got)
+	}
+	overviewCards, ok := overviewSection["cards"].([]any)
+	if !ok || len(overviewCards) < 2 {
+		t.Fatalf("expected overview section cards, got %#v", overviewSection["cards"])
+	}
+	topGrid, ok := overviewCards[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected overview top grid map, got %#v", overviewCards[0])
+	}
+	if got := fmt.Sprint(topGrid["type"]); got != "grid" {
+		t.Fatalf("expected overview top row grid card, got %v", got)
+	}
+	if got := fmt.Sprint(topGrid["columns"]); got != "2" {
+		t.Fatalf("expected overview top row columns=2, got %v", got)
+	}
+	if got := fmt.Sprint(topGrid["square"]); got != "false" {
+		t.Fatalf("expected overview top row square=false, got %v", got)
+	}
+	topLayout, ok := topGrid["layout_options"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected overview top row layout options, got %#v", topGrid["layout_options"])
+	}
+	if got := fmt.Sprint(topLayout["grid_columns"]); got != "full" {
+		t.Fatalf("expected overview top row grid_columns=full, got %v", got)
+	}
+	topCards, ok := topGrid["cards"].([]any)
+	if !ok || len(topCards) != 2 {
+		t.Fatalf("expected overview top row to contain live flow and energy summary, got %#v", topGrid["cards"])
+	}
+	bottomGrid, ok := overviewCards[1].(map[string]any)
+	if !ok {
+		t.Fatalf("expected overview bottom grid map, got %#v", overviewCards[1])
+	}
+	if got := fmt.Sprint(bottomGrid["type"]); got != "grid" {
+		t.Fatalf("expected overview bottom row grid card, got %v", got)
+	}
+	if got := fmt.Sprint(bottomGrid["columns"]); got != "3" {
+		t.Fatalf("expected overview bottom row columns=3, got %v", got)
+	}
+	if got := fmt.Sprint(bottomGrid["square"]); got != "false" {
+		t.Fatalf("expected overview bottom row square=false, got %v", got)
+	}
+	bottomLayout, ok := bottomGrid["layout_options"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected overview bottom row layout options, got %#v", bottomGrid["layout_options"])
+	}
+	if got := fmt.Sprint(bottomLayout["grid_columns"]); got != "full" {
+		t.Fatalf("expected overview bottom row grid_columns=full, got %v", got)
+	}
+	bottomCards, ok := bottomGrid["cards"].([]any)
+	if !ok || len(bottomCards) != 3 {
+		t.Fatalf("expected overview bottom row to contain three chart columns, got %#v", bottomGrid["cards"])
 	}
 
 	text := string(rendered)

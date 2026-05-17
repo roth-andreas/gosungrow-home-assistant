@@ -4,128 +4,119 @@ views:
     path: overview
     icon: mdi:solar-power
     type: sections
-    max_columns: 6
+    max_columns: 4
     dense_section_placement: true
     sections:
       - type: grid
-        column_span: 3
+        column_span: 4
         cards:
-          - type: heading
-            heading: Live Flow
-            icon: mdi:solar-power
-          - type: custom:gosungrow-energy-flow-card-v2
+          - type: grid
             layout_options:
               grid_columns: full
-              grid_rows: 9
-            entities:
-              solar_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_power
-              load_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_load_power
-              battery_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_power
-              battery_soc: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13141
-              grid_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_power
-              pv_to_load_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_load_power
-              pv_to_battery_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_battery_power
-              pv_to_grid_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_grid_power
-              battery_to_load_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_to_load_power
-              grid_to_load_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_to_load_power
-
-      - type: grid
-        column_span: 3
-        cards:
-          - type: heading
-            heading: Energy Summary
-            icon: mdi:lightning-bolt-circle
-          - type: custom:gosungrow-energy-summary-card-v1
+            columns: 2
+            square: false
+            cards:
+              - type: vertical-stack
+                cards:
+                  - type: heading
+                    heading: Live Flow
+                    icon: mdi:solar-power
+                  - type: custom:gosungrow-energy-flow-card-v2
+                    entities:
+                      solar_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_power
+                      load_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_load_power
+                      battery_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_power
+                      battery_soc: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13141
+                      grid_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_power
+                      pv_to_load_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_load_power
+                      pv_to_battery_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_battery_power
+                      pv_to_grid_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_to_grid_power
+                      battery_to_load_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_to_load_power
+                      grid_to_load_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_to_load_power
+              - type: vertical-stack
+                cards:
+                  - type: heading
+                    heading: Energy Summary
+                    icon: mdi:lightning-bolt-circle
+                  - type: custom:gosungrow-energy-summary-card-v1
+                    buckets:
+                      day: 14
+                      month: 12
+                      year: 5
+                    labels:
+                      title: Energy Summary
+                      period_day: Day
+                      period_month: Month
+                      period_year: Year
+                      unavailable: Unavailable
+                      statistics_unavailable: Statistics unavailable
+                      no_statistics: No statistics yet
+                      name_production: Production
+                      name_consumption: Consumption
+                      name_to_grid: To Grid
+                      name_from_grid: From Grid
+                      name_to_battery: To Battery
+                      name_from_battery: From Battery
+                    entities:
+                      production: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13112
+                      consumption: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13199
+                      to_grid: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13173
+                      from_grid: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13147
+                      to_battery: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13174
+                      from_battery: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13029
+          - type: grid
             layout_options:
               grid_columns: full
-              grid_rows: 9
-            buckets:
-              day: 14
-              month: 12
-              year: 5
-            labels:
-              title: Energy Summary
-              period_day: Day
-              period_month: Month
-              period_year: Year
-              unavailable: Unavailable
-              statistics_unavailable: Statistics unavailable
-              no_statistics: No statistics yet
-              name_production: Production
-              name_consumption: Consumption
-              name_to_grid: To Grid
-              name_from_grid: From Grid
-              name_to_battery: To Battery
-              name_from_battery: From Battery
-            entities:
-              production: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13112
-              consumption: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13199
-              to_grid: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13173
-              from_grid: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13147
-              to_battery: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13174
-              from_battery: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13029
-
-      - type: grid
-        column_span: 2
-        cards:
-          - type: heading
-            heading: Power Balance
-            icon: mdi:chart-line
-          - type: history-graph
-            layout_options:
-              grid_columns: full
-              grid_rows: 5
-            hours_to_show: 24
-            refresh_interval: 60
-            entities:
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_power
-                name: PV
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_load_power
-                name: Load
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_power
-                name: Grid
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_power
-                name: Battery
-
-      - type: grid
-        column_span: 2
-        cards:
-          - type: heading
-            heading: Battery
-            icon: mdi:battery-high
-          - type: history-graph
-            layout_options:
-              grid_columns: full
-              grid_rows: 5
-            hours_to_show: 24
-            refresh_interval: 120
-            entities:
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13141
-                name: Battery SOC
-
-      - type: grid
-        column_span: 2
-        cards:
-          - type: heading
-            heading: Daily Energy
-            icon: mdi:chart-areaspline
-          - type: history-graph
-            layout_options:
-              grid_columns: full
-              grid_rows: 5
-            hours_to_show: 24
-            refresh_interval: 300
-            entities:
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13112
-                name: PV Yield
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13116
-                name: PV To Load
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13174
-                name: PV To Battery
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13173
-                name: Feed-in
-              - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13147
-                name: Grid Import
+            columns: 3
+            square: false
+            cards:
+              - type: vertical-stack
+                cards:
+                  - type: heading
+                    heading: Power Balance
+                    icon: mdi:chart-line
+                  - type: history-graph
+                    hours_to_show: 24
+                    refresh_interval: 60
+                    entities:
+                      - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_power
+                        name: PV
+                      - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_load_power
+                        name: Load
+                      - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_power
+                        name: Grid
+                      - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_battery_power
+                        name: Battery
+              - type: vertical-stack
+                cards:
+                  - type: heading
+                    heading: Battery
+                    icon: mdi:battery-high
+                  - type: history-graph
+                    hours_to_show: 24
+                    refresh_interval: 120
+                    entities:
+                      - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13141
+                        name: Battery SOC
+              - type: vertical-stack
+                cards:
+                  - type: heading
+                    heading: Daily Energy
+                    icon: mdi:chart-areaspline
+                  - type: history-graph
+                    hours_to_show: 24
+                    refresh_interval: 300
+                    entities:
+                      - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13112
+                        name: PV Yield
+                      - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13116
+                        name: PV To Load
+                      - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13174
+                        name: PV To Battery
+                      - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13173
+                        name: Feed-in
+                      - entity: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13147
+                        name: Grid Import
 
   - title: Aggregates
     path: aggregates
