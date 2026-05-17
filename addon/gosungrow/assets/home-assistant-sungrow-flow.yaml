@@ -4,10 +4,11 @@ views:
     path: overview
     icon: mdi:solar-power
     type: sections
-    max_columns: 2
+    max_columns: 4
     dense_section_placement: true
     sections:
       - type: grid
+        column_span: 2
         cards:
           - type: heading
             heading: Live Flow
@@ -15,7 +16,7 @@ views:
           - type: custom:gosungrow-energy-flow-card-v2
             layout_options:
               grid_columns: full
-              grid_rows: 6
+              grid_rows: 9
             entities:
               solar_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_pv_power
               load_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_load_power
@@ -29,6 +30,7 @@ views:
               grid_to_load_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_to_load_power
 
       - type: grid
+        column_span: 2
         cards:
           - type: heading
             heading: Energy Summary
@@ -36,7 +38,7 @@ views:
           - type: custom:gosungrow-energy-summary-card-v1
             layout_options:
               grid_columns: full
-              grid_rows: 6
+              grid_rows: 9
             buckets:
               day: 14
               month: 12
@@ -64,6 +66,7 @@ views:
               from_battery: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_p13029
 
       - type: grid
+        column_span: 2
         cards:
           - type: heading
             heading: Power Balance
@@ -85,6 +88,7 @@ views:
                 name: Battery
 
       - type: grid
+        column_span: 2
         cards:
           - type: heading
             heading: Battery
@@ -100,6 +104,7 @@ views:
                 name: Battery SOC
 
       - type: grid
+        column_span: 2
         cards:
           - type: heading
             heading: Daily Energy

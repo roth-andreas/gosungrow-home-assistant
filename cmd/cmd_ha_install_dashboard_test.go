@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -542,6 +543,41 @@ func TestBundledDashboardTemplateRenders(t *testing.T) {
 	}
 	if got := views[2].(map[string]any)["path"]; got != "trends" {
 		t.Fatalf("expected third bundled dashboard view to be trends, got %v", got)
+	}
+	overview, ok := views[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected overview view map, got %#v", views[0])
+	}
+	if got := fmt.Sprint(overview["max_columns"]); got != "4" {
+		t.Fatalf("expected overview max_columns=4, got %v", got)
+	}
+	overviewSections, ok := overview["sections"].([]any)
+	if !ok || len(overviewSections) < 2 {
+		t.Fatalf("expected overview sections, got %#v", overview["sections"])
+	}
+	for index := 0; index < 2; index++ {
+		section, ok := overviewSections[index].(map[string]any)
+		if !ok {
+			t.Fatalf("expected overview section %d map, got %#v", index, overviewSections[index])
+		}
+		if got := fmt.Sprint(section["column_span"]); got != "2" {
+			t.Fatalf("expected overview section %d column_span=2, got %v", index, got)
+		}
+		cards, ok := section["cards"].([]any)
+		if !ok || len(cards) < 2 {
+			t.Fatalf("expected overview section %d cards, got %#v", index, section["cards"])
+		}
+		card, ok := cards[1].(map[string]any)
+		if !ok {
+			t.Fatalf("expected overview section %d custom card map, got %#v", index, cards[1])
+		}
+		layout, ok := card["layout_options"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected overview section %d layout options, got %#v", index, card["layout_options"])
+		}
+		if got := fmt.Sprint(layout["grid_rows"]); got != "9" {
+			t.Fatalf("expected overview section %d grid_rows=9, got %v", index, got)
+		}
 	}
 
 	text := string(rendered)
