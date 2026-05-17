@@ -1678,7 +1678,7 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
 
     return rows.map((row, index) => {
       if (index === 0) {
-        return NaN;
+        return Number.isFinite(row.sum) ? row.sum : row.state;
       }
       return Math.max(0, row.sum - rows[index - 1].sum);
     });

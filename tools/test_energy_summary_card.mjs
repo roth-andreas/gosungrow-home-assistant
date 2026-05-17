@@ -132,11 +132,11 @@ test("month and year combine completed recorder days with today's live value", (
     row("2026-05-16", 100),
   ];
 
-  assert.deepEqual(values(chartFor(card, "month", rows)), [7]);
-  assert.equal(card._headlineStatValue("month", entityID).value, 7);
+  assert.deepEqual(values(chartFor(card, "month", rows)), [17]);
+  assert.equal(card._headlineStatValue("month", entityID).value, 17);
 
-  assert.deepEqual(values(chartFor(card, "year", rows)), [7]);
-  assert.equal(card._headlineStatValue("year", entityID).value, 7);
+  assert.deepEqual(values(chartFor(card, "year", rows)), [17]);
+  assert.equal(card._headlineStatValue("year", entityID).value, 17);
 });
 
 test("current day recorder rows are ignored and replaced by live daily state", () => {
@@ -146,8 +146,30 @@ test("current day recorder rows are ignored and replaced by live daily state", (
     row("2026-05-16", 100),
   ];
 
-  assert.deepEqual(values(chartFor(card, "day", rows)), [3]);
+  assert.deepEqual(values(chartFor(card, "day", rows)), [10, 3]);
   assert.equal(card._headlineStatValue("day", entityID).value, 3);
+});
+
+test("second day keeps the first completed recorder day when no baseline exists", () => {
+  const card = createCard("2026-05-17T12:00:00.000Z", 3);
+  const rows = [
+    row("2026-05-16", 7),
+    row("2026-05-17", 100),
+  ];
+
+  const dayChart = chartFor(card, "day", rows);
+  assert.deepEqual(bucketKeys(dayChart), ["2026-05-16", "2026-05-17"]);
+  assert.deepEqual(values(dayChart), [7, 3]);
+
+  const monthChart = chartFor(card, "month", rows);
+  assert.deepEqual(bucketKeys(monthChart), ["2026-05"]);
+  assert.deepEqual(values(monthChart), [10]);
+  assert.equal(card._headlineStatValue("month", entityID).value, 10);
+
+  const yearChart = chartFor(card, "year", rows);
+  assert.deepEqual(bucketKeys(yearChart), ["2026"]);
+  assert.deepEqual(values(yearChart), [10]);
+  assert.equal(card._headlineStatValue("year", entityID).value, 10);
 });
 
 test("month boundary keeps previous month total and starts current month from live day", () => {
