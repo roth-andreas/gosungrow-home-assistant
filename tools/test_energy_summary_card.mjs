@@ -95,8 +95,12 @@ function createMultiMetricCard(now, liveValues) {
   return card;
 }
 
-function row(date, sum) {
-  return { start: `${date}T00:00:00.000Z`, sum };
+function stateRow(date, state) {
+  return { start: `${date}T00:00:00.000Z`, state };
+}
+
+function maxRow(date, max) {
+  return { start: `${date}T00:00:00.000Z`, max };
 }
 
 function timestampRow(date, sum) {
@@ -131,23 +135,23 @@ test("fresh install shows one live bucket for day, month, and year", () => {
 test("month and year combine completed recorder days with today's live value", () => {
   const card = createCard("2026-05-16T12:00:00.000Z", 3);
   const rows = [
-    row("2026-05-14", 10),
-    row("2026-05-15", 14),
-    row("2026-05-16", 100),
+    stateRow("2026-05-14", 10),
+    stateRow("2026-05-15", 14),
+    stateRow("2026-05-16", 100),
   ];
 
-  assert.deepEqual(values(chartFor(card, "month", rows)), [17]);
-  assert.equal(card._headlineStatValue("month", entityID).value, 17);
+  assert.deepEqual(values(chartFor(card, "month", rows)), [27]);
+  assert.equal(card._headlineStatValue("month", entityID).value, 27);
 
-  assert.deepEqual(values(chartFor(card, "year", rows)), [17]);
-  assert.equal(card._headlineStatValue("year", entityID).value, 17);
+  assert.deepEqual(values(chartFor(card, "year", rows)), [27]);
+  assert.equal(card._headlineStatValue("year", entityID).value, 27);
 });
 
 test("current day recorder rows are ignored and replaced by live daily state", () => {
   const card = createCard("2026-05-16T12:00:00.000Z", 3);
   const rows = [
-    row("2026-05-15", 10),
-    row("2026-05-16", 100),
+    stateRow("2026-05-15", 10),
+    stateRow("2026-05-16", 100),
   ];
 
   assert.deepEqual(values(chartFor(card, "day", rows)), [10, 3]);
@@ -157,8 +161,8 @@ test("current day recorder rows are ignored and replaced by live daily state", (
 test("second day keeps the first completed recorder day when no baseline exists", () => {
   const card = createCard("2026-05-17T12:00:00.000Z", 3);
   const rows = [
-    row("2026-05-16", 7),
-    row("2026-05-17", 100),
+    stateRow("2026-05-16", 7),
+    stateRow("2026-05-17", 100),
   ];
 
   const dayChart = chartFor(card, "day", rows);
@@ -191,27 +195,43 @@ test("recorder rows with Home Assistant millisecond timestamps are parsed", () =
   assert.deepEqual(values(monthChart), [10]);
 });
 
+test("daily recorder max is preferred for accumulating daily sensors", () => {
+  const card = createCard("2026-05-17T12:00:00.000Z", 4);
+  const rows = [
+    { ...maxRow("2026-05-16", 23), state: 22.8, sum: 5.5 },
+    { ...maxRow("2026-05-17", 99), state: 99, sum: 99 },
+  ];
+
+  const dayChart = chartFor(card, "day", rows);
+  assert.deepEqual(bucketKeys(dayChart), ["2026-05-16", "2026-05-17"]);
+  assert.deepEqual(values(dayChart), [23, 4]);
+
+  const monthChart = chartFor(card, "month", rows);
+  assert.deepEqual(values(monthChart), [27]);
+  assert.equal(card._headlineStatValue("month", entityID).value, 27);
+});
+
 test("month boundary keeps previous month total and starts current month from live day", () => {
   const card = createCard("2026-06-01T12:00:00.000Z", 2);
   const rows = [
-    row("2026-05-29", 0),
-    row("2026-05-30", 4),
-    row("2026-05-31", 9),
-    row("2026-06-01", 99),
+    stateRow("2026-05-29", 0),
+    stateRow("2026-05-30", 4),
+    stateRow("2026-05-31", 9),
+    stateRow("2026-06-01", 99),
   ];
 
   const chart = chartFor(card, "month", rows);
   assert.deepEqual(bucketKeys(chart), ["2026-05", "2026-06"]);
-  assert.deepEqual(values(chart), [9, 2]);
+  assert.deepEqual(values(chart), [13, 2]);
   assert.equal(card._headlineStatValue("month", entityID).value, 2);
 });
 
 test("year boundary keeps previous year total and starts current year from live day", () => {
   const card = createCard("2027-01-01T12:00:00.000Z", 2);
   const rows = [
-    row("2026-12-30", 0),
-    row("2026-12-31", 5),
-    row("2027-01-01", 99),
+    stateRow("2026-12-30", 0),
+    stateRow("2026-12-31", 5),
+    stateRow("2027-01-01", 99),
   ];
 
   const chart = chartFor(card, "year", rows);
@@ -241,6 +261,7 @@ test("recorder requests use daily statistics for every view", () => {
   card._ensureStatistics();
 
   assert.equal(request.period, "day");
+  assert.deepEqual(Array.from(request.types), ["max", "state", "sum"]);
 });
 
 test("rendered bars expose bucket metadata and keyboard focus", () => {

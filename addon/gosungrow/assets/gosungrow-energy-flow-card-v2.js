@@ -1543,7 +1543,7 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
         end_time: range.end.toISOString(),
         statistic_ids: entityIDs,
         period: "day",
-        types: ["sum", "state"],
+        types: ["max", "state", "sum"],
       })
       .then((response) => {
         this._statsCache[key] = this._parseStatistics(response, entityIDs, this._period);
@@ -1608,10 +1608,11 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
       const numericRows = rows
         .map((row) => ({
           start: row?.start,
+          max: Number.parseFloat(row?.max),
           sum: Number.parseFloat(row?.sum),
           state: Number.parseFloat(row?.state),
         }))
-        .filter((row) => this._isValidStatisticStart(row.start) && (Number.isFinite(row.sum) || Number.isFinite(row.state)))
+        .filter((row) => this._isValidStatisticStart(row.start) && (Number.isFinite(row.max) || Number.isFinite(row.state) || Number.isFinite(row.sum)))
         .sort((a, b) => this._timeForStatisticStart(a.start) - this._timeForStatisticStart(b.start));
 
       if (numericRows.length > 0) {
@@ -1663,24 +1664,14 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
   }
 
   _bucketRows(rows) {
-    const sums = rows.map((row) => row.sum);
-    const hasUsableSums = sums.filter((value) => Number.isFinite(value)).length >= 2;
-    const monotonicSums = hasUsableSums && sums.every((value, index) => {
-      if (!Number.isFinite(value)) {
-        return false;
+    return rows.map((row) => {
+      if (Number.isFinite(row.max)) {
+        return row.max;
       }
-      return index === 0 || value >= sums[index - 1];
-    });
-
-    if (!monotonicSums) {
-      return rows.map((row) => (Number.isFinite(row.sum) ? row.sum : row.state));
-    }
-
-    return rows.map((row, index) => {
-      if (index === 0) {
-        return Number.isFinite(row.sum) ? row.sum : row.state;
+      if (Number.isFinite(row.state)) {
+        return row.state;
       }
-      return Math.max(0, row.sum - rows[index - 1].sum);
+      return row.sum;
     });
   }
 
