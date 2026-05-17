@@ -548,8 +548,8 @@ func TestBundledDashboardTemplateRenders(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected overview view map, got %#v", views[0])
 	}
-	if got := fmt.Sprint(overview["max_columns"]); got != "4" {
-		t.Fatalf("expected overview max_columns=4, got %v", got)
+	if got := fmt.Sprint(overview["max_columns"]); got != "6" {
+		t.Fatalf("expected overview max_columns=6, got %v", got)
 	}
 	overviewSections, ok := overview["sections"].([]any)
 	if !ok || len(overviewSections) < 2 {
@@ -560,8 +560,8 @@ func TestBundledDashboardTemplateRenders(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected overview section %d map, got %#v", index, overviewSections[index])
 		}
-		if got := fmt.Sprint(section["column_span"]); got != "2" {
-			t.Fatalf("expected overview section %d column_span=2, got %v", index, got)
+		if got := fmt.Sprint(section["column_span"]); got != "3" {
+			t.Fatalf("expected overview section %d column_span=3, got %v", index, got)
 		}
 		cards, ok := section["cards"].([]any)
 		if !ok || len(cards) < 2 {
@@ -577,6 +577,15 @@ func TestBundledDashboardTemplateRenders(t *testing.T) {
 		}
 		if got := fmt.Sprint(layout["grid_rows"]); got != "9" {
 			t.Fatalf("expected overview section %d grid_rows=9, got %v", index, got)
+		}
+	}
+	for index := 2; index < 5; index++ {
+		section, ok := overviewSections[index].(map[string]any)
+		if !ok {
+			t.Fatalf("expected overview chart section %d map, got %#v", index, overviewSections[index])
+		}
+		if got := fmt.Sprint(section["column_span"]); got != "2" {
+			t.Fatalf("expected overview chart section %d column_span=2, got %v", index, got)
 		}
 	}
 

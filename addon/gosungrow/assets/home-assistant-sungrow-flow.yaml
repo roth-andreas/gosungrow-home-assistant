@@ -4,11 +4,11 @@ views:
     path: overview
     icon: mdi:solar-power
     type: sections
-    max_columns: 4
+    max_columns: 6
     dense_section_placement: true
     sections:
       - type: grid
-        column_span: 2
+        column_span: 3
         cards:
           - type: heading
             heading: Live Flow
@@ -30,7 +30,7 @@ views:
               grid_to_load_power: sensor.gosungrow_virtual_YOUR_ESS_PS_KEY_grid_to_load_power
 
       - type: grid
-        column_span: 2
+        column_span: 3
         cards:
           - type: heading
             heading: Energy Summary
