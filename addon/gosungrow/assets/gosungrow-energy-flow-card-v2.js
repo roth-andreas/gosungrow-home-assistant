@@ -74,15 +74,10 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
       <style>
         :host {
           display: block;
-          height: 100%;
         }
 
         ha-card {
-          box-sizing: border-box;
-          display: flex;
-          flex-direction: column;
-          height: 100%;
-          min-height: 420px;
+          display: block;
           overflow: hidden;
           background: var(--card-background-color, #1f1f1f);
           border-radius: var(--ha-card-border-radius, 12px);
@@ -96,10 +91,6 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         }
 
         .shell {
-          box-sizing: border-box;
-          display: flex;
-          flex: 1 1 auto;
-          min-height: 0;
           padding: 10px 8px 8px;
         }
 
@@ -110,15 +101,10 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         svg {
           display: block;
           width: 100%;
-          height: 100%;
-          min-height: 300px;
+          height: auto;
         }
 
         .stage {
-          display: flex;
-          flex: 1 1 auto;
-          min-height: 0;
-          width: 100%;
           border-radius: 16px;
           overflow: hidden;
           background:
@@ -126,16 +112,6 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
             linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.01)),
             var(--card-background-color, #1f1f1f);
           box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
-        }
-
-        @media (max-width: 720px) {
-          ha-card {
-            min-height: 340px;
-          }
-
-          svg {
-            min-height: 260px;
-          }
         }
 
         .edge-base {
@@ -928,26 +904,16 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
       <style>
         :host {
           display: block;
-          height: 100%;
         }
 
         ha-card {
-          box-sizing: border-box;
-          display: flex;
-          flex-direction: column;
-          height: 100%;
-          min-height: 420px;
+          display: block;
           overflow: hidden;
           background: var(--card-background-color, #1f1f1f);
           border-radius: var(--ha-card-border-radius, 12px);
         }
 
         .summary {
-          box-sizing: border-box;
-          display: flex;
-          flex: 1 1 auto;
-          flex-direction: column;
-          min-height: 0;
           padding: 14px 16px 16px;
         }
 
@@ -1002,25 +968,16 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
 
         .metrics {
           display: grid;
-          grid-template-columns: minmax(0, 1fr);
-          overflow: hidden;
-          border: 1px solid rgba(148, 163, 184, 0.12);
-          border-radius: 8px;
-          background: rgba(148, 163, 184, 0.07);
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 10px;
         }
 
         .metric {
-          display: grid;
-          grid-template-columns: minmax(0, 1fr) auto;
-          align-items: center;
-          gap: 12px;
           min-width: 0;
-          padding: 9px 11px;
-          border-bottom: 1px solid rgba(148, 163, 184, 0.1);
-        }
-
-        .metric:last-child {
-          border-bottom: 0;
+          padding: 12px;
+          border-radius: 8px;
+          background: rgba(148, 163, 184, 0.09);
+          border: 1px solid rgba(148, 163, 184, 0.1);
         }
 
         .metric-name {
@@ -1041,8 +998,9 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
         }
 
         .metric-value {
+          margin-top: 8px;
           color: var(--primary-text-color);
-          font-size: 0.96rem;
+          font-size: 1.22rem;
           font-weight: 750;
           line-height: 1.1;
           font-variant-numeric: tabular-nums;
@@ -1064,9 +1022,6 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
 
         .chart-wrap {
           position: relative;
-          box-sizing: border-box;
-          flex: 1 1 auto;
-          min-height: 0;
           margin-top: 14px;
           padding: 12px 10px 10px;
           border-radius: 8px;
@@ -1078,8 +1033,7 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
           display: block;
           width: 100%;
           height: auto;
-          max-height: 210px;
-          min-height: 160px;
+          min-height: 210px;
         }
 
         .axis,
@@ -1172,7 +1126,6 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
         .legend {
           display: flex;
           flex-wrap: wrap;
-          flex: 0 0 auto;
           gap: 8px 14px;
           margin-top: 8px;
         }
@@ -1198,12 +1151,11 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
           }
 
           .metrics {
-            grid-template-columns: minmax(0, 1fr);
+            grid-template-columns: repeat(2, minmax(0, 1fr));
           }
 
           .chart {
-            max-height: none;
-            min-height: 180px;
+            min-height: 190px;
           }
         }
       </style>
@@ -1295,7 +1247,7 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
       .join("");
 
     const groupWidth = plotWidth / Math.max(chart.buckets.length, 1);
-    const groupGap = Math.min(24, Math.max(12, groupWidth * 0.26));
+    const groupGap = Math.min(10, groupWidth * 0.18);
     const barGap = 2;
     const barWidth = Math.max(2, (groupWidth - groupGap - barGap * (chart.series.length - 1)) / chart.series.length);
     const bars = chart.buckets

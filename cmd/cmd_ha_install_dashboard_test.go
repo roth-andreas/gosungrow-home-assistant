@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -544,50 +543,6 @@ func TestBundledDashboardTemplateRenders(t *testing.T) {
 	if got := views[2].(map[string]any)["path"]; got != "trends" {
 		t.Fatalf("expected third bundled dashboard view to be trends, got %v", got)
 	}
-	overview, ok := views[0].(map[string]any)
-	if !ok {
-		t.Fatalf("expected overview view map, got %#v", views[0])
-	}
-	if got := fmt.Sprint(overview["max_columns"]); got != "6" {
-		t.Fatalf("expected overview max_columns=6, got %v", got)
-	}
-	overviewSections, ok := overview["sections"].([]any)
-	if !ok || len(overviewSections) < 2 {
-		t.Fatalf("expected overview sections, got %#v", overview["sections"])
-	}
-	for index := 0; index < 2; index++ {
-		section, ok := overviewSections[index].(map[string]any)
-		if !ok {
-			t.Fatalf("expected overview section %d map, got %#v", index, overviewSections[index])
-		}
-		if got := fmt.Sprint(section["column_span"]); got != "3" {
-			t.Fatalf("expected overview section %d column_span=3, got %v", index, got)
-		}
-		cards, ok := section["cards"].([]any)
-		if !ok || len(cards) < 2 {
-			t.Fatalf("expected overview section %d cards, got %#v", index, section["cards"])
-		}
-		card, ok := cards[1].(map[string]any)
-		if !ok {
-			t.Fatalf("expected overview section %d custom card map, got %#v", index, cards[1])
-		}
-		layout, ok := card["layout_options"].(map[string]any)
-		if !ok {
-			t.Fatalf("expected overview section %d layout options, got %#v", index, card["layout_options"])
-		}
-		if got := fmt.Sprint(layout["grid_rows"]); got != "9" {
-			t.Fatalf("expected overview section %d grid_rows=9, got %v", index, got)
-		}
-	}
-	for index := 2; index < 5; index++ {
-		section, ok := overviewSections[index].(map[string]any)
-		if !ok {
-			t.Fatalf("expected overview chart section %d map, got %#v", index, overviewSections[index])
-		}
-		if got := fmt.Sprint(section["column_span"]); got != "2" {
-			t.Fatalf("expected overview chart section %d column_span=2, got %v", index, got)
-		}
-	}
 
 	text := string(rendered)
 	if !strings.Contains(text, "\"type\":\"custom:gosungrow-energy-flow-card-v2\"") {
@@ -595,12 +550,6 @@ func TestBundledDashboardTemplateRenders(t *testing.T) {
 	}
 	if !strings.Contains(text, "\"type\":\"custom:gosungrow-energy-summary-card-v1\"") {
 		t.Fatal("expected custom GoSungrow energy summary card in bundled dashboard")
-	}
-	if count := strings.Count(text, "\"type\":\"custom:gosungrow-energy-summary-card-v1\""); count < 2 {
-		t.Fatalf("expected summary card on overview and aggregates views, got %d", count)
-	}
-	if strings.Contains(text, "\"heading\":\"Today\"") {
-		t.Fatal("expected overview Today tiles to be replaced by energy summary")
 	}
 	if !strings.Contains(text, "\"buckets\":{\"day\":14,\"month\":12,\"year\":5}") {
 		t.Fatal("expected summary card bucket defaults in bundled dashboard")

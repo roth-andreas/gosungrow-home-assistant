@@ -94,9 +94,15 @@
 
       .overview-grid {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: minmax(0, 2.2fr) minmax(320px, 1fr);
         gap: var(--ha-grid-gap);
-        align-items: stretch;
+        align-items: start;
+      }
+
+      .today-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
       }
 
       .charts-grid {
@@ -125,25 +131,7 @@
       }
 
       .section-card {
-        box-sizing: border-box;
-        display: flex;
-        flex-direction: column;
         padding: 12px;
-      }
-
-      .top-card {
-        min-height: 520px;
-      }
-
-      .card-mount {
-        display: flex;
-        flex: 1 1 auto;
-        min-height: 0;
-      }
-
-      .card-mount > * {
-        flex: 1 1 auto;
-        min-width: 0;
       }
 
       .section-heading {
@@ -228,10 +216,6 @@
         .charts-grid,
         .trends-grid {
           grid-template-columns: 1fr;
-        }
-
-        .top-card {
-          min-height: 0;
         }
       }
     </style>

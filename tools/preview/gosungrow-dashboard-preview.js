@@ -241,13 +241,13 @@ function renderView(state, scenario) {
     const overview = document.createElement("div");
     overview.innerHTML = `
       <div class="overview-grid">
-        <div class="section-card top-card" data-overview-card="flow">
+        <div class="section-card">
           <div class="section-heading">Live Flow</div>
-          <div class="card-mount" id="flow-mount"></div>
+          <div id="flow-mount"></div>
         </div>
-        <div class="section-card top-card" data-overview-card="summary">
-          <div class="section-heading">Energy Summary</div>
-          <div class="card-mount" id="summary-mount"></div>
+        <div class="section-card">
+          <div class="section-heading">Today</div>
+          <div class="today-grid">${renderTiles(scenario.daily, scenario.flows.batterySoc)}</div>
         </div>
       </div>
       <div class="charts-grid">
@@ -258,7 +258,6 @@ function renderView(state, scenario) {
     `;
     root.appendChild(overview);
     mountFlowCard(root.querySelector("#flow-mount"), state.device, scenario);
-    mountSummaryCard(root.querySelector("#summary-mount"), scenario);
     return root;
   }
 
@@ -293,6 +292,7 @@ function renderView(state, scenario) {
 function mountFlowCard(container, device, scenario) {
   const card = document.createElement("gosungrow-energy-flow-card-v2");
   card.setConfig({
+    title: "Live Energy Flow",
     entities: {
       solar_power: ENTITY_IDS.solarPower,
       load_power: ENTITY_IDS.loadPower,
@@ -344,7 +344,7 @@ function mountSummaryCard(container, scenario) {
 
 function writeInspectionReport(state, scenario) {
   const flowCard = document.querySelector("gosungrow-energy-flow-card-v2");
-  const report = inspectDashboard(state, scenario, flowCard);
+  const report = inspectFlowCard(flowCard, state, scenario);
   const existing = document.getElementById("inspect-report");
   if (existing) {
     existing.remove();
@@ -354,100 +354,6 @@ function writeInspectionReport(state, scenario) {
   script.id = "inspect-report";
   script.textContent = JSON.stringify(report, null, 2);
   document.body.appendChild(script);
-}
-
-function inspectDashboard(state, scenario, flowCard) {
-  const flowReport = inspectFlowCard(flowCard, state, scenario);
-  if (state.view !== "overview") {
-    return flowReport;
-  }
-
-  const overviewReport = inspectOverviewLayout(state);
-  return {
-    ...flowReport,
-    ok: flowReport.ok && overviewReport.ok,
-    warnings: [...(flowReport.warnings || []), ...overviewReport.warnings],
-    errors: [...(flowReport.errors || []), ...overviewReport.errors],
-    metrics: {
-      ...(flowReport.metrics || {}),
-      overview: overviewReport.metrics,
-    },
-  };
-}
-
-function inspectOverviewLayout(state) {
-  const errors = [];
-  const warnings = [];
-  const app = document.getElementById("app");
-  const overview = document.querySelector(".overview-grid");
-  const flowSection = document.querySelector('[data-overview-card="flow"]');
-  const summarySection = document.querySelector('[data-overview-card="summary"]');
-  const summaryCard = document.querySelector("gosungrow-energy-summary-card-v1");
-  const firstChart = document.querySelector(".charts-grid .chart-card");
-
-  if (!app || !overview || !flowSection || !summarySection || !summaryCard || !firstChart) {
-    return {
-      ok: false,
-      errors: ["Overview inspection elements not found"],
-      warnings,
-      metrics: {},
-    };
-  }
-
-  const appBox = absoluteBox(app);
-  const overviewBox = absoluteBox(overview);
-  const flowBox = absoluteBox(flowSection);
-  const summaryBox = absoluteBox(summarySection);
-  const firstChartBox = absoluteBox(firstChart);
-  const summaryCardBox = absoluteBox(summaryCard);
-  const summaryShadow = summaryCard.shadowRoot;
-  const summaryHaCard = summaryShadow?.querySelector("ha-card");
-  const summaryChart = summaryShadow?.querySelector(".chart");
-  const summaryLegend = summaryShadow?.querySelector(".legend");
-  const summaryTooltip = summaryShadow?.querySelector(".chart-tooltip");
-  const summaryBounds = absoluteBox(summaryHaCard || summaryCard);
-  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || appBox.width;
-  const contentWidthRatio = overviewBox.width / Math.max(1, viewportWidth);
-  const heightDelta = Math.abs(flowBox.height - summaryBox.height);
-  const gapToCharts = firstChartBox.y - Math.max(flowBox.y + flowBox.height, summaryBox.y + summaryBox.height);
-
-  if (state.device !== "mobile" && contentWidthRatio < 0.85) {
-    warnings.push(`Overview uses ${(contentWidthRatio * 100).toFixed(1)}% of viewport width`);
-  }
-  if (state.device !== "mobile" && heightDelta > 24) {
-    warnings.push(`Top card heights differ by ${heightDelta.toFixed(1)}px`);
-  }
-  if (gapToCharts < 16) {
-    warnings.push(`Top row is ${gapToCharts.toFixed(1)}px from the first chart`);
-  }
-  if (summaryCardBox.y + summaryCardBox.height > firstChartBox.y - 16) {
-    warnings.push("Energy Summary card reaches into the chart row spacing");
-  }
-
-  [
-    ["summary chart", summaryChart],
-    ["summary legend", summaryLegend],
-    ["summary tooltip", summaryTooltip && !summaryTooltip.classList.contains("hidden") ? summaryTooltip : null],
-  ].forEach(([label, element]) => {
-    if (element && outside(absoluteBox(element), summaryBounds, -1)) {
-      warnings.push(`${label} escapes the Energy Summary card bounds`);
-    }
-  });
-
-  return {
-    ok: errors.length === 0 && warnings.length === 0,
-    errors,
-    warnings,
-    metrics: {
-      viewportWidth: Number(viewportWidth.toFixed(1)),
-      contentWidthRatio: Number(contentWidthRatio.toFixed(3)),
-      flowSection: roundBox(flowBox),
-      summarySection: roundBox(summaryBox),
-      topHeightDelta: Number(heightDelta.toFixed(1)),
-      gapToCharts: Number(gapToCharts.toFixed(1)),
-      firstChart: roundBox(firstChartBox),
-    },
-  };
 }
 
 function writeInspectionFailure(state, error) {
