@@ -968,16 +968,25 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
 
         .metrics {
           display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 10px;
+          grid-template-columns: minmax(0, 1fr);
+          overflow: hidden;
+          border: 1px solid rgba(148, 163, 184, 0.12);
+          border-radius: 8px;
+          background: rgba(148, 163, 184, 0.07);
         }
 
         .metric {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          align-items: center;
+          gap: 12px;
           min-width: 0;
-          padding: 12px;
-          border-radius: 8px;
-          background: rgba(148, 163, 184, 0.09);
-          border: 1px solid rgba(148, 163, 184, 0.1);
+          padding: 9px 11px;
+          border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        .metric:last-child {
+          border-bottom: 0;
         }
 
         .metric-name {
@@ -998,9 +1007,8 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
         }
 
         .metric-value {
-          margin-top: 8px;
           color: var(--primary-text-color);
-          font-size: 1.22rem;
+          font-size: 0.96rem;
           font-weight: 750;
           line-height: 1.1;
           font-variant-numeric: tabular-nums;
@@ -1151,7 +1159,7 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
           }
 
           .metrics {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: minmax(0, 1fr);
           }
 
           .chart {
@@ -1247,7 +1255,7 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
       .join("");
 
     const groupWidth = plotWidth / Math.max(chart.buckets.length, 1);
-    const groupGap = Math.min(10, groupWidth * 0.18);
+    const groupGap = Math.min(24, Math.max(12, groupWidth * 0.26));
     const barGap = 2;
     const barWidth = Math.max(2, (groupWidth - groupGap - barGap * (chart.series.length - 1)) / chart.series.length);
     const bars = chart.buckets

@@ -551,6 +551,12 @@ func TestBundledDashboardTemplateRenders(t *testing.T) {
 	if !strings.Contains(text, "\"type\":\"custom:gosungrow-energy-summary-card-v1\"") {
 		t.Fatal("expected custom GoSungrow energy summary card in bundled dashboard")
 	}
+	if count := strings.Count(text, "\"type\":\"custom:gosungrow-energy-summary-card-v1\""); count < 2 {
+		t.Fatalf("expected summary card on overview and aggregates views, got %d", count)
+	}
+	if strings.Contains(text, "\"heading\":\"Today\"") {
+		t.Fatal("expected overview Today tiles to be replaced by energy summary")
+	}
 	if !strings.Contains(text, "\"buckets\":{\"day\":14,\"month\":12,\"year\":5}") {
 		t.Fatal("expected summary card bucket defaults in bundled dashboard")
 	}
