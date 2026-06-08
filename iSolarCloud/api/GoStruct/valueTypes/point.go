@@ -230,7 +230,7 @@ func (t PsId) String() string {
 
 func (t PsId) HasValue() bool {
 	value := strings.TrimSpace(t.string)
-	return t.Valid && value != "" && value != "--"
+	return t.Valid && value != "" && value != "--" && !strings.EqualFold(value, "null")
 }
 
 func (t PsId) Match(comp int64) bool {
@@ -252,7 +252,7 @@ func (t *PsId) SetString(value string) PsId {
 			break
 		}
 
-		if t.string == "--" {
+		if t.string == "--" || strings.EqualFold(t.string, "null") {
 			break
 		}
 

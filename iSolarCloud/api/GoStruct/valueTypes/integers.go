@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"github.com/MickMake/GoUnify/Only"
 	"strconv"
+	"strings"
 )
 
 type Integer struct {
@@ -86,15 +87,16 @@ func (t Integer) MatchString(comp string) bool {
 
 func (t *Integer) SetString(value string) Integer {
 	for range Only.Once {
-		t.string = value
+		t.string = strings.TrimSpace(value)
 		t.int64 = 0
 		t.Valid = false
+		t.Error = nil
 
-		if value == "" {
+		if t.string == "" {
 			break
 		}
 
-		if value == "--" {
+		if t.string == "--" || strings.EqualFold(t.string, "null") {
 			// value = ""
 			break
 		}
@@ -205,15 +207,16 @@ func (t Count) Match(comp int64) bool {
 
 func (t *Count) SetString(value string) Count {
 	for range Only.Once {
-		t.string = value
+		t.string = strings.TrimSpace(value)
 		t.int64 = 0
 		t.Valid = false
+		t.Error = nil
 
-		if value == "" {
+		if t.string == "" {
 			break
 		}
 
-		if value == "--" {
+		if t.string == "--" || strings.EqualFold(t.string, "null") {
 			// value = ""
 			break
 		}

@@ -7,6 +7,7 @@ import (
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/valueTypes"
 
 	"fmt"
+	"strings"
 )
 
 // The legacy realtime endpoint currently rejects parameters for many accounts.
@@ -49,6 +50,9 @@ func (e *EndPoint) GetData() api.DataMap {
 
 	// Keep only the requested device when a ps_key is supplied.
 	psKey := e.Request.PsKeyList.String()
+	if psID := psIDFromPsKey(psKey); psID.HasValue() {
+		list.Request.PsId = psID
+	}
 	if psKey != "" {
 		filtered := make([]queryDeviceList.Device, 0, len(list.Response.ResultData.PageList))
 		for _, device := range list.Response.ResultData.PageList {
@@ -68,4 +72,13 @@ func (e *EndPoint) GetData() api.DataMap {
 	ret := list.GetData()
 	ret.EndPoint = *e
 	return ret
+}
+
+func psIDFromPsKey(psKey string) valueTypes.PsId {
+	psKey = strings.TrimSpace(psKey)
+	if psKey == "" {
+		return valueTypes.PsId{}
+	}
+
+	return valueTypes.SetPsIdString(strings.Split(psKey, "_")[0])
 }

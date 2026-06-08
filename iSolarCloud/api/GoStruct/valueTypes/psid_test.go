@@ -66,4 +66,7 @@ func TestPsIdHasValueRejectsEmptyPlaceholder(t *testing.T) {
 	if SetPsIdString("--").HasValue() {
 		t.Fatal("expected placeholder ps_id to be treated as missing")
 	}
+	if SetPsIdString("null").HasValue() {
+		t.Fatal("expected null placeholder ps_id to be treated as missing")
+	}
 }
