@@ -75,22 +75,21 @@ func (t Uuid) Match(comp int64) bool {
 
 func (t *Uuid) SetString(value string) Uuid {
 	for range Only.Once {
-		t.string = value
+		t.string = normalizeScalarString(value)
 		t.int64 = 0
 		t.Valid = false
+		t.Error = nil
 
-		if value == "" {
-			break
-		}
-
-		if value == "--" {
-			// value = ""
+		if isEmptyScalarString(t.string) {
 			break
 		}
 
 		var v int
 		v, t.Error = strconv.Atoi(t.string)
 		if t.Error != nil {
+			// iSolarCloud can return composite identifiers such as "3109704_3109705"
+			// in UUID fields. Treat them as unavailable, not as decode-fatal errors.
+			t.Error = nil
 			break
 		}
 		t.int64 = int64(v)

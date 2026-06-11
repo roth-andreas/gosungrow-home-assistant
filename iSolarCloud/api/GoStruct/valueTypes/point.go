@@ -229,8 +229,7 @@ func (t PsId) String() string {
 }
 
 func (t PsId) HasValue() bool {
-	value := strings.TrimSpace(t.string)
-	return t.Valid && value != "" && value != "--" && !strings.EqualFold(value, "null")
+	return t.Valid && !isEmptyScalarString(t.string)
 }
 
 func (t PsId) Match(comp int64) bool {
@@ -242,17 +241,13 @@ func (t PsId) Match(comp int64) bool {
 
 func (t *PsId) SetString(value string) PsId {
 	for range Only.Once {
-		t.string = strings.TrimSpace(value)
+		t.string = normalizeScalarString(value)
 		t.int64 = 0
 		t.Numeric = false
 		t.Valid = false
 		t.Error = nil
 
-		if t.string == "" {
-			break
-		}
-
-		if t.string == "--" || strings.EqualFold(t.string, "null") {
+		if isEmptyScalarString(t.string) {
 			break
 		}
 

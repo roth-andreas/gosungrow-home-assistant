@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"github.com/MickMake/GoUnify/Only"
 	"strconv"
-	"strings"
 )
 
 type Integer struct {
@@ -87,23 +86,21 @@ func (t Integer) MatchString(comp string) bool {
 
 func (t *Integer) SetString(value string) Integer {
 	for range Only.Once {
-		t.string = strings.TrimSpace(value)
+		t.string = normalizeScalarString(value)
 		t.int64 = 0
 		t.Valid = false
 		t.Error = nil
 
-		if t.string == "" {
-			break
-		}
-
-		if t.string == "--" || strings.EqualFold(t.string, "null") {
-			// value = ""
+		if isEmptyScalarString(t.string) {
 			break
 		}
 
 		var v int
 		v, t.Error = strconv.Atoi(t.string)
 		if t.Error != nil {
+			// iSolarCloud sometimes returns string identifiers in numeric-looking
+			// response fields. Keep the raw value for diagnostics and mark it invalid.
+			t.Error = nil
 			break
 		}
 		t.int64 = int64(v)
@@ -207,23 +204,21 @@ func (t Count) Match(comp int64) bool {
 
 func (t *Count) SetString(value string) Count {
 	for range Only.Once {
-		t.string = strings.TrimSpace(value)
+		t.string = normalizeScalarString(value)
 		t.int64 = 0
 		t.Valid = false
 		t.Error = nil
 
-		if t.string == "" {
-			break
-		}
-
-		if t.string == "--" || strings.EqualFold(t.string, "null") {
-			// value = ""
+		if isEmptyScalarString(t.string) {
 			break
 		}
 
 		var v int
 		v, t.Error = strconv.Atoi(t.string)
 		if t.Error != nil {
+			// iSolarCloud sometimes returns string identifiers in numeric-looking
+			// response fields. Keep the raw value for diagnostics and mark it invalid.
+			t.Error = nil
 			break
 		}
 		t.int64 = int64(v)
