@@ -229,6 +229,12 @@ func (config *EntityConfig) FixConfig() {
 		}
 
 		switch {
+		case !config.hasNumericSensorState():
+			config.StateClass = ""
+			config.Units = ""
+			config.LastReset = ""
+			config.LastResetValueTemplate = ""
+
 		case config.Point.IsBoot():
 			config.StateClass = "measurement"
 			config.LastReset = ""
@@ -274,6 +280,60 @@ func (config *EntityConfig) FixConfig() {
 		// config.StateClass = "total"
 		// config.StateClass = "measurement"
 	}
+}
+
+func (config *EntityConfig) hasNumericSensorState() bool {
+	for range Only.Once {
+		if config.Value == nil {
+			break
+		}
+		if config.Value.IsBool() || config.Value.IsTypeDateTime() {
+			break
+		}
+		if config.Value.IsNumber() {
+			return true
+		}
+		if isNumericValueType(config.Value.TypeValue) {
+			return true
+		}
+		if isNumericValueType(valueTypes.UnitValueType(config.Units)) {
+			return true
+		}
+		if isNumericUnit(config.Units) {
+			return true
+		}
+	}
+	return false
+}
+
+func isNumericValueType(valueType string) bool {
+	switch valueType {
+	case "Power",
+		"Energy",
+		"Currency",
+		"Weight",
+		"Voltage",
+		"Current",
+		"Frequency",
+		"Reactive Power",
+		"Resistance",
+		"Percent",
+		"Temperature":
+		return true
+	}
+	return false
+}
+
+func isNumericUnit(unit string) bool {
+	switch unit {
+	case "MW", "kW", "W", "MWh", "kWh", "Wh",
+		"var", "kvar", "VA", "Hz", "V", "A", "%",
+		"AUD", "$", "g", "kg", "km", "h",
+		"Wh/Ã£Å½Â¡", "W/Ã£Å½Â¡",
+		"Ã‚Â°F", "F", "Ã¢â€žâ€°", "Ã‚Â°C", "C", "Ã¢â€žÆ’":
+		return true
+	}
+	return false
 }
 
 func SetDefault(value string, def string) string {

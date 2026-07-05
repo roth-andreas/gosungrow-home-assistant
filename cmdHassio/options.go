@@ -6,6 +6,7 @@ import (
 	"github.com/MickMake/GoUnify/Only"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/valueTypes"
+	"strings"
 	"sync"
 )
 
@@ -113,6 +114,8 @@ func (m *Options) Set(id string, value string) error {
 			break
 		}
 
+		value = m.Map[id].canonicalValue(value)
+
 		if m.Map[id].Config.Value == nil {
 			uv := valueTypes.SetUnitValueString("", "", value)
 			m.Map[id].Config.Value = &uv
@@ -137,6 +140,15 @@ func (m *Options) Get(id string) string {
 		}
 	}
 	return ret
+}
+
+func (o Option) canonicalValue(value string) string {
+	for _, option := range o.Values {
+		if strings.EqualFold(value, option) {
+			return option
+		}
+	}
+	return value
 }
 
 func (m *Options) EntityConfig(id string) *EntityConfig {

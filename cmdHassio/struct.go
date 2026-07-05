@@ -237,7 +237,8 @@ func (m *Mqtt) Connect() error {
 			break
 		}
 
-		m.err = m.CreateOption(OptionLogLevel, "Mqtt LogLevel", m.funcMqttLogLevel)
+		m.err = m.CreateOption(OptionLogLevel, "Mqtt LogLevel", m.funcMqttLogLevel,
+			cmdLog.LogLevelErrorStr, cmdLog.LogLevelWarningStr, cmdLog.LogLevelInfoStr, cmdLog.LogLevelDebugStr)
 		if m.err != nil {
 			break
 		}
