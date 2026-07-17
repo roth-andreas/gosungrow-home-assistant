@@ -182,6 +182,9 @@ function init() {
     device: params.get("device") || "desktop",
     chrome: params.get("chrome") !== "0",
     inspect: params.get("inspect") === "1",
+    sourceState: params.get("sourceState") || "automatic",
+    theme: params.get("theme") || "dark",
+    language: params.get("language") || "en",
   };
 
   populateControls(state);
@@ -203,18 +206,25 @@ function populateControls(state) {
   document.getElementById("scenario").value = state.scenario;
   document.getElementById("view").value = state.view;
   document.getElementById("device").value = state.device;
+  document.getElementById("source-state").value = state.sourceState;
+  document.getElementById("theme").value = state.theme;
+  document.getElementById("language").value = state.language;
 
   document.getElementById("apply").addEventListener("click", () => {
     const next = new URLSearchParams(window.location.search);
     next.set("scenario", document.getElementById("scenario").value);
     next.set("view", document.getElementById("view").value);
     next.set("device", document.getElementById("device").value);
+    next.set("sourceState", document.getElementById("source-state").value);
+    next.set("theme", document.getElementById("theme").value);
+    next.set("language", document.getElementById("language").value);
     next.set("chrome", state.chrome ? "1" : "0");
     window.location.search = next.toString();
   });
 }
 
 function render(state) {
+  document.documentElement.dataset.theme = state.theme;
   const app = document.getElementById("app");
   app.className = `preview-shell ${state.device}`;
 
@@ -273,6 +283,14 @@ function renderView(state, scenario) {
     return root;
   }
 
+  if (state.view === "sources") {
+    const sources = document.createElement("div");
+    sources.innerHTML = `<div id="sources-mount"></div>`;
+    root.appendChild(sources);
+    mountSourcesCard(root.querySelector("#sources-mount"), scenario, state.sourceState, state.language);
+    return root;
+  }
+
   const trends = document.createElement("div");
   trends.innerHTML = `
     <div class="trends-grid">
@@ -287,6 +305,81 @@ function renderView(state, scenario) {
   `;
   root.appendChild(trends);
   return root;
+}
+
+function mountSourcesCard(container, scenario, sourceState, language = "en") {
+  const card = document.createElement("gosungrow-source-mapping-card-v1");
+  const issue = sourceState === "warning";
+  const manual = sourceState === "manual" || sourceState === "saved";
+  const missing = sourceState === "missing";
+  const empty = sourceState === "empty";
+  const longPrefix = sourceState === "multi" ? "GoSungrow ActualEnergy – Inverter seven – " : "";
+  const translations = {
+    en: { title: "Data Sources", subtitle: "Review automatic matches or choose a dashboard override.", automatic: "Automatic", manual: "Manual", review: "Needs review", unavailable: "Unavailable", configure: "Configure", recommended: "Recommended", other: "Other compatible entities", search: "Search entities", use: "Use this source", reset: "Reset to automatic", cancel: "Cancel", saved: "Data source saved.", readonly: "Only Home Assistant administrators can change data sources.", groups: { live_power: "Live power", today_energy: "Today's energy", battery: "Battery", energy_summary: "Energy summary" }, production: "Solar production today", direct: "Direct solar consumption" },
+    de: { title: "Datenquellen", subtitle: "Automatische Zuordnungen prüfen oder eine Dashboard-Quelle auswählen.", automatic: "Automatisch", manual: "Manuell", review: "Prüfung nötig", unavailable: "Nicht verfügbar", configure: "Konfigurieren", recommended: "Empfohlen", other: "Weitere passende Entitäten", search: "Entitäten suchen", use: "Diese Quelle verwenden", reset: "Auf Automatik zurücksetzen", cancel: "Abbrechen", saved: "Datenquelle gespeichert.", readonly: "Nur Home-Assistant-Administratoren können Datenquellen ändern.", groups: { live_power: "Aktuelle Leistung", today_energy: "Heutige Energie", battery: "Batterie", energy_summary: "Energieübersicht" }, production: "Solarerzeugung heute", direct: "Direkter Solarverbrauch" },
+    sv: { title: "Datakällor", subtitle: "Granska automatiska matchningar eller välj en källa för instrumentpanelen.", automatic: "Automatisk", manual: "Manuell", review: "Behöver granskas", unavailable: "Inte tillgänglig", configure: "Konfigurera", recommended: "Rekommenderad", other: "Andra kompatibla entiteter", search: "Sök entiteter", use: "Använd denna källa", reset: "Återställ till automatisk", cancel: "Avbryt", saved: "Datakällan sparades.", readonly: "Endast Home Assistant-administratörer kan ändra datakällor.", groups: { live_power: "Aktuell effekt", today_energy: "Dagens energi", battery: "Batteri", energy_summary: "Energisammanfattning" }, production: "Solproduktion idag", direct: "Direkt solförbrukning" },
+  };
+  const text = translations[language] || translations.en;
+  const liveStates = {};
+  const metric = (key, group, icon, label, entity, state, unit) => {
+    const candidates = empty ? [] : [
+      { entity_id: entity, point_id: key, score: 260, confidence: "high", reason: "Current automatic match", recommended: true },
+      { entity_id: `${entity}_alternative`, device: "Plant total", point_id: key, score: 248, confidence: "high", reason: "Compatible unit and same plant", recommended: true },
+      { entity_id: `${entity}_device_2`, device: "Device 2", point_id: key, score: 196, confidence: "medium", reason: "Compatible device-level sensor", recommended: false },
+    ];
+    liveStates[entity] = { state: String(state), attributes: { unit_of_measurement: unit, friendly_name: `${longPrefix}${label}` } };
+    liveStates[`${entity}_alternative`] = { state: String(Math.max(0, Number(state) - 1.2)), attributes: { unit_of_measurement: unit, friendly_name: `${longPrefix}${label} – Plant total` } };
+    liveStates[`${entity}_device_2`] = { state: String(Math.max(0, Number(state) / 2)), attributes: { unit_of_measurement: unit, friendly_name: `${longPrefix}${label} – Device 2` } };
+    return { key, group, icon, label, default: entity, confidence: "high", reason: "Current automatic match", candidates };
+  };
+  const production = 42.8;
+  const direct = issue ? 52.6 : 30.5;
+  const metrics = [
+    metric("pv_power", "live_power", "mdi:solar-power", "Solar power", ENTITY_IDS.solarPower, 3.2, "kW"),
+    metric("load_power", "live_power", "mdi:home-lightning-bolt-outline", "Home consumption power", ENTITY_IDS.loadPower, 0.9, "kW"),
+    metric("grid_power", "live_power", "mdi:transmission-tower", "Grid power", ENTITY_IDS.gridPower, -0.2, "kW"),
+    metric("p13112", "today_energy", "mdi:white-balance-sunny", text.production, ENTITY_IDS.dailyPvYield, production, "kWh"),
+    metric("p13116", "today_energy", "mdi:home-lightning-bolt-outline", text.direct, ENTITY_IDS.dailyPvToLoad, direct, "kWh"),
+    metric("p13174", "today_energy", "mdi:battery-charging-medium", "Solar energy to battery", ENTITY_IDS.dailyPvToBattery, 12.2, "kWh"),
+    metric("p13141", "battery", "mdi:battery-medium", "Battery state of charge", ENTITY_IDS.batterySoc, 75, "%"),
+    metric("battery_power", "battery", "mdi:battery-charging", "Battery power", ENTITY_IDS.batteryPower, -2.1, "kW"),
+    metric("p13199", "energy_summary", "mdi:home-lightning-bolt", "Home consumption today", ENTITY_IDS.dailyConsumption, 31.2, "kWh"),
+    metric("p13147", "energy_summary", "mdi:download-network-outline", "Grid import today", ENTITY_IDS.dailyGridImport, 0.2, "kWh"),
+  ];
+  metrics.find((item) => item.key === "p13116").validation = { schema_version: 1, rules: [{ type: "not_materially_greater_than", metric: "p13112", relative_tolerance: 0.05, absolute_tolerance: 0.1 }] };
+  const overrides = manual ? { p13116: `${ENTITY_IDS.dailyPvToLoad}_alternative` } : missing ? { p13116: "sensor.preview_missing_manual" } : {};
+  if (manual || missing) { const selectedMetric = metrics.find((item) => item.key === "p13116"); selectedMetric.confidence = "manual"; selectedMetric.reason = "Current manual selection"; }
+  const defaults = Object.fromEntries(metrics.map((item) => [item.key, item.default]));
+  const candidates = Object.fromEntries(metrics.map((item) => [item.key, item.candidates]));
+  metrics.forEach((item) => delete item.candidates);
+  const bindings = Object.fromEntries(metrics.map((item, index) => [item.key, [`/views/0/cards/${index}/entity`]]));
+  const labels = { title: text.title, subtitle: text.subtitle, automatic: text.automatic, manual: text.manual, needs_review: text.review, unavailable: text.unavailable, configure: text.configure, recommended: text.recommended, other: text.other, search: text.search, use_source: text.use, reset: text.reset, cancel: text.cancel, saved: text.saved, readonly: text.readonly,
+    source_unavailable_warning: language === "de" ? "Die ausgewählte Entität ist nicht verfügbar oder nicht numerisch." : language === "sv" ? "Den valda entiteten är inte tillgänglig eller saknar numeriskt värde." : "The selected entity is unavailable or non-numeric.",
+    source_physical_warning: language === "de" ? "Der ausgewählte Wert ({value}) überschreitet die Solarerzeugung ({reference}). Bitte Quelle prüfen." : language === "sv" ? "Det valda värdet ({value}) överstiger solproduktionen ({reference}). Granska källan." : "Selected value ({value}) exceeds solar production ({reference}). Review this source.",
+    source_save_error: language === "de" ? "Datenquelle konnte nicht gespeichert werden." : language === "sv" ? "Datakällan kunde inte sparas." : "Could not save the data source.", confidence_high: language === "de" ? "Hohe Zuverlässigkeit" : language === "sv" ? "Hög säkerhet" : "High confidence", confidence_medium: language === "de" ? "Mittlere Zuverlässigkeit" : language === "sv" ? "Medelhög säkerhet" : "Medium confidence", confidence_low: language === "de" ? "Niedrige Zuverlässigkeit" : language === "sv" ? "Låg säkerhet" : "Low confidence", confidence_manual: language === "de" ? "Vom Benutzer gewählt" : language === "sv" ? "Användarvald" : "User selected", groups: text.groups };
+  const config = { type: "custom:gosungrow-source-mapping-card-v1", schema_version: 1, mapping_id: "preview", dashboard_url_path: "gosungrow-flow", defaults, overrides, candidates, bindings, metrics, labels };
+  card.setConfig(config);
+  const hass = buildHass(scenario);
+  hass.user = { is_admin: sourceState !== "readonly" };
+  hass.locale = { language };
+  Object.assign(hass.states, liveStates);
+  if (missing) delete hass.states["sensor.preview_missing_manual"];
+  const dashboard = { views: [{ cards: metrics.map((item) => ({ entity: overrides[item.key] || item.default })) }, { cards: [{ ...structuredClone(config) }] }] };
+  hass.callWS = async (request) => {
+    if (sourceState === "save_error" && request.type === "lovelace/config/save") throw new Error("Preview: Home Assistant rejected the save.");
+    if (request.type === "lovelace/config") return structuredClone(dashboard);
+    if (request.type === "lovelace/config/save") { Object.assign(dashboard, structuredClone(request.config)); return {}; }
+    return {};
+  };
+  card.hass = hass;
+  container.appendChild(card);
+  if (sourceState === "saved") { card._notice = text.saved; card._render(); }
+  if (["dialog", "save_error", "empty"].includes(sourceState)) {
+    card._activeMetric = card._metrics().find((item) => item.key === "p13116");
+    card._pendingEntity = sourceState === "save_error" ? `${ENTITY_IDS.dailyPvToLoad}_alternative` : card._selected(card._activeMetric);
+    if (sourceState === "save_error") card._notice = language === "de" ? "Vorschau: Home Assistant hat das Speichern abgelehnt." : language === "sv" ? "Förhandsvisning: Home Assistant avvisade sparningen." : "Preview: Home Assistant rejected the save.";
+    card._render();
+  }
 }
 
 function mountFlowCard(container, device, scenario) {

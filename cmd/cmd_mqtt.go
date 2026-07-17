@@ -36,9 +36,16 @@ const (
 )
 
 const (
-	realtimeEndpointName             = "queryDeviceRealTimeDataByPsKeys"
-	dockerDNSRuntimeRestartThreshold = 1
+	realtimeEndpointName = "queryDeviceRealTimeDataByPsKeys"
 )
+
+var dockerDNSRetryDelays = []time.Duration{
+	15 * time.Second,
+	30 * time.Second,
+	60 * time.Second,
+	120 * time.Second,
+	300 * time.Second,
+}
 
 type realtimePsKeyTarget struct {
 	PsID            string
@@ -76,6 +83,8 @@ type CmdMqtt struct {
 	optionFetchSchedule time.Duration
 	dockerDNSHintLogged bool
 	dockerDNSErrorCount int
+	dockerDNSOutageAt   time.Time
+	now                 func() time.Time
 }
 
 func NewCmdMqtt(logLevel string) *CmdMqtt {
@@ -97,6 +106,7 @@ func NewCmdMqtt(logLevel string) *CmdMqtt {
 			optionSleepDelay:    time.Second * 40, // Takes up to 40 seconds for data to come in.
 			optionFetchSchedule: time.Minute * 5,
 			previous:            make(map[string]*api.DataEntries, 0),
+			now:                 time.Now,
 		}
 	}
 
@@ -316,18 +326,12 @@ func (c *CmdMqtt) CmdMqttRun(_ *cobra.Command, _ []string) error {
 		c.log.Info("Starting ticker...\n")
 		c.log.Info("Fetch Schedule: %s\n", c.GetFetchSchedule())
 		c.log.Info("Sleep Delay:    %s\n", c.GetSleepDelay())
-		resolution := time.Second * 10
-		updateCounter := int(c.optionFetchSchedule / resolution)
-		timer := time.NewTicker(resolution)
-		for t := range timer.C {
-			if updateCounter >= 0 {
-				updateCounter--
-				c.log.Debug("Sleeping: %d\n", updateCounter)
-				continue
-			}
-
-			updateCounter = int(c.optionFetchSchedule / resolution)
-			c.log.Debug("Update: %s\n", t.String())
+		for {
+			delay := c.nextSyncDelay()
+			c.log.Debug("Next sync in %s\n", delay)
+			timer := time.NewTimer(delay)
+			<-timer.C
+			c.log.Debug("Update: %s\n", c.now().String())
 			c.Error = c.Cron()
 			if c.Error != nil {
 				break
@@ -389,7 +393,7 @@ func (c *CmdMqtt) Cron() error {
 
 		if c.Client.IsFirstRun() {
 			c.Client.UnsetFirstRun()
-		} else {
+		} else if c.dockerDNSErrorCount == 0 {
 			c.log.Debug("Sleeping for %s...\n", c.GetSleepDelay())
 			time.Sleep(c.optionSleepDelay)
 		}
@@ -419,11 +423,12 @@ func (c *CmdMqtt) Cron() error {
 			}
 		}
 		if c.Error != nil && c.isRecoverableGatewayError(c.Error) {
-			c.log.Info("Recoverable API/gateway error during sync. Keeping service alive and retrying on next cycle: %s\n", c.Error)
-			c.logDockerDNSHint(c.Error)
-			if c.shouldRestartAfterDockerDNSError(c.Error) {
+			if c.isDockerDNSError(c.Error) {
+				c.recordDockerDNSError(c.Error)
+				c.Error = nil
 				break
 			}
+			c.log.Info("Recoverable API/gateway error during sync. Keeping service alive and retrying on next cycle: %s\n", c.Error)
 			c.Error = nil
 			break
 		}
@@ -431,7 +436,7 @@ func (c *CmdMqtt) Cron() error {
 			break
 		}
 
-		c.dockerDNSErrorCount = 0
+		c.clearDockerDNSOutage()
 		c.Client.LastRefresh = time.Now()
 	}
 
@@ -520,6 +525,10 @@ func (c *CmdMqtt) retryStartupRecoverable(step string, fn func() error) error {
 		if !c.isRecoverableGatewayError(err) {
 			return err
 		}
+		if c.isDockerDNSError(err) {
+			c.logDockerDNSHint(err)
+			return err
+		}
 
 		c.log.Info("Recoverable API/gateway error during %s (attempt %d/%d). Re-authenticating: %s\n", step, attempt, startupRetryMax, err)
 		c.logDockerDNSHint(err)
@@ -545,22 +554,38 @@ func (c *CmdMqtt) logDockerDNSHint(err error) {
 	}
 
 	c.dockerDNSHintLogged = true
-	c.log.Info("Docker DNS resolver 127.0.0.11 could not resolve iSolarCloud. This is usually a Home Assistant/Docker DNS issue; check Settings > System > Network DNS, restart the GoSungrow add-on, and restart Home Assistant/Docker if other add-ons also cannot resolve hostnames.\n")
+	c.log.Info("Docker DNS resolver 127.0.0.11 could not resolve iSolarCloud. This is usually a Home Assistant/Docker DNS issue; check Settings > System > Network DNS and restart Home Assistant/Docker if other apps also cannot resolve hostnames.\n")
 }
 
-func (c *CmdMqtt) shouldRestartAfterDockerDNSError(err error) bool {
-	if !c.isDockerDNSError(err) {
-		c.dockerDNSErrorCount = 0
-		return false
+func (c *CmdMqtt) nextSyncDelay() time.Duration {
+	if c.dockerDNSErrorCount == 0 {
+		return c.optionFetchSchedule
 	}
+	idx := c.dockerDNSErrorCount - 1
+	if idx >= len(dockerDNSRetryDelays) {
+		idx = len(dockerDNSRetryDelays) - 1
+	}
+	return dockerDNSRetryDelays[idx]
+}
 
+func (c *CmdMqtt) recordDockerDNSError(err error) {
+	if c.dockerDNSErrorCount == 0 {
+		c.dockerDNSOutageAt = c.now()
+		c.logDockerDNSHint(err)
+	}
 	c.dockerDNSErrorCount++
-	if c.dockerDNSErrorCount < dockerDNSRuntimeRestartThreshold {
-		return false
-	}
+	c.log.Info("iSolarCloud DNS unavailable (attempt %d). MQTT remains connected; next retry in %s.\n", c.dockerDNSErrorCount, c.nextSyncDelay())
+}
 
-	c.log.Info("Docker DNS has failed for %d consecutive sync cycles. Exiting mqtt run so the Home Assistant add-on wrapper can restart GoSungrow and refresh DNS state.\n", c.dockerDNSErrorCount)
-	return true
+func (c *CmdMqtt) clearDockerDNSOutage() {
+	if c.dockerDNSErrorCount == 0 {
+		return
+	}
+	duration := c.now().Sub(c.dockerDNSOutageAt).Round(time.Second)
+	c.log.Info("iSolarCloud DNS recovered after %s. Resuming the normal %s sync schedule.\n", duration, c.GetFetchSchedule())
+	c.dockerDNSErrorCount = 0
+	c.dockerDNSOutageAt = time.Time{}
+	c.dockerDNSHintLogged = false
 }
 
 func (c *CmdMqtt) Update(endpoint string, data api.DataMap, newDay bool) error {

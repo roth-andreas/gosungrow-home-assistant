@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/getDeviceList"
 )
@@ -73,29 +74,48 @@ func TestCmdMqttIsDockerDNSError(t *testing.T) {
 	}
 }
 
-func TestCmdMqttShouldRestartAfterRepeatedDockerDNSErrors(t *testing.T) {
+func TestCmdMqttDockerDNSBackoffSequenceAndCap(t *testing.T) {
 	c := NewCmdMqtt("")
 	err := errors.New("dial tcp: lookup gateway.isolarcloud.eu on 127.0.0.11:53: server misbehaving")
+	now := time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)
+	c.now = func() time.Time { return now }
 
-	for i := 1; i < dockerDNSRuntimeRestartThreshold; i++ {
-		if c.shouldRestartAfterDockerDNSError(err) {
-			t.Fatalf("attempt %d should not restart before threshold", i)
+	want := []time.Duration{
+		15 * time.Second,
+		30 * time.Second,
+		60 * time.Second,
+		120 * time.Second,
+		300 * time.Second,
+		300 * time.Second,
+	}
+	for i, delay := range want {
+		c.recordDockerDNSError(err)
+		if got := c.nextSyncDelay(); got != delay {
+			t.Fatalf("attempt %d: got delay %s want %s", i+1, got, delay)
 		}
 	}
-	if !c.shouldRestartAfterDockerDNSError(err) {
-		t.Fatal("expected restart once Docker DNS failures reach threshold")
+	if c.dockerDNSOutageAt != now {
+		t.Fatalf("outage start changed: got %s want %s", c.dockerDNSOutageAt, now)
 	}
 }
 
-func TestCmdMqttShouldRestartAfterDockerDNSErrorResetsOnOtherError(t *testing.T) {
+func TestCmdMqttDockerDNSRecoveryResetsNormalSchedule(t *testing.T) {
 	c := NewCmdMqtt("")
-	c.dockerDNSErrorCount = 1
+	now := time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)
+	c.now = func() time.Time { return now }
+	err := errors.New("dial tcp: lookup gateway.isolarcloud.eu on 127.0.0.11:53: server misbehaving")
+	c.recordDockerDNSError(err)
+	now = now.Add(45 * time.Second)
+	c.clearDockerDNSOutage()
 
-	if c.shouldRestartAfterDockerDNSError(errors.New("API httpResponse is 500 Internal Server Error")) {
-		t.Fatal("non-Docker-DNS error should not restart")
-	}
 	if c.dockerDNSErrorCount != 0 {
 		t.Fatalf("expected Docker DNS failure count reset, got %d", c.dockerDNSErrorCount)
+	}
+	if !c.dockerDNSOutageAt.IsZero() {
+		t.Fatalf("expected outage timestamp reset, got %s", c.dockerDNSOutageAt)
+	}
+	if got := c.nextSyncDelay(); got != c.optionFetchSchedule {
+		t.Fatalf("got normal delay %s want %s", got, c.optionFetchSchedule)
 	}
 }
 
@@ -188,6 +208,35 @@ func TestCmdMqttRetryStartupRecoverableLeavesNonRecoverableErrorsAlone(t *testin
 	}
 	if loginCalls != 0 {
 		t.Fatalf("expected no login refresh, got %d", loginCalls)
+	}
+}
+
+func TestCmdMqttRetryStartupDockerDNSErrorDoesNotRelogin(t *testing.T) {
+	c := NewCmdMqtt("")
+
+	originalLogin := mqttApiLogin
+	defer func() { mqttApiLogin = originalLogin }()
+
+	loginCalls := 0
+	mqttApiLogin = func(force bool) error {
+		loginCalls++
+		return nil
+	}
+
+	expected := errors.New("dial tcp: lookup gateway.isolarcloud.eu on 127.0.0.11:53: server misbehaving")
+	runCalls := 0
+	err := c.retryStartupRecoverable("device discovery", func() error {
+		runCalls++
+		return expected
+	})
+	if !errors.Is(err, expected) {
+		t.Fatalf("expected original DNS error, got %v", err)
+	}
+	if loginCalls != 0 {
+		t.Fatalf("expected no login refresh for DNS failure, got %d", loginCalls)
+	}
+	if runCalls != 1 {
+		t.Fatalf("expected one startup attempt before wrapper retry, got %d", runCalls)
 	}
 }
 

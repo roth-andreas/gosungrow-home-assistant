@@ -44,13 +44,28 @@ Optional:
 
 On a healthy setup, the app:
 
-1. refreshes the iSolarCloud session
-2. installs or updates the managed dashboards
-3. connects to MQTT
-4. publishes entity discovery and state updates
-5. reconciles the managed dashboard again shortly after MQTT startup, so fresh installs can remap newly created entities
+1. installs or updates the managed dashboards
+2. initializes the iSolarCloud session and connects to MQTT
+3. publishes entity discovery and state updates
+4. reconciles the managed dashboard again shortly after MQTT startup, so fresh installs can remap newly created entities
 
 No Home Assistant restart is required for the managed dashboards.
+
+## Correcting Dashboard Data Sources
+
+GoSungrow continues to choose dashboard sensors automatically. If a Sungrow model exposes different point names or meanings, a Home Assistant administrator can open the managed dashboard's **Data Sources** view and override an individual dashboard metric.
+
+- Automatic matching remains the default until an administrator explicitly changes a metric.
+- Candidate lists are filtered by plant, measurement type, unit, and usable state, with the strongest matches shown first.
+- Values, availability, confidence, and physical-consistency warnings use current Home Assistant state; candidate snapshots are not stored in the dashboard.
+- A **Needs review** badge identifies suspicious relationships, such as direct solar consumption exceeding solar production.
+- Selecting a candidate is a preview step. The dashboard changes only after **Use this source** succeeds, and failed or stale saves leave the current mapping untouched.
+- **Reset to automatic** removes a manual choice at any time.
+- Overrides apply only to the managed GoSungrow dashboard. MQTT entities, automations, Home Assistant Energy configuration, and other dashboards are not changed.
+- Overrides are stored in the managed dashboard and preserved when GoSungrow updates it. A missing manually selected entity remains visible as unavailable instead of silently changing back.
+- Installations with multiple plants or targets are isolated: changing one target cannot rewrite another target that happens to share a plant-level sensor.
+
+Non-administrator users can inspect the selected sources but cannot modify them.
 
 ## Notes
 
@@ -64,14 +79,18 @@ No Home Assistant restart is required for the managed dashboards.
 
 ## Troubleshooting DNS Errors
 
-If the log contains `lookup gateway.isolarcloud.eu on 127.0.0.11:53: no such host` or `server misbehaving`, the add-on is running but Docker's internal DNS resolver cannot resolve iSolarCloud. GoSungrow keeps the MQTT service alive and retries on the next cycle, but it cannot fetch fresh data until DNS works again.
+If the log contains `lookup gateway.isolarcloud.eu on 127.0.0.11:53: no such host` or `server misbehaving`, Docker's internal DNS resolver cannot resolve iSolarCloud. The request did not reach Sungrow, so changing iSolarCloud credentials will not help.
+
+After MQTT has initialized, GoSungrow keeps MQTT connected and retries iSolarCloud after 15, 30, 60, 120, and then every 300 seconds. Existing Home Assistant entities retain their last published values. Normal syncing resumes automatically when DNS recovers. If DNS is already unavailable during startup, the app wrapper keeps retrying initialization with a capped delay.
 
 Suggested checks:
 
 1. In Home Assistant, check `Settings > System > Network` and make sure DNS points to a reliable resolver.
-2. Restart the GoSungrow add-on after changing DNS.
-3. If other add-ons also fail to resolve internet hostnames, restart Home Assistant OS or the Docker host.
-4. If you use Pi-hole, AdGuard, a router DNS proxy, VPN DNS, or custom firewall rules, verify that the Home Assistant host can resolve `gateway.isolarcloud.eu` and `augateway.isolarcloud.com`.
+2. If you use Pi-hole, AdGuard, a router DNS proxy, VPN DNS, or custom firewall rules, verify that the Home Assistant host can resolve `gateway.isolarcloud.eu` and `augateway.isolarcloud.com`.
+3. Check whether other apps also report lookups through `127.0.0.11:53`; that indicates a host-level DNS problem.
+4. Restart Home Assistant OS or the Docker host if its embedded resolver remains unhealthy. Restarting only GoSungrow may coincide with recovery, but it cannot repair Docker DNS.
+
+Do not configure a fixed iSolarCloud IP address. The HTTPS certificate and Sungrow's routing depend on the hostname.
 
 ## Troubleshooting Startup JSON Errors
 

@@ -2,6 +2,55 @@ dashboard:
   view_overview: "\u00dcbersicht"
   view_aggregates: Aggregate
   view_trends: Trends
+  view_data_sources: Datenquellen
+  source_title: Datenquellen
+  source_subtitle: Automatische Zuordnungen prüfen oder eine Dashboard-Quelle auswählen.
+  source_automatic: Automatisch
+  source_manual: Manuell
+  source_needs_review: Prüfung nötig
+  source_configure: Konfigurieren
+  source_recommended: Empfohlen
+  source_other: Weitere passende Entitäten
+  source_search: Entitäten suchen
+  source_use: Diese Quelle verwenden
+  source_reset: Auf Automatik zurücksetzen
+  source_cancel: Abbrechen
+  source_saved: Datenquelle gespeichert.
+  source_unavailable_warning: Die ausgewählte Entität ist nicht verfügbar oder nicht numerisch.
+  source_stale_warning: Die ausgewählte Entität wurde seit längerer Zeit nicht aktualisiert.
+  source_physical_warning: Der ausgewählte Wert ({value}) überschreitet die Solarerzeugung ({reference}). Bitte Quelle prüfen.
+  source_confirm_warning: Diese Quelle trotzdem verwenden?
+  source_stale: Das Dashboard wurde geändert. Bitte neu laden und erneut versuchen.
+  source_incompatible: Diese Entität ist nicht mehr als kompatible Quelle verfügbar.
+  source_save_error: Datenquelle konnte nicht gespeichert werden. Administratorrechte und Verbindung prüfen und erneut versuchen.
+  source_confidence_high: Hohe Zuverlässigkeit
+  source_confidence_medium: Mittlere Zuverlässigkeit
+  source_confidence_low: Niedrige Zuverlässigkeit
+  source_confidence_manual: Vom Benutzer gewählt
+  source_confidence_unknown: Zuverlässigkeit unbekannt
+  source_compatible: Kompatible Quelle
+  source_readonly: Nur Home-Assistant-Administratoren können Datenquellen ändern.
+  source_group_live: Aktuelle Leistung
+  source_group_today: Heutige Energie
+  source_group_battery: Batterie
+  source_group_summary: Energieübersicht
+  source_metric_pv_power: Solarleistung
+  source_metric_load_power: Hausverbrauchsleistung
+  source_metric_grid_power: Netzleistung
+  source_metric_battery_power: Batterieleistung
+  source_metric_p13141: Batterieladestand
+  source_metric_pv_to_load_power: Solarleistung zum Haus
+  source_metric_pv_to_battery_power: Solarleistung zur Batterie
+  source_metric_pv_to_grid_power: Solarleistung zum Netz
+  source_metric_grid_to_load_power: Netzleistung zum Haus
+  source_metric_battery_to_load_power: Batterieleistung zum Haus
+  source_metric_p13112: Solarerzeugung heute
+  source_metric_p13116: Direkter Solarverbrauch
+  source_metric_p13174: Solarenergie in Batterie
+  source_metric_p13173: Netzeinspeisung heute
+  source_metric_p13147: Netzbezug heute
+  source_metric_p13199: Hausverbrauch heute
+  source_metric_p13029: Batterieentladung heute
   heading_live_flow: Live-Fluss
   heading_today: Heute
   heading_power_balance: Leistungsbilanz

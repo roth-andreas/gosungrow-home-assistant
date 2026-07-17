@@ -18,6 +18,17 @@
         --primary-text-color: #f3f4f6;
         --secondary-text-color: #b8bcc5;
         --card-background-color: #252628;
+        --secondary-background-color: #1b1d20;
+        --divider-color: rgba(255,255,255,.09);
+        --primary-color: #4f7dff;
+        --warning-color: #f59e0b;
+        --error-color: #ef4444;
+      }
+
+      :root[data-theme="light"] {
+        color-scheme: light;
+        --ha-bg:#f4f6f8;--ha-surface:#fff;--ha-card:#fff;--ha-card-border:rgba(15,23,42,.1);--ha-text:#172033;--ha-text-soft:#64748b;--ha-section:#172033;
+        --primary-text-color:#172033;--secondary-text-color:#64748b;--card-background-color:#fff;--secondary-background-color:#f1f5f9;--divider-color:rgba(15,23,42,.1);
       }
 
       * {
@@ -232,7 +243,22 @@
           <option value="overview">Overview</option>
           <option value="aggregates">Aggregates</option>
           <option value="trends">Trends</option>
+          <option value="sources">Data Sources</option>
         </select>
+      </div>
+      <div class="control">
+        <label for="source-state">Source state</label>
+        <select id="source-state">
+          <option value="automatic">Automatic</option><option value="warning">Needs review</option><option value="dialog">Candidate dialog</option><option value="manual">Corrected manual</option><option value="saved">Saved toast</option><option value="missing">Missing override</option><option value="multi">Seven devices</option><option value="readonly">Read only</option><option value="save_error">Save failure</option><option value="empty">Empty candidates</option>
+        </select>
+      </div>
+      <div class="control">
+        <label for="language">Language</label>
+        <select id="language"><option value="en">English</option><option value="de">Deutsch</option><option value="sv">Svenska</option></select>
+      </div>
+      <div class="control">
+        <label for="theme">Theme</label>
+        <select id="theme"><option value="dark">Dark</option><option value="light">Light</option></select>
       </div>
       <div class="control">
         <label for="device">Device</label>

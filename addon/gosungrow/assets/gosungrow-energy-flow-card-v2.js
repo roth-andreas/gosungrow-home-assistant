@@ -1816,14 +1816,303 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
   }
 }
 
+class GoSungrowSourceMappingCard extends HTMLElement {
+  static getStubConfig() {
+    return { type: "custom:gosungrow-source-mapping-card-v1", schema_version: 1, mapping_id: "preview" };
+  }
+
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" });
+    this._config = {};
+    this._hass = null;
+    this._activeMetric = null;
+    this._search = "";
+    this._busy = false;
+    this._notice = "";
+    this._lastFocus = null;
+    this._lastFocusMetric = null;
+    this._pendingEntity = null;
+  }
+
+  setConfig(config) {
+    if (!config || Number(config.schema_version || 1) !== 1) throw new Error("Unsupported GoSungrow source mapping schema");
+    this._config = JSON.parse(JSON.stringify(config));
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._render();
+  }
+
+  getCardSize() { return 8; }
+
+  connectedCallback() { this._render(); }
+
+  _label(key, fallback) { return this._config?.labels?.[key] || fallback; }
+  _isAdmin() { return Boolean(this._hass?.user?.is_admin); }
+  _metrics() { return Array.isArray(this._config?.metrics) ? this._config.metrics : []; }
+  _candidates(metric) { return this._config?.candidates?.[metric.key] || metric.candidates || []; }
+  _selected(metric) { return this._config?.overrides?.[metric.key] || metric.selected || metric.default; }
+  _state(entityID) { return entityID && this._hass?.states?.[entityID] ? this._hass.states[entityID] : null; }
+
+  _numericState(entityID) {
+    const state = this._state(entityID);
+    if (!state || ["unknown", "unavailable", ""].includes(String(state.state ?? "").toLowerCase())) return null;
+    const value = Number(state.state);
+    return Number.isFinite(value) ? value : null;
+  }
+
+  _metric(key) { return this._metrics().find((metric) => metric.key === key); }
+
+  _warning(metric, selectedEntity = this._selected(metric)) {
+    if (this._numericState(selectedEntity) === null) return this._label("source_unavailable_warning", "The selected entity is unavailable or non-numeric.");
+    const validation = metric?.validation;
+    if (Number(validation?.schema_version) !== 1 || !Array.isArray(validation?.rules)) return "";
+    for (const rule of validation.rules) {
+      if (rule?.type === "freshness") {
+        const state = this._state(selectedEntity);
+        const updated = Date.parse(state?.last_updated || state?.last_changed || "");
+        if (Number.isFinite(updated) && (updated > Date.now() + 300000 || Date.now() - updated > Number(rule.max_age_seconds || 0) * 1000)) {
+          return this._label("source_stale_warning", "The selected entity has not updated recently.");
+        }
+        continue;
+      }
+      if (rule?.type !== "not_materially_greater_than") continue;
+      const referenceMetric = this._metric(rule.metric);
+      const value = this._numericState(selectedEntity);
+      const reference = referenceMetric ? this._numericState(this._selected(referenceMetric)) : null;
+      if (value === null || reference === null) continue;
+      const relative = Number(rule.relative_tolerance || 0);
+      const absolute = Number(rule.absolute_tolerance || 0);
+      if (value > reference * (1 + relative) + absolute) {
+        return this._label("source_physical_warning", "Selected value ({value}) exceeds solar production ({reference}). Review this source.")
+          .replace("{value}", this._formatLiveValue(selectedEntity))
+          .replace("{reference}", this._formatLiveValue(this._selected(referenceMetric)));
+      }
+    }
+    return "";
+  }
+
+  _formatLiveValue(entityID) {
+    const state = this._state(entityID);
+    if (!state) return this._label("unavailable", "Unavailable");
+    const unit = state.attributes?.unit_of_measurement || "";
+    return `${state.state}${unit ? ` ${unit}` : ""}`;
+  }
+
+  _displayValue(metric) {
+    const state = this._state(this._selected(metric));
+    const value = state?.state;
+    const unit = state?.attributes?.unit_of_measurement ?? "";
+    if (value === undefined || value === null || ["unknown", "unavailable", ""].includes(String(value).toLowerCase())) return this._label("unavailable", "Unavailable");
+    return `${value}${unit ? ` ${unit}` : ""}`;
+  }
+
+  _status(metric) {
+    if (this._numericState(this._selected(metric)) === null) return "unavailable";
+    if (this._warning(metric)) return "needs_review";
+    if (this._config?.overrides?.[metric.key]) return "manual";
+    return "automatic";
+  }
+
+  _statusLabel(status) {
+    return { automatic: this._label("automatic", "Automatic"), manual: this._label("manual", "Manual"), needs_review: this._label("needs_review", "Needs review"), unavailable: this._label("unavailable", "Unavailable") }[status] || status;
+  }
+
+  _confidenceLabel(confidence) {
+    return { high: this._label("confidence_high", "High confidence"), medium: this._label("confidence_medium", "Medium confidence"), low: this._label("confidence_low", "Low confidence"), manual: this._label("confidence_manual", "User selected") }[confidence] || this._label("confidence_unknown", "Confidence unavailable");
+  }
+
+  _render() {
+    if (!this.shadowRoot) return;
+    const labels = this._config?.labels || {};
+    const groups = labels.groups || {};
+    const order = ["live_power", "today_energy", "battery", "energy_summary"];
+    const sections = order.map((group) => {
+      const metrics = this._metrics().filter((metric) => metric.group === group);
+      if (!metrics.length) return "";
+      return `<section class="source-group"><h3>${this._escape(groups[group] || group)}</h3>${metrics.map((metric) => this._row(metric)).join("")}</section>`;
+    }).join("");
+    this.shadowRoot.innerHTML = `<style>${this._styles()}</style><ha-card>
+      <div class="header"><div class="header-icon"><ha-icon icon="mdi:tune-variant"></ha-icon></div><div><h2>${this._escape(this._label("title", "Data Sources"))}</h2><p>${this._escape(this._label("subtitle", "Review automatic matches or choose a dashboard override."))}</p></div></div>
+      ${!this._isAdmin() ? `<div class="readonly"><ha-icon icon="mdi:lock-outline"></ha-icon>${this._escape(this._label("readonly", "Only Home Assistant administrators can change data sources."))}</div>` : ""}
+      <div class="groups">${sections || `<div class="empty">${this._escape(this._label("unavailable", "Unavailable"))}</div>`}</div>
+      ${this._notice ? `<div class="toast" role="status">${this._escape(this._notice)}</div>` : ""}
+    </ha-card>${this._activeMetric ? this._dialog(this._activeMetric) : ""}`;
+    this._wire();
+  }
+
+  _row(metric) {
+    const status = this._status(metric);
+    const selected = this._selected(metric);
+    const state = this._state(selected);
+    const friendly = state?.attributes?.friendly_name || selected;
+    const warning = this._warning(metric);
+    return `<article class="metric-row ${status === "needs_review" ? "warning" : ""}">
+      <div class="metric-icon"><ha-icon icon="${this._escape(metric.icon || "mdi:chart-line")}"></ha-icon></div>
+      <div class="metric-main"><div class="metric-title-line"><strong>${this._escape(metric.label || metric.key)}</strong><span class="badge ${status}"><span class="badge-dot"></span>${this._escape(this._statusLabel(status))}</span></div>
+      <div class="metric-value">${this._escape(this._displayValue(metric))}</div><div class="entity-name" title="${this._escape(selected)}">${this._escape(friendly || selected)}</div><div class="match-reason"><span>${this._escape(this._confidenceLabel(metric.confidence))}</span>${this._escape(metric.reason || this._label("source_compatible", "Compatible source"))}</div>${warning ? `<div class="warning-text"><ha-icon icon="mdi:alert-circle-outline"></ha-icon>${this._escape(warning)}</div>` : ""}</div>
+      <button class="configure" data-metric="${this._escape(metric.key)}" ${!this._isAdmin() ? "disabled" : ""} aria-label="${this._escape(this._label("configure", "Configure"))} ${this._escape(metric.label || metric.key)}"><ha-icon icon="mdi:tune"></ha-icon><span>${this._escape(this._label("configure", "Configure"))}</span></button>
+    </article>`;
+  }
+
+  _dialog(metric) {
+    const candidates = this._candidates(metric);
+    const query = this._search.trim().toLowerCase();
+    const filtered = candidates.filter((candidate) => {
+      const friendly = this._state(candidate.entity_id)?.attributes?.friendly_name || "";
+      return !query || `${friendly} ${candidate.entity_id} ${candidate.device || ""}`.toLowerCase().includes(query);
+    });
+    const recommended = filtered.filter((candidate) => candidate.recommended).slice(0, 5);
+    const other = filtered.filter((candidate) => !recommended.includes(candidate));
+    const warning = this._warning(metric, this._pendingEntity || this._selected(metric));
+    const changed = Boolean(this._pendingEntity && this._pendingEntity !== this._selected(metric));
+    return `<div class="scrim" data-close="true"><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="source-dialog-title">
+      <div class="dialog-head"><div><div class="eyebrow">${this._escape(this._label("configure", "Configure"))}</div><h2 id="source-dialog-title">${this._escape(metric.label || metric.key)}</h2></div><button class="icon-button close" aria-label="${this._escape(this._label("cancel", "Cancel"))}"><ha-icon icon="mdi:close"></ha-icon></button></div>
+      ${warning ? `<div class="dialog-warning"><ha-icon icon="mdi:alert-circle-outline"></ha-icon><div><strong>${this._escape(this._label("needs_review", "Needs review"))}</strong><span>${this._escape(warning)}</span></div></div>` : ""}
+      <label class="search"><ha-icon icon="mdi:magnify"></ha-icon><input type="search" value="${this._escape(this._search)}" placeholder="${this._escape(this._label("search", "Search entities"))}" aria-label="${this._escape(this._label("search", "Search entities"))}"></label>
+      <div class="candidate-scroll"><h3>${this._escape(this._label("recommended", "Recommended"))}</h3>${recommended.map((candidate) => this._candidate(metric, candidate)).join("") || `<div class="empty">No matching entities</div>`}
+      ${other.length ? `<details ${query ? "open" : ""}><summary>${this._escape(this._label("other", "Other compatible entities"))}<span>${other.length}</span></summary>${other.map((candidate) => this._candidate(metric, candidate)).join("")}</details>` : ""}</div>
+      <div class="dialog-actions">${this._config?.overrides?.[metric.key] ? `<button class="reset" data-reset="${this._escape(metric.key)}" ${this._busy ? "disabled" : ""}>${this._escape(this._label("reset", "Reset to automatic"))}</button>` : ""}<button class="cancel">${this._escape(this._label("cancel", "Cancel"))}</button><button class="use-source" data-commit="${this._escape(metric.key)}" ${!changed || this._busy ? "disabled" : ""}>${this._escape(this._label("use_source", "Use this source"))}</button></div>
+    </div></div>`;
+  }
+
+  _candidate(metric, candidate) {
+    const selected = (this._pendingEntity || this._selected(metric)) === candidate.entity_id;
+    const state = this._state(candidate.entity_id);
+    const friendly = state?.attributes?.friendly_name || candidate.entity_id;
+    const value = this._numericState(candidate.entity_id) === null ? this._label("unavailable", "Unavailable") : state.state;
+    const unit = state?.attributes?.unit_of_measurement || "";
+    return `<button class="candidate ${selected ? "selected" : ""}" data-select="${this._escape(candidate.entity_id)}" data-metric="${this._escape(metric.key)}">
+      <span class="radio"><span></span></span><span class="candidate-main"><strong>${this._escape(friendly)}</strong><code>${this._escape(candidate.entity_id)}</code><small>${this._escape([candidate.device, candidate.point_id].filter(Boolean).join(" · "))}</small><small>${this._escape(candidate.reason || candidate.source || "Compatible entity")}</small></span><span class="candidate-value">${this._escape(value)}<small>${this._escape(unit)}</small></span>
+    </button>`;
+  }
+
+  _wire() {
+    this.shadowRoot.querySelectorAll("button[data-metric]:not([data-select])").forEach((button) => button.addEventListener("click", () => { this._lastFocus = button; this._lastFocusMetric = button.dataset.metric; this._activeMetric = this._metrics().find((metric) => metric.key === button.dataset.metric); this._pendingEntity = this._selected(this._activeMetric); this._search = ""; this._render(); queueMicrotask(() => this.shadowRoot.querySelector(".dialog .close")?.focus()); }));
+    this.shadowRoot.querySelector(".close")?.addEventListener("click", () => this._close());
+    this.shadowRoot.querySelector(".cancel")?.addEventListener("click", () => this._close());
+    this.shadowRoot.querySelector(".scrim")?.addEventListener("click", (event) => { if (event.target?.dataset?.close) this._close(); });
+    this.shadowRoot.querySelector("input[type=search]")?.addEventListener("input", (event) => { this._search = event.target.value; this._render(); queueMicrotask(() => { const input = this.shadowRoot.querySelector("input[type=search]"); input?.focus(); input?.setSelectionRange(this._search.length, this._search.length); }); });
+    this.shadowRoot.querySelectorAll("[data-select]").forEach((button) => button.addEventListener("click", () => { const entity = button.dataset.select; this._pendingEntity = entity; this._render(); queueMicrotask(() => [...this.shadowRoot.querySelectorAll("[data-select]")].find((entry) => entry.dataset.select === entity)?.focus()); }));
+    this.shadowRoot.querySelector("[data-commit]")?.addEventListener("click", (event) => this._save(event.currentTarget.dataset.commit, this._pendingEntity));
+    this.shadowRoot.querySelector("[data-reset]")?.addEventListener("click", (event) => this._save(event.currentTarget.dataset.reset, null));
+    this.shadowRoot.querySelector(".dialog")?.addEventListener("keydown", (event) => this._trapDialogKeys(event));
+  }
+
+  _close() { this._activeMetric = null; this._pendingEntity = null; this._search = ""; this._render(); queueMicrotask(() => ([...this.shadowRoot.querySelectorAll("button[data-metric]:not([data-select])")].find((button) => button.dataset.metric === this._lastFocusMetric) || this._lastFocus)?.focus()); }
+
+  _trapDialogKeys(event) {
+    if (event.key === "Escape") { event.preventDefault(); this._close(); return; }
+    if (event.key !== "Tab") return;
+    const focusable = [...this.shadowRoot.querySelectorAll(".dialog button:not([disabled]), .dialog input, .dialog summary")];
+    if (!focusable.length) return;
+    const first = focusable[0], last = focusable[focusable.length - 1];
+    if (event.shiftKey && this.shadowRoot.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && this.shadowRoot.activeElement === last) { event.preventDefault(); first.focus(); }
+  }
+
+  async _save(metricKey, entityID) {
+    if (this._busy || !this._isAdmin() || !this._hass?.callWS) return;
+    const metric = this._metrics().find((entry) => entry.key === metricKey);
+    if (!metric) return;
+    const warning = entityID ? this._warning(metric, entityID) : "";
+    if (warning && !window.confirm(`${warning}\n\n${this._label("source_confirm_warning", "Use this source anyway?")}`)) return;
+    this._busy = true;
+    try {
+      const dashboard = await this._hass.callWS({ type: "lovelace/config", url_path: this._config.dashboard_url_path, force: true });
+      const card = this._findMappingCard(dashboard, this._config.mapping_id);
+      const stale = () => new Error(this._label("source_stale", "Dashboard changed; reload and try again."));
+      if (!card || Number(card.schema_version) !== 1 || !this._sameMap(card.defaults, this._config.defaults) || !this._sameMap(card.overrides || {}, this._config.overrides || {}) || !this._sameValue(card.bindings, this._config.bindings)) throw stale();
+      if (entityID) {
+        const cardMetric = Array.isArray(card.metrics) ? card.metrics.find((entry) => entry.key === metricKey) : null;
+        const localCandidates = this._candidates(metric);
+        const cardCandidates = card.candidates?.[metricKey] || cardMetric?.candidates || [];
+        const allowedLocally = localCandidates.some((candidate) => candidate.entity_id === entityID);
+        const allowed = allowedLocally && cardCandidates.some((candidate) => candidate.entity_id === entityID);
+        if (!allowed) throw new Error(this._label("source_incompatible", "This entity is no longer an available compatible source."));
+      }
+      const oldEntity = card.overrides?.[metricKey] || card.defaults?.[metricKey];
+      const nextEntity = entityID || card.defaults?.[metricKey];
+      const paths = card.bindings?.[metricKey] || [];
+      for (const path of paths) {
+        if (this._getPointer(dashboard, path) !== oldEntity) throw stale();
+      }
+      const nextDashboard = this._clone(dashboard);
+      const nextCard = this._findMappingCard(nextDashboard, this._config.mapping_id);
+      for (const path of paths) this._setPointer(nextDashboard, path, nextEntity);
+      nextCard.overrides = { ...(nextCard.overrides || {}) };
+      if (entityID) nextCard.overrides[metricKey] = entityID; else delete nextCard.overrides[metricKey];
+      const nextMetric = Array.isArray(nextCard.metrics) ? nextCard.metrics.find((entry) => entry.key === metricKey) : null;
+      const nextCandidate = (nextCard.candidates?.[metricKey] || nextMetric?.candidates || []).find((candidate) => candidate.entity_id === nextEntity);
+      if (nextMetric) { nextMetric.confidence = nextCandidate?.confidence; nextMetric.reason = nextCandidate?.reason; }
+      await this._hass.callWS({ type: "lovelace/config/save", url_path: this._config.dashboard_url_path, config: nextDashboard });
+      this._config.overrides = { ...(this._config.overrides || {}) };
+      if (entityID) this._config.overrides[metricKey] = entityID; else delete this._config.overrides[metricKey];
+      const localCandidate = this._candidates(metric).find((candidate) => candidate.entity_id === nextEntity);
+      metric.confidence = localCandidate?.confidence;
+      metric.reason = localCandidate?.reason;
+      this._notice = this._label("saved", "Data source saved.");
+      this._activeMetric = null;
+      this._pendingEntity = null;
+      this._render();
+      this.dispatchEvent(new CustomEvent("hass-notification", { bubbles: true, composed: true, detail: { message: this._notice } }));
+      this.dispatchEvent(new CustomEvent("ll-rebuild", { bubbles: true, composed: true }));
+      queueMicrotask(() => this.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true, detail: { replace: true } })));
+    } catch (error) {
+      this._notice = error?.message || this._label("source_save_error", "Could not save the data source. Check your administrator access and connection, then try again.");
+      this._render();
+    } finally { this._busy = false; }
+  }
+
+  _findMappingCard(value, mappingID) {
+    if (!value || typeof value !== "object") return null;
+    if (!Array.isArray(value) && value.type === "custom:gosungrow-source-mapping-card-v1" && value.mapping_id === mappingID) return value;
+    for (const entry of Object.values(value)) { const found = this._findMappingCard(entry, mappingID); if (found) return found; }
+    return null;
+  }
+
+  _pointerParts(path) { return String(path).split("/").slice(1).map((part) => part.replaceAll("~1", "/").replaceAll("~0", "~")); }
+  _getPointer(root, path) { return this._pointerParts(path).reduce((value, key) => value?.[key], root); }
+  _setPointer(root, path, next) { const parts = this._pointerParts(path); const key = parts.pop(); const parent = parts.reduce((value, part) => value?.[part], root); if (!parent || key === undefined) throw new Error("Dashboard changed; reload and try again."); parent[key] = next; }
+  _clone(value) { return JSON.parse(JSON.stringify(value)); }
+  _stable(value) {
+    if (Array.isArray(value)) return value.map((entry) => this._stable(entry));
+    if (value && typeof value === "object") return Object.fromEntries(Object.keys(value).sort().map((key) => [key, this._stable(value[key])]));
+    return value ?? null;
+  }
+  _sameValue(left, right) { return JSON.stringify(this._stable(left)) === JSON.stringify(this._stable(right)); }
+  _sameMap(left, right) {
+    const normalize = (value) => Object.fromEntries(Object.entries(value || {}).sort(([a], [b]) => a.localeCompare(b)));
+    return this._sameValue(normalize(left), normalize(right));
+  }
+  _escape(value) { return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;"); }
+
+  _styles() { return `
+    ha-card{display:block}
+    :host{display:block;color:var(--primary-text-color);font-family:var(--paper-font-body1_-_font-family,system-ui,sans-serif)}ha-card{position:relative;padding:22px;border-radius:18px;overflow:hidden}.header{display:flex;gap:14px;align-items:flex-start;margin-bottom:18px}.header-icon{display:grid;place-items:center;width:44px;height:44px;border-radius:14px;background:color-mix(in srgb,var(--primary-color) 16%,transparent);color:var(--primary-color);flex:0 0 auto}.header h2{font-size:20px;line-height:1.2;margin:1px 0 5px}.header p{margin:0;color:var(--secondary-text-color);font-size:14px}.readonly,.dialog-warning{display:flex;gap:10px;align-items:center;border-radius:12px;padding:11px 13px;margin:0 0 16px;background:color-mix(in srgb,var(--warning-color,#f59e0b) 12%,transparent);color:var(--primary-text-color);font-size:13px}.groups{display:grid;gap:18px}.source-group{border:1px solid var(--divider-color);border-radius:16px;overflow:hidden;background:color-mix(in srgb,var(--card-background-color) 94%,var(--primary-text-color) 6%)}.source-group h3{font-size:13px;letter-spacing:.02em;text-transform:uppercase;color:var(--secondary-text-color);margin:0;padding:14px 16px 10px}.metric-row{display:grid;grid-template-columns:42px minmax(0,1fr) auto;gap:12px;align-items:center;padding:14px 16px;border-top:1px solid var(--divider-color)}.metric-row.warning{background:color-mix(in srgb,var(--warning-color,#f59e0b) 7%,transparent)}.metric-icon{display:grid;place-items:center;width:40px;height:40px;border-radius:12px;background:color-mix(in srgb,var(--primary-color) 11%,transparent);color:var(--primary-color)}.metric-title-line{display:flex;gap:9px;align-items:center;flex-wrap:wrap}.metric-title-line strong{font-size:15px}.metric-value{font-size:18px;font-weight:700;margin-top:4px}.entity-name{font-size:12px;color:var(--secondary-text-color);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:58ch}.badge{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:650;background:var(--secondary-background-color)}.badge-dot{width:6px;height:6px;border-radius:50%;background:var(--secondary-text-color)}.badge.manual{color:var(--primary-color)}.badge.manual .badge-dot{background:var(--primary-color)}.badge.needs_review{color:var(--warning-color,#f59e0b)}.badge.needs_review .badge-dot{background:var(--warning-color,#f59e0b)}.badge.unavailable{color:var(--error-color,#ef4444)}.badge.unavailable .badge-dot{background:var(--error-color,#ef4444)}.warning-text{display:flex;gap:5px;align-items:flex-start;color:var(--warning-color,#f59e0b);font-size:12px;margin-top:6px}.warning-text ha-icon{--mdc-icon-size:16px}.configure,.icon-button,.cancel,.reset{min-height:44px;border:0;border-radius:12px;padding:0 14px;background:var(--secondary-background-color);color:var(--primary-text-color);font:inherit;font-weight:600;cursor:pointer}.configure{display:flex;gap:7px;align-items:center}.configure ha-icon{--mdc-icon-size:18px}.configure:disabled{opacity:.45;cursor:not-allowed}button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid color-mix(in srgb,var(--primary-color) 55%,transparent);outline-offset:2px}.scrim{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;padding:20px;background:rgba(0,0,0,.58);backdrop-filter:blur(3px)}.dialog{display:flex;flex-direction:column;width:min(680px,calc(100vw - 32px));max-height:min(780px,calc(100vh - 40px));border-radius:22px;background:var(--card-background-color);box-shadow:0 24px 80px rgba(0,0,0,.36);overflow:hidden}.dialog-head{display:flex;justify-content:space-between;gap:16px;padding:22px 22px 12px}.dialog-head h2{margin:3px 0 0;font-size:22px}.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--primary-color);font-weight:700}.icon-button{width:44px;padding:0}.dialog-warning{margin:0 22px 14px}.dialog-warning div{display:grid;gap:2px}.dialog-warning span{font-size:13px;color:var(--secondary-text-color)}.search{display:flex;align-items:center;gap:9px;margin:0 22px 12px;border:1px solid var(--divider-color);border-radius:12px;padding:0 12px;min-height:46px;background:var(--secondary-background-color)}.search input{flex:1;min-width:0;border:0;background:transparent;color:var(--primary-text-color);font:inherit;outline:0}.candidate-scroll{overflow:auto;padding:0 22px 16px}.candidate-scroll h3{font-size:13px;color:var(--secondary-text-color);margin:10px 0}.candidate{display:grid;grid-template-columns:22px minmax(0,1fr) auto;align-items:center;gap:11px;width:100%;min-height:70px;text-align:left;border:1px solid var(--divider-color);border-radius:14px;padding:11px 13px;margin:8px 0;background:transparent;color:var(--primary-text-color);cursor:pointer}.candidate:hover,.candidate.selected{border-color:var(--primary-color);background:color-mix(in srgb,var(--primary-color) 8%,transparent)}.radio{display:grid;place-items:center;width:18px;height:18px;border:2px solid var(--secondary-text-color);border-radius:50%}.selected .radio{border-color:var(--primary-color)}.selected .radio span{width:9px;height:9px;border-radius:50%;background:var(--primary-color)}.candidate-main{display:grid;min-width:0;gap:2px}.candidate-main strong,.candidate-main code,.candidate-main small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.candidate-main code{font-size:11px;color:var(--secondary-text-color)}.candidate-main small{font-size:11px;color:var(--secondary-text-color)}.candidate-value{text-align:right;font-weight:700}.candidate-value small{display:block;color:var(--secondary-text-color);font-weight:400}details summary{display:flex;justify-content:space-between;cursor:pointer;padding:12px 2px;color:var(--secondary-text-color);font-size:13px;font-weight:600}.dialog-actions{display:flex;justify-content:flex-end;gap:9px;padding:14px 22px 20px;border-top:1px solid var(--divider-color)}.reset{margin-right:auto;color:var(--error-color,#ef4444)}.toast{position:sticky;bottom:10px;margin:16px auto 0;width:max-content;max-width:90%;padding:10px 14px;border-radius:999px;background:var(--primary-text-color);color:var(--card-background-color);font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.22)}.empty{padding:20px;color:var(--secondary-text-color);text-align:center}
+    @media(max-width:600px){ha-card{padding:16px;border-radius:16px}.header{margin-bottom:14px}.metric-row{grid-template-columns:38px minmax(0,1fr);padding:13px 12px}.configure{grid-column:2;width:100%;justify-content:center;margin-top:2px}.entity-name{max-width:100%}.scrim{place-items:end center;padding:0}.dialog{width:100%;max-height:92vh;border-radius:22px 22px 0 0}.dialog-head,.candidate-scroll{padding-left:16px;padding-right:16px}.search,.dialog-warning{margin-left:16px;margin-right:16px}.dialog-actions{padding:12px 16px 18px;flex-wrap:wrap}.reset{width:100%;margin:0;order:2}.cancel{margin-left:auto}.candidate{grid-template-columns:20px minmax(0,1fr)}.candidate-value{grid-column:2;text-align:left}.configure span{display:inline}}
+    .use-source{min-height:44px;border:0;border-radius:12px;padding:0 16px;background:var(--primary-color);color:var(--text-primary-color,#fff);font:inherit;font-weight:700;cursor:pointer}.use-source:disabled,button:disabled{opacity:.48;cursor:not-allowed}
+    .match-reason{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:5px;color:var(--secondary-text-color);font-size:11px}.match-reason span{border:1px solid var(--divider-color);border-radius:999px;padding:2px 7px;color:var(--primary-text-color);font-weight:650}
+  `; }
+}
+
 customElements.define("gosungrow-energy-flow-card-v2", GoSungrowEnergyFlowCard);
 customElements.define("gosungrow-energy-summary-card-v1", GoSungrowEnergySummaryCard);
+customElements.define("gosungrow-source-mapping-card-v1", GoSungrowSourceMappingCard);
 
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: "gosungrow-energy-flow-card-v2",
   name: "GoSungrow Energy Flow Card v2",
   description: "Custom Sungrow energy flow card with Energy dashboard-inspired layout.",
+});
+window.customCards.push({
+  type: "gosungrow-source-mapping-card-v1",
+  name: "GoSungrow Data Sources",
+  description: "Review automatic dashboard matches and choose persistent source overrides.",
 });
 window.customCards.push({
   type: "gosungrow-energy-summary-card-v1",

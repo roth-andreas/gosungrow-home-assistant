@@ -2,6 +2,55 @@ dashboard:
   view_overview: "\u00d6versikt"
   view_aggregates: Aggregat
   view_trends: Trender
+  view_data_sources: Datakällor
+  source_title: Datakällor
+  source_subtitle: Granska automatiska matchningar eller välj en källa för instrumentpanelen.
+  source_automatic: Automatisk
+  source_manual: Manuell
+  source_needs_review: Behöver granskas
+  source_configure: Konfigurera
+  source_recommended: Rekommenderad
+  source_other: Andra kompatibla entiteter
+  source_search: Sök entiteter
+  source_use: Använd denna källa
+  source_reset: Återställ till automatisk
+  source_cancel: Avbryt
+  source_saved: Datakällan sparades.
+  source_unavailable_warning: Den valda entiteten är inte tillgänglig eller saknar numeriskt värde.
+  source_stale_warning: Den valda entiteten har inte uppdaterats nyligen.
+  source_physical_warning: Det valda värdet ({value}) överstiger solproduktionen ({reference}). Granska källan.
+  source_confirm_warning: Använd den här källan ändå?
+  source_stale: Instrumentpanelen har ändrats. Läs in sidan igen och försök på nytt.
+  source_incompatible: Entiteten är inte längre tillgänglig som kompatibel källa.
+  source_save_error: Datakällan kunde inte sparas. Kontrollera administratörsbehörighet och anslutning och försök igen.
+  source_confidence_high: Hög säkerhet
+  source_confidence_medium: Medelhög säkerhet
+  source_confidence_low: Låg säkerhet
+  source_confidence_manual: Användarvald
+  source_confidence_unknown: Säkerhet saknas
+  source_compatible: Kompatibel källa
+  source_readonly: Endast Home Assistant-administratörer kan ändra datakällor.
+  source_group_live: Aktuell effekt
+  source_group_today: Dagens energi
+  source_group_battery: Batteri
+  source_group_summary: Energisammanfattning
+  source_metric_pv_power: Soleffekt
+  source_metric_load_power: Hemmets förbrukningseffekt
+  source_metric_grid_power: Näteffekt
+  source_metric_battery_power: Batterieffekt
+  source_metric_p13141: Batterinivå
+  source_metric_pv_to_load_power: Soleffekt till hemmet
+  source_metric_pv_to_battery_power: Soleffekt till batteriet
+  source_metric_pv_to_grid_power: Soleffekt till nätet
+  source_metric_grid_to_load_power: Näteffekt till hemmet
+  source_metric_battery_to_load_power: Batterieffekt till hemmet
+  source_metric_p13112: Solproduktion idag
+  source_metric_p13116: Direkt solförbrukning
+  source_metric_p13174: Solenergi till batteriet
+  source_metric_p13173: Nätexport idag
+  source_metric_p13147: Nätimport idag
+  source_metric_p13199: Hemförbrukning idag
+  source_metric_p13029: Batteriurladdning idag
   heading_live_flow: "Livefl\u00f6de"
   heading_today: Idag
   heading_power_balance: Effektbalans

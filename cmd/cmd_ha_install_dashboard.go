@@ -65,10 +65,12 @@ type haDashboardTarget struct {
 }
 
 type haDashboardState struct {
-	DashboardURLPath string   `json:"dashboard_url_path"`
-	DashboardHash    string   `json:"dashboard_hash"`
-	TargetPsKeys     []string `json:"target_ps_keys,omitempty"`
-	UpdatedAt        string   `json:"updated_at"`
+	DashboardURLPath       string                       `json:"dashboard_url_path"`
+	DashboardHash          string                       `json:"dashboard_hash"`
+	DashboardStructureHash string                       `json:"dashboard_structure_hash,omitempty"`
+	TargetPsKeys           []string                     `json:"target_ps_keys,omitempty"`
+	SourceOverrides        map[string]map[string]string `json:"source_overrides,omitempty"`
+	UpdatedAt              string                       `json:"updated_at"`
 }
 
 type haDashboardMetadata struct {
@@ -85,9 +87,11 @@ type haResourceMetadata struct {
 }
 
 type haState struct {
-	EntityID   string         `json:"entity_id"`
-	State      string         `json:"state"`
-	Attributes map[string]any `json:"attributes,omitempty"`
+	EntityID    string         `json:"entity_id"`
+	State       string         `json:"state"`
+	LastChanged string         `json:"last_changed,omitempty"`
+	LastUpdated string         `json:"last_updated,omitempty"`
+	Attributes  map[string]any `json:"attributes,omitempty"`
 }
 
 type dashboardInstallDiagnostics struct {
@@ -272,6 +276,15 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		return err
 	}
 
+	currentConfig, err := client.GetConfig(ctx, opts.DashboardURLPath)
+	if err != nil {
+		wsErr, ok := err.(*haWSCallError)
+		if !(ok && wsErr.IsCode("config_not_found")) {
+			return err
+		}
+		currentConfig = nil
+	}
+
 	config, err := renderDashboardConfig(templatePath, opts.DashboardTitle, targets, localeBundle)
 	if err != nil {
 		return err
@@ -304,8 +317,17 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	diagnostics.RemappedPreview = dashboardRemapPreview(remapReport.Remapped, 5)
 	diagnostics.UnresolvedRefs = remapReport.Unresolved
 	diagnostics.MetricTraces = remapReport.Traces
+	persistedOverrides := map[string]map[string]string(nil)
+	if state != nil {
+		persistedOverrides = state.SourceOverrides
+	}
+	config, sourceOverrides := applyDashboardSourceMappings(config, currentConfig, persistedOverrides, targets, states, remapReport.Traces, opts.DashboardURLPath, localeBundle)
 
 	desiredHash, err := hashCanonicalJSON(config)
+	if err != nil {
+		return err
+	}
+	desiredStructureHash, err := hashDashboardStructure(config)
 	if err != nil {
 		return err
 	}
@@ -332,15 +354,6 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		return fmt.Errorf("dashboard URL path %q is already in use by a non-storage dashboard; choose a different dashboard_url_path or remove the existing dashboard", opts.DashboardURLPath)
 	}
 
-	currentConfig, err := client.GetConfig(ctx, opts.DashboardURLPath)
-	if err != nil {
-		wsErr, ok := err.(*haWSCallError)
-		if !(ok && wsErr.IsCode("config_not_found")) {
-			return err
-		}
-		currentConfig = nil
-	}
-
 	currentHash := ""
 	if currentConfig != nil {
 		currentHash, err = hashCanonicalJSON(currentConfig)
@@ -353,7 +366,11 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	if exists && !managedByState && !opts.ForceUpdate {
 		return fmt.Errorf("dashboard %q already exists and is not managed by GoSungrow; set dashboard_force_update to true to replace it", opts.DashboardURLPath)
 	}
-	if exists && managedByState && state.DashboardHash != "" && currentHash != "" && currentHash != state.DashboardHash && !opts.ForceUpdate {
+	modified, err := dashboardModifiedOutsideGoSungrow(currentConfig, config, state)
+	if err != nil {
+		return err
+	}
+	if exists && managedByState && modified && !opts.ForceUpdate {
 		return fmt.Errorf("dashboard %q was modified outside GoSungrow; set dashboard_force_update to true to replace it", opts.DashboardURLPath)
 	}
 
@@ -382,10 +399,12 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	}
 
 	if err := saveDashboardState(statePath, &haDashboardState{
-		DashboardURLPath: opts.DashboardURLPath,
-		DashboardHash:    desiredHash,
-		TargetPsKeys:     targetPSKeys(targets),
-		UpdatedAt:        time.Now().UTC().Format(time.RFC3339),
+		DashboardURLPath:       opts.DashboardURLPath,
+		DashboardHash:          desiredHash,
+		DashboardStructureHash: desiredStructureHash,
+		TargetPsKeys:           targetPSKeys(targets),
+		SourceOverrides:        sourceOverrides,
+		UpdatedAt:              time.Now().UTC().Format(time.RFC3339),
 	}); err != nil {
 		return err
 	}

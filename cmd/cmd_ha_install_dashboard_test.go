@@ -211,10 +211,11 @@ func TestDashboardStateRoundTripAndCanonicalHash(t *testing.T) {
 	}
 
 	state := &haDashboardState{
-		DashboardURLPath: "gosungrow-flow",
-		DashboardHash:    "abc123",
-		TargetPsKeys:     []string{"5072099_14_1_1"},
-		UpdatedAt:        "2026-03-19T12:00:00Z",
+		DashboardURLPath:       "gosungrow-flow",
+		DashboardHash:          "abc123",
+		DashboardStructureHash: "structure123",
+		TargetPsKeys:           []string{"5072099_14_1_1"},
+		UpdatedAt:              "2026-03-19T12:00:00Z",
 	}
 	if err := saveDashboardState(statePath, state); err != nil {
 		t.Fatalf("saveDashboardState: %v", err)
@@ -224,7 +225,7 @@ func TestDashboardStateRoundTripAndCanonicalHash(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadDashboardState: %v", err)
 	}
-	if loaded == nil || loaded.DashboardURLPath != state.DashboardURLPath || loaded.DashboardHash != state.DashboardHash {
+	if loaded == nil || loaded.DashboardURLPath != state.DashboardURLPath || loaded.DashboardHash != state.DashboardHash || loaded.DashboardStructureHash != state.DashboardStructureHash {
 		t.Fatalf("unexpected loaded state: %#v", loaded)
 	}
 
@@ -534,14 +535,17 @@ func TestBundledDashboardTemplateRenders(t *testing.T) {
 	}
 
 	views, ok := config["views"].([]any)
-	if !ok || len(views) != 3 {
-		t.Fatalf("expected bundled dashboard to render 3 views, got %#v", config["views"])
+	if !ok || len(views) != 4 {
+		t.Fatalf("expected bundled dashboard to render 4 views, got %#v", config["views"])
 	}
 	if got := views[1].(map[string]any)["path"]; got != "aggregates" {
 		t.Fatalf("expected second bundled dashboard view to be aggregates, got %v", got)
 	}
 	if got := views[2].(map[string]any)["path"]; got != "trends" {
 		t.Fatalf("expected third bundled dashboard view to be trends, got %v", got)
+	}
+	if got := views[3].(map[string]any)["path"]; got != "data-sources" {
+		t.Fatalf("expected fourth bundled dashboard view to be data-sources, got %v", got)
 	}
 
 	text := string(rendered)
@@ -550,6 +554,9 @@ func TestBundledDashboardTemplateRenders(t *testing.T) {
 	}
 	if !strings.Contains(text, "\"type\":\"custom:gosungrow-energy-summary-card-v1\"") {
 		t.Fatal("expected custom GoSungrow energy summary card in bundled dashboard")
+	}
+	if !strings.Contains(text, "\"type\":\"custom:gosungrow-source-mapping-card-v1\"") {
+		t.Fatal("expected custom GoSungrow source mapping card in bundled dashboard")
 	}
 	if !strings.Contains(text, "\"buckets\":{\"day\":14,\"month\":12,\"year\":5}") {
 		t.Fatal("expected summary card bucket defaults in bundled dashboard")
