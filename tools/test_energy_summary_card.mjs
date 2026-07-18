@@ -389,6 +389,29 @@ test("source mapping candidate labels remove shared prefixes while preserving fu
   assert.doesNotMatch(html, />GoSungrow 5072099 roof inverter overview total DC power<\/strong>/);
 });
 
+test("source mapping rows remove shared prefixes while preserving full accessible identity", () => {
+  const card = new SourceCard();
+  card.setConfig({
+    schema_version: 1,
+    mapping_id: "target",
+    defaults: { pv: "sensor.roof_pv_power", load: "sensor.roof_load_power" },
+    metrics: [
+      { key: "pv", group: "live_power", label: "Solar power", default: "sensor.roof_pv_power" },
+      { key: "load", group: "live_power", label: "Home power", default: "sensor.roof_load_power" },
+    ],
+    labels: { groups: { live_power: "Live" } },
+  });
+  card.hass = { user: { is_admin: true }, states: {
+    "sensor.roof_pv_power": { state: "4.2", attributes: { friendly_name: "GoSungrow 5072099 roof inverter overview PV power", unit_of_measurement: "kW" } },
+    "sensor.roof_load_power": { state: "1.4", attributes: { friendly_name: "GoSungrow 5072099 roof inverter overview Load power", unit_of_measurement: "kW" } },
+  } };
+  const html = card._row(card._metrics()[0]);
+  assert.match(html, />PV power<\/div>/);
+  assert.match(html, /title="GoSungrow 5072099 roof inverter overview PV power · sensor\.roof_pv_power"/);
+  assert.match(html, /aria-label="GoSungrow 5072099 roof inverter overview PV power; sensor\.roof_pv_power"/);
+  assert.doesNotMatch(html, />GoSungrow 5072099 roof inverter overview PV power<\/div>/);
+});
+
 test("source mapping verifies the persisted dashboard before changing local state", async () => {
   const card = new SourceCard();
   const { config, dashboard } = sourceSaveFixture();

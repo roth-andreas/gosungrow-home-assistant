@@ -1965,11 +1965,16 @@ class GoSungrowSourceMappingCard extends HTMLElement {
     const selected = this._selected(metric);
     const state = this._state(selected);
     const friendly = state?.attributes?.friendly_name || selected;
+    const peerNames = this._metrics().map((entry) => {
+      const entityID = this._selected(entry);
+      return this._state(entityID)?.attributes?.friendly_name || entityID;
+    });
+    const displayName = this._compactCandidateText(friendly, peerNames, 58);
     const warning = this._warning(metric);
     return `<article class="metric-row ${status === "needs_review" ? "warning" : ""}">
       <div class="metric-icon"><ha-icon icon="${this._escape(metric.icon || "mdi:chart-line")}"></ha-icon></div>
       <div class="metric-main"><div class="metric-title-line"><strong>${this._escape(metric.label || metric.key)}</strong><span class="badge ${status}"><span class="badge-dot"></span>${this._escape(this._statusLabel(status))}</span></div>
-      <div class="metric-value">${this._escape(this._displayValue(metric))}</div><div class="entity-name" title="${this._escape(selected)}">${this._escape(friendly || selected)}</div><div class="match-reason"><span>${this._escape(this._confidenceLabel(metric.confidence))}</span>${this._escape(metric.reason || this._label("source_compatible", "Compatible source"))}</div>${warning ? `<div class="warning-text"><ha-icon icon="mdi:alert-circle-outline"></ha-icon>${this._escape(warning)}</div>` : ""}</div>
+      <div class="metric-value">${this._escape(this._displayValue(metric))}</div><div class="entity-name" title="${this._escape(`${friendly || selected} · ${selected}`)}" aria-label="${this._escape(`${friendly || selected}; ${selected}`)}">${this._escape(displayName || selected)}</div><div class="match-reason"><span>${this._escape(this._confidenceLabel(metric.confidence))}</span>${this._escape(metric.reason || this._label("source_compatible", "Compatible source"))}</div>${warning ? `<div class="warning-text"><ha-icon icon="mdi:alert-circle-outline"></ha-icon>${this._escape(warning)}</div>` : ""}</div>
       <button class="configure" data-metric="${this._escape(metric.key)}" ${!this._isAdmin() ? "disabled" : ""} aria-label="${this._escape(this._label("configure", "Configure"))} ${this._escape(metric.label || metric.key)}"><ha-icon icon="mdi:tune"></ha-icon><span>${this._escape(this._label("configure", "Configure"))}</span></button>
     </article>`;
   }
