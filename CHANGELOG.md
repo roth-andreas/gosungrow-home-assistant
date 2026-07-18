@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.2.0
+## 3.2.0.4
 
 - Add an administrator-only Data Sources view to review automatic dashboard matches and choose persistent overrides.
 - Rank compatible candidates by metric, unit, and plant affinity without changing the existing automatic defaults.
