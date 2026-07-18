@@ -42,6 +42,7 @@ vm.runInContext(fs.readFileSync(assetPath, "utf8"), sandbox, { filename: assetPa
 
 const SummaryCard = registry.get("gosungrow-energy-summary-card-v1");
 const SourceCard = registry.get("gosungrow-source-mapping-card-v1");
+const FlowCard = registry.get("gosungrow-energy-flow-card-v2");
 const entityID = "sensor.gosungrow_daily_production";
 const metricEntities = {
   production: "sensor.gosungrow_daily_production",
@@ -102,6 +103,66 @@ function createMultiMetricCard(now, liveValues) {
 function stateRow(date, state) {
   return { start: `${date}T00:00:00.000Z`, state };
 }
+
+test("live flow node values use manually selected sources before directional sums", () => {
+  const card = new FlowCard();
+  card._config = { entities: {
+    solar_power: "sensor.manual_solar",
+    load_power: "sensor.manual_load",
+    grid_power: "sensor.manual_grid",
+    battery_power: "sensor.manual_battery",
+  }, automatic_entities: {
+    solar_power: "sensor.automatic_solar",
+    load_power: "sensor.automatic_load",
+    grid_power: "sensor.automatic_grid",
+    battery_power: "sensor.automatic_battery",
+  } };
+  card._hass = { states: {
+    "sensor.manual_solar": { state: "7.5", attributes: { unit_of_measurement: "kW" } },
+    "sensor.manual_load": { state: "3.8", attributes: { unit_of_measurement: "kW" } },
+    "sensor.manual_grid": { state: "-1.2", attributes: { unit_of_measurement: "kW" } },
+    "sensor.manual_battery": { state: "2.1", attributes: { unit_of_measurement: "kW" } },
+  } };
+  const route = (value) => ({ numericValue: value, unit: "kW", formatted: `${value} kW`, available: true });
+  const nodes = card._nodeDisplays({
+    pv_to_load_power: route(1), pv_to_grid_power: route(2), pv_to_battery_power: route(3),
+    grid_to_load_power: route(4), battery_to_load_power: route(5),
+  });
+  assert.equal(nodes.solar.numericValue, 7.5);
+  assert.equal(nodes.home.numericValue, 3.8);
+  assert.equal(nodes.grid.numericValue, -1.2);
+  assert.equal(nodes.battery.numericValue, 2.1);
+});
+
+test("live flow node values fall back to directional sums when direct sources are unavailable", () => {
+  const card = new FlowCard();
+  card._config = { entities: {} };
+  card._hass = { states: {} };
+  const route = (value) => ({ numericValue: value, unit: "kW", formatted: `${value} kW`, available: true });
+  const nodes = card._nodeDisplays({
+    pv_to_load_power: route(1), pv_to_grid_power: route(2), pv_to_battery_power: route(3),
+    grid_to_load_power: route(4), battery_to_load_power: route(5),
+  });
+  assert.equal(nodes.solar.numericValue, 6);
+  assert.equal(nodes.home.numericValue, 10);
+  assert.equal(nodes.grid.numericValue, 2);
+  assert.equal(nodes.battery.numericValue, 2);
+});
+
+test("live flow preserves directional sums while configured sources remain automatic", () => {
+  const card = new FlowCard();
+  card._config = {
+    entities: { solar_power: "sensor.automatic_solar" },
+    automatic_entities: { solar_power: "sensor.automatic_solar" },
+  };
+  card._hass = { states: { "sensor.automatic_solar": { state: "9.9", attributes: { unit_of_measurement: "kW" } } } };
+  const route = (value) => ({ numericValue: value, unit: "kW", formatted: `${value} kW`, available: true });
+  const nodes = card._nodeDisplays({
+    pv_to_load_power: route(1), pv_to_grid_power: route(2), pv_to_battery_power: route(3),
+    grid_to_load_power: route(4), battery_to_load_power: route(5),
+  });
+  assert.equal(nodes.solar.numericValue, 6);
+});
 
 test("source mapping card renders automatic and manual status without changing defaults", () => {
   const card = new SourceCard();

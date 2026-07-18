@@ -10,6 +10,7 @@
 - Isolate overrides per dashboard target, reject incompatible persisted values, and protect unrelated user edits with a normalized structure hash.
 - Use live Home Assistant values for source health, cap candidate payloads, verify saves transactionally, and refresh the Lovelace configuration without reloading Home Assistant.
 - Give the Data Sources workspace a full-width responsive layout and shorten shared sensor-name prefixes while retaining complete names for tooltips and accessibility.
+- Make manual Live Flow node sources authoritative so Solar, Home, Grid, and Battery selections immediately change their displayed values while automatic sources retain the existing directional calculations.
 
 ## 3.1.11
 

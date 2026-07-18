@@ -46,6 +46,48 @@ func TestDashboardSourceMappingsKeepAutomaticEntityReferences(t *testing.T) {
 	}
 }
 
+func TestDashboardSourceMappingBindsLiveFlowEntityMap(t *testing.T) {
+	psKey := "100_14_1_1"
+	defaultEntity := "sensor.gosungrow_virtual_" + psKey + "_pv_power"
+	config := map[string]any{
+		"views": []any{
+			map[string]any{
+				"path": "overview",
+				"sections": []any{
+					map[string]any{
+						"cards": []any{
+							map[string]any{
+								"type":     dashboardEnergyFlowCardType,
+								"entities": map[string]any{"solar_power": defaultEntity},
+							},
+						},
+					},
+				},
+			},
+			map[string]any{
+				"path": "data-sources",
+				"cards": []any{
+					map[string]any{"type": dashboardSourceMappingCardType, "schema_version": 1, "mapping_id": psKey},
+				},
+			},
+		},
+	}
+	states := []haState{{EntityID: defaultEntity, State: "4.2", Attributes: map[string]any{"unit_of_measurement": "kW"}}}
+	traces := []dashboardMetricTrace{{Metric: "pv_power", TargetPsKey: psKey, Resolved: defaultEntity}}
+	result, _ := applyDashboardSourceMappings(config, nil, nil, []haDashboardTarget{{PsKey: psKey}}, states, traces, "gosungrow", defaultDashboardLocaleBundle)
+	card := findDashboardSourceMappingCard(result, dashboardSourceMappingID(haDashboardTarget{PsKey: psKey}))
+	paths := card["bindings"].(map[string]any)["pv_power"].([]any)
+	want := []any{"/views/0/sections/0/cards/0/entities/solar_power"}
+	if !reflect.DeepEqual(paths, want) {
+		t.Fatalf("live flow source was not bound: got %#v want %#v", paths, want)
+	}
+	flowCard := result["views"].([]any)[0].(map[string]any)["sections"].([]any)[0].(map[string]any)["cards"].([]any)[0].(map[string]any)
+	automatic := flowCard["automatic_entities"].(map[string]any)
+	if got := automatic["solar_power"]; got != defaultEntity {
+		t.Fatalf("live flow automatic source metadata missing: %v", got)
+	}
+}
+
 func TestDashboardSourceMappingHashesIdentifierEvenWithoutResolvedMetrics(t *testing.T) {
 	target := haDashboardTarget{PsID: "100", PsKey: "100_14_1_1"}
 	result, overrides := applyDashboardSourceMappings(sourceMappingTestConfig(target.PsKey), nil, nil, []haDashboardTarget{target}, nil, nil, "gosungrow", defaultDashboardLocaleBundle)

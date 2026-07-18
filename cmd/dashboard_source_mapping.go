@@ -12,6 +12,7 @@ import (
 )
 
 const (
+	dashboardEnergyFlowCardType     = "custom:gosungrow-energy-flow-card-v2"
 	dashboardSourceMappingCardType  = "custom:gosungrow-source-mapping-card-v1"
 	dashboardSourceMappingSchema    = 1
 	dashboardSourceValidationSchema = 1
@@ -45,6 +46,19 @@ var dashboardSourceMetricDefinitions = []dashboardSourceMetricDefinition{
 	{Metric: "p13147", Group: "today_energy", Icon: "mdi:download-network-outline", Label: "Grid import today"},
 	{Metric: "p13199", Group: "energy_summary", Icon: "mdi:home-lightning-bolt", Label: "Home consumption today"},
 	{Metric: "p13029", Group: "energy_summary", Icon: "mdi:battery-arrow-down-outline", Label: "Battery discharge today"},
+}
+
+var dashboardFlowEntityMetrics = map[string]string{
+	"solar_power":           "pv_power",
+	"load_power":            "load_power",
+	"grid_power":            "grid_power",
+	"battery_power":         "battery_power",
+	"battery_soc":           "p13141",
+	"pv_to_load_power":      "pv_to_load_power",
+	"pv_to_battery_power":   "pv_to_battery_power",
+	"pv_to_grid_power":      "pv_to_grid_power",
+	"grid_to_load_power":    "grid_to_load_power",
+	"battery_to_load_power": "battery_to_load_power",
 }
 
 func applyDashboardSourceMappings(config map[string]any, current map[string]any, persisted map[string]map[string]string, targets []haDashboardTarget, states []haState, traces []dashboardMetricTrace, dashboardURL string, locale dashboardLocaleBundle) (map[string]any, map[string]map[string]string) {
@@ -87,6 +101,7 @@ func applyDashboardSourceMappings(config map[string]any, current map[string]any,
 		}
 		viewIndexes := dashboardTargetViewIndexes(config, target, targets)
 		bindings := dashboardSourceBindingPaths(config, viewIndexes, defaults)
+		setDashboardFlowAutomaticEntities(config, viewIndexes, defaults)
 		candidatesByMetric := make(map[string][]any, len(defaults))
 		remainingCandidates := dashboardSourceTargetLimit
 		for _, def := range dashboardSourceMetricDefinitions {
@@ -334,6 +349,44 @@ func dashboardSourceBindingPaths(config map[string]any, viewIndexes []int, defau
 		ret[metric] = paths
 	}
 	return ret
+}
+
+func setDashboardFlowAutomaticEntities(config map[string]any, viewIndexes []int, defaults map[string]string) {
+	views, _ := config["views"].([]any)
+	var walk func(any)
+	walk = func(value any) {
+		switch typed := value.(type) {
+		case map[string]any:
+			if stringValue(typed["type"]) == dashboardEnergyFlowCardType {
+				entities, _ := typed["entities"].(map[string]any)
+				automatic := make(map[string]any)
+				for key, metric := range dashboardFlowEntityMetrics {
+					defaultEntity := defaults[metric]
+					if defaultEntity != "" && strings.EqualFold(stringValue(entities[key]), defaultEntity) {
+						automatic[key] = defaultEntity
+					}
+				}
+				if len(automatic) > 0 {
+					typed["automatic_entities"] = automatic
+				} else {
+					delete(typed, "automatic_entities")
+				}
+				return
+			}
+			for _, entry := range typed {
+				walk(entry)
+			}
+		case []any:
+			for _, entry := range typed {
+				walk(entry)
+			}
+		}
+	}
+	for _, index := range viewIndexes {
+		if index >= 0 && index < len(views) {
+			walk(views[index])
+		}
+	}
 }
 
 func validateDashboardSourceOverrides(mappingID string, defaults, requested, persisted map[string]string, target haDashboardTarget, singleTarget bool, states []haState) map[string]string {

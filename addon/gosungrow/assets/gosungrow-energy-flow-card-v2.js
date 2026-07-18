@@ -485,7 +485,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
       direct.grid.unit ||
       direct.battery.unit;
 
-    return {
+    const computed = {
       solar: this._displayFromValue(
         flows.pv_to_load_power.numericValue + flows.pv_to_grid_power.numericValue + flows.pv_to_battery_power.numericValue,
         flowUnit,
@@ -510,8 +510,22 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         direct.battery,
         this._hasAnyDisplay([flows.battery_to_load_power, flows.pv_to_battery_power]),
       ),
+    };
+
+    return {
+      solar: this._manualNodeDisplay("solar_power", direct.solar, computed.solar),
+      grid: this._manualNodeDisplay("grid_power", direct.grid, computed.grid),
+      home: this._manualNodeDisplay("load_power", direct.home, computed.home),
+      battery: this._manualNodeDisplay("battery_power", direct.battery, computed.battery),
       batterySoc: direct.batterySoc,
     };
+  }
+
+  _manualNodeDisplay(key, direct, automaticDisplay) {
+    const configured = this._config?.entities?.[key];
+    const automatic = this._config?.automatic_entities?.[key];
+    const manuallySelected = configured && automatic && configured.toLowerCase() !== automatic.toLowerCase();
+    return manuallySelected ? direct : automaticDisplay;
   }
 
   _flowDisplays() {
