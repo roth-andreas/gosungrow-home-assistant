@@ -547,6 +547,9 @@ func TestBundledDashboardTemplateRenders(t *testing.T) {
 	if got := views[3].(map[string]any)["path"]; got != "data-sources" {
 		t.Fatalf("expected fourth bundled dashboard view to be data-sources, got %v", got)
 	}
+	if got := views[3].(map[string]any)["type"]; got != "panel" {
+		t.Fatalf("expected data-sources to use a full-width panel view, got %v", got)
+	}
 
 	text := string(rendered)
 	if !strings.Contains(text, "\"type\":\"custom:gosungrow-energy-flow-card-v2\"") {

@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("overview", "trends")]
+    [ValidateSet("overview", "aggregates", "trends", "sources")]
     [string]$View = "overview",
 
     [ValidateSet("desktop", "mobile")]
@@ -7,6 +7,15 @@ param(
 
     [ValidateSet("export_high", "battery_charge", "evening_discharge", "grid_import")]
     [string]$Scenario = "battery_charge",
+
+    [ValidateSet("automatic", "warning", "dialog", "manual", "saved", "missing", "multi", "readonly", "save_error", "empty")]
+    [string]$SourceState = "automatic",
+
+    [ValidateSet("dark", "light")]
+    [string]$Theme = "dark",
+
+    [ValidateSet("en", "de", "sv")]
+    [string]$Language = "en",
 
     [string]$OutputPath,
 
@@ -66,7 +75,7 @@ if (-not (Test-Path $previewPath)) {
 }
 
 $previewUri = [System.Uri]::new((Resolve-Path $previewPath).Path)
-$url = "$($previewUri.AbsoluteUri)?view=$View&device=$Device&scenario=$Scenario"
+$url = "$($previewUri.AbsoluteUri)?view=$View&device=$Device&scenario=$Scenario&sourceState=$SourceState&theme=$Theme&language=$Language"
 
 if ($Open -or -not $OutputPath) {
     Start-Process $url
@@ -79,7 +88,7 @@ if (-not $OutputPath) {
 $browser = Get-PreviewBrowser
 $targetPath = Resolve-OutputPath -Path $OutputPath
 $screenshotUrl = "$url&chrome=0"
-$windowSize = if ($Device -eq "mobile") { "430,1350" } else { "1600,1100" }
+$windowSize = if ($Device -eq "mobile") { "390,1350" } else { "1440,1100" }
 
 & $browser `
     "--headless=new" `

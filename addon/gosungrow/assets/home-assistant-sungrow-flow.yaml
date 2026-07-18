@@ -306,16 +306,8 @@ views:
   - title: Data Sources
     path: data-sources
     icon: mdi:tune-variant
-    type: sections
-    max_columns: 1
-    sections:
-      - type: grid
-        cards:
-          - type: heading
-            heading: Data Sources
-            icon: mdi:tune-variant
-          - type: custom:gosungrow-source-mapping-card-v1
-            mapping_id: YOUR_ESS_PS_KEY
-            schema_version: 1
-            layout_options:
-              grid_columns: full
+    type: panel
+    cards:
+      - type: custom:gosungrow-source-mapping-card-v1
+        mapping_id: YOUR_ESS_PS_KEY
+        schema_version: 1

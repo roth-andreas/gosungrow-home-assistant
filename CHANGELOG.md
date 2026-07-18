@@ -8,7 +8,8 @@
 - Warn when direct solar consumption is physically inconsistent with solar production.
 - Add responsive, localized source-selection UI and desktop/mobile preview scenarios.
 - Isolate overrides per dashboard target, reject incompatible persisted values, and protect unrelated user edits with a normalized structure hash.
-- Use live Home Assistant values for source health, cap candidate payloads, and save changes transactionally without reloading Home Assistant.
+- Use live Home Assistant values for source health, cap candidate payloads, verify saves transactionally, and refresh the Lovelace configuration without reloading Home Assistant.
+- Give the Data Sources workspace a full-width responsive layout and shorten shared sensor-name prefixes while retaining complete names for tooltips and accessibility.
 
 ## 3.1.11
 

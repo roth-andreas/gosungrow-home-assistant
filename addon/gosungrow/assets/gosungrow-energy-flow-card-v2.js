@@ -1848,6 +1848,8 @@ class GoSungrowSourceMappingCard extends HTMLElement {
 
   getCardSize() { return 8; }
 
+  getGridOptions() { return { columns: 12, min_columns: 6 }; }
+
   connectedCallback() { this._render(); }
 
   _label(key, fallback) { return this._config?.labels?.[key] || fallback; }
@@ -1973,21 +1975,44 @@ class GoSungrowSourceMappingCard extends HTMLElement {
       <div class="dialog-head"><div><div class="eyebrow">${this._escape(this._label("configure", "Configure"))}</div><h2 id="source-dialog-title">${this._escape(metric.label || metric.key)}</h2></div><button class="icon-button close" aria-label="${this._escape(this._label("cancel", "Cancel"))}"><ha-icon icon="mdi:close"></ha-icon></button></div>
       ${warning ? `<div class="dialog-warning"><ha-icon icon="mdi:alert-circle-outline"></ha-icon><div><strong>${this._escape(this._label("needs_review", "Needs review"))}</strong><span>${this._escape(warning)}</span></div></div>` : ""}
       <label class="search"><ha-icon icon="mdi:magnify"></ha-icon><input type="search" value="${this._escape(this._search)}" placeholder="${this._escape(this._label("search", "Search entities"))}" aria-label="${this._escape(this._label("search", "Search entities"))}"></label>
-      <div class="candidate-scroll"><h3>${this._escape(this._label("recommended", "Recommended"))}</h3>${recommended.map((candidate) => this._candidate(metric, candidate)).join("") || `<div class="empty">No matching entities</div>`}
-      ${other.length ? `<details ${query ? "open" : ""}><summary>${this._escape(this._label("other", "Other compatible entities"))}<span>${other.length}</span></summary>${other.map((candidate) => this._candidate(metric, candidate)).join("")}</details>` : ""}</div>
+      <div class="candidate-scroll"><h3>${this._escape(this._label("recommended", "Recommended"))}</h3>${recommended.map((candidate) => this._candidate(metric, candidate, filtered)).join("") || `<div class="empty">No matching entities</div>`}
+      ${other.length ? `<details ${query ? "open" : ""}><summary>${this._escape(this._label("other", "Other compatible entities"))}<span>${other.length}</span></summary>${other.map((candidate) => this._candidate(metric, candidate, filtered)).join("")}</details>` : ""}</div>
       <div class="dialog-actions">${this._config?.overrides?.[metric.key] ? `<button class="reset" data-reset="${this._escape(metric.key)}" ${this._busy ? "disabled" : ""}>${this._escape(this._label("reset", "Reset to automatic"))}</button>` : ""}<button class="cancel">${this._escape(this._label("cancel", "Cancel"))}</button><button class="use-source" data-commit="${this._escape(metric.key)}" ${!changed || this._busy ? "disabled" : ""}>${this._escape(this._label("use_source", "Use this source"))}</button></div>
     </div></div>`;
   }
 
-  _candidate(metric, candidate) {
+  _candidate(metric, candidate, peers = this._candidates(metric)) {
     const selected = (this._pendingEntity || this._selected(metric)) === candidate.entity_id;
     const state = this._state(candidate.entity_id);
     const friendly = state?.attributes?.friendly_name || candidate.entity_id;
+    const peerNames = peers.map((entry) => this._state(entry.entity_id)?.attributes?.friendly_name || entry.entity_id);
+    const peerIDs = peers.map((entry) => entry.entity_id);
+    const displayName = this._compactCandidateText(friendly, peerNames, 76);
+    const displayID = this._compactCandidateText(candidate.entity_id, peerIDs, 68, true);
     const value = this._numericState(candidate.entity_id) === null ? this._label("unavailable", "Unavailable") : state.state;
     const unit = state?.attributes?.unit_of_measurement || "";
-    return `<button class="candidate ${selected ? "selected" : ""}" data-select="${this._escape(candidate.entity_id)}" data-metric="${this._escape(metric.key)}">
-      <span class="radio"><span></span></span><span class="candidate-main"><strong>${this._escape(friendly)}</strong><code>${this._escape(candidate.entity_id)}</code><small>${this._escape([candidate.device, candidate.point_id].filter(Boolean).join(" · "))}</small><small>${this._escape(candidate.reason || candidate.source || "Compatible entity")}</small></span><span class="candidate-value">${this._escape(value)}<small>${this._escape(unit)}</small></span>
+    const accessible = `${friendly}; ${candidate.entity_id}; ${value}${unit ? ` ${unit}` : ""}`;
+    return `<button class="candidate ${selected ? "selected" : ""}" data-select="${this._escape(candidate.entity_id)}" data-metric="${this._escape(metric.key)}" aria-label="${this._escape(accessible)}">
+      <span class="radio"><span></span></span><span class="candidate-main"><strong title="${this._escape(friendly)}">${this._escape(displayName)}</strong><code title="${this._escape(candidate.entity_id)}">${this._escape(displayID)}</code><small>${this._escape([candidate.device, candidate.point_id].filter(Boolean).join(" · "))}</small><small>${this._escape(candidate.reason || candidate.source || "Compatible entity")}</small></span><span class="candidate-value">${this._escape(value)}<small>${this._escape(unit)}</small></span>
     </button>`;
+  }
+
+  _compactCandidateText(value, peers, limit = 72, identifier = false) {
+    const full = String(value || "");
+    const values = [...new Set((peers || []).map((entry) => String(entry || "")).filter(Boolean))];
+    let compact = full;
+    if (values.length > 1) {
+      const lower = values.map((entry) => entry.toLocaleLowerCase());
+      let length = 0;
+      while (lower.every((entry) => entry[length] && entry[length] === lower[0][length])) length += 1;
+      const separators = identifier ? "_.-/: " : " _.-/:()";
+      while (length > 0 && !separators.includes(full[length - 1])) length -= 1;
+      if (length >= (identifier ? 10 : 4)) compact = full.slice(length).replace(/^[\s_.\-/:()]+/, "");
+    }
+    if (!compact) compact = full;
+    if (compact.length <= limit) return compact;
+    const suffix = compact.slice(-(limit - 1)).replace(/^[^\s_.\-/:()]*[\s_.\-/:()]+/, "");
+    return `…${suffix || compact.slice(-(limit - 1))}`;
   }
 
   _wire() {
@@ -2049,6 +2074,12 @@ class GoSungrowSourceMappingCard extends HTMLElement {
       const nextCandidate = (nextCard.candidates?.[metricKey] || nextMetric?.candidates || []).find((candidate) => candidate.entity_id === nextEntity);
       if (nextMetric) { nextMetric.confidence = nextCandidate?.confidence; nextMetric.reason = nextCandidate?.reason; }
       await this._hass.callWS({ type: "lovelace/config/save", url_path: this._config.dashboard_url_path, config: nextDashboard });
+      const verifiedDashboard = await this._hass.callWS({ type: "lovelace/config", url_path: this._config.dashboard_url_path, force: true });
+      const verifiedCard = this._findMappingCard(verifiedDashboard, this._config.mapping_id);
+      const persistedEntity = verifiedCard?.overrides?.[metricKey] || verifiedCard?.defaults?.[metricKey];
+      if (persistedEntity !== nextEntity || paths.some((path) => this._getPointer(verifiedDashboard, path) !== nextEntity)) {
+        throw new Error(this._label("source_save_error", "Could not save the data source. Check your administrator access and connection, then try again."));
+      }
       this._config.overrides = { ...(this._config.overrides || {}) };
       if (entityID) this._config.overrides[metricKey] = entityID; else delete this._config.overrides[metricKey];
       const localCandidate = this._candidates(metric).find((candidate) => candidate.entity_id === nextEntity);
@@ -2059,8 +2090,7 @@ class GoSungrowSourceMappingCard extends HTMLElement {
       this._pendingEntity = null;
       this._render();
       this.dispatchEvent(new CustomEvent("hass-notification", { bubbles: true, composed: true, detail: { message: this._notice } }));
-      this.dispatchEvent(new CustomEvent("ll-rebuild", { bubbles: true, composed: true }));
-      queueMicrotask(() => this.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true, detail: { replace: true } })));
+      queueMicrotask(() => this._refreshDashboardView());
     } catch (error) {
       this._notice = error?.message || this._label("source_save_error", "Could not save the data source. Check your administrator access and connection, then try again.");
       this._render();
@@ -2088,6 +2118,9 @@ class GoSungrowSourceMappingCard extends HTMLElement {
     const normalize = (value) => Object.fromEntries(Object.entries(value || {}).sort(([a], [b]) => a.localeCompare(b)));
     return this._sameValue(normalize(left), normalize(right));
   }
+  _refreshDashboardView() {
+    this.dispatchEvent(new CustomEvent("config-refresh", { bubbles: true, composed: true }));
+  }
   _escape(value) { return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;"); }
 
   _styles() { return `
@@ -2096,6 +2129,9 @@ class GoSungrowSourceMappingCard extends HTMLElement {
     @media(max-width:600px){ha-card{padding:16px;border-radius:16px}.header{margin-bottom:14px}.metric-row{grid-template-columns:38px minmax(0,1fr);padding:13px 12px}.configure{grid-column:2;width:100%;justify-content:center;margin-top:2px}.entity-name{max-width:100%}.scrim{place-items:end center;padding:0}.dialog{width:100%;max-height:92vh;border-radius:22px 22px 0 0}.dialog-head,.candidate-scroll{padding-left:16px;padding-right:16px}.search,.dialog-warning{margin-left:16px;margin-right:16px}.dialog-actions{padding:12px 16px 18px;flex-wrap:wrap}.reset{width:100%;margin:0;order:2}.cancel{margin-left:auto}.candidate{grid-template-columns:20px minmax(0,1fr)}.candidate-value{grid-column:2;text-align:left}.configure span{display:inline}}
     .use-source{min-height:44px;border:0;border-radius:12px;padding:0 16px;background:var(--primary-color);color:var(--text-primary-color,#fff);font:inherit;font-weight:700;cursor:pointer}.use-source:disabled,button:disabled{opacity:.48;cursor:not-allowed}
     .match-reason{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:5px;color:var(--secondary-text-color);font-size:11px}.match-reason span{border:1px solid var(--divider-color);border-radius:999px;padding:2px 7px;color:var(--primary-text-color);font-weight:650}
+    :host{padding:24px}ha-card{max-width:1280px;margin:0 auto;padding:24px}.groups{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}.candidate-main strong{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-height:1.3}.candidate-main code{direction:ltr}.candidate-main strong,.candidate-main code{overflow-wrap:anywhere}
+    @media(max-width:900px){.groups{grid-template-columns:1fr}}
+    @media(max-width:600px){:host{padding:0}ha-card{padding:16px}}
   `; }
 }
 

@@ -313,7 +313,9 @@ function mountSourcesCard(container, scenario, sourceState, language = "en") {
   const manual = sourceState === "manual" || sourceState === "saved";
   const missing = sourceState === "missing";
   const empty = sourceState === "empty";
-  const longPrefix = sourceState === "multi" ? "GoSungrow ActualEnergy – Inverter seven – " : "";
+  const longPrefix = ["multi", "dialog", "save_error"].includes(sourceState)
+    ? "GoSungrow 5072099_14_1_1 - SH6.0RT(COM1-001)_001_001 - "
+    : "";
   const translations = {
     en: { title: "Data Sources", subtitle: "Review automatic matches or choose a dashboard override.", automatic: "Automatic", manual: "Manual", review: "Needs review", unavailable: "Unavailable", configure: "Configure", recommended: "Recommended", other: "Other compatible entities", search: "Search entities", use: "Use this source", reset: "Reset to automatic", cancel: "Cancel", saved: "Data source saved.", readonly: "Only Home Assistant administrators can change data sources.", groups: { live_power: "Live power", today_energy: "Today's energy", battery: "Battery", energy_summary: "Energy summary" }, production: "Solar production today", direct: "Direct solar consumption" },
     de: { title: "Datenquellen", subtitle: "Automatische Zuordnungen prüfen oder eine Dashboard-Quelle auswählen.", automatic: "Automatisch", manual: "Manuell", review: "Prüfung nötig", unavailable: "Nicht verfügbar", configure: "Konfigurieren", recommended: "Empfohlen", other: "Weitere passende Entitäten", search: "Entitäten suchen", use: "Diese Quelle verwenden", reset: "Auf Automatik zurücksetzen", cancel: "Abbrechen", saved: "Datenquelle gespeichert.", readonly: "Nur Home-Assistant-Administratoren können Datenquellen ändern.", groups: { live_power: "Aktuelle Leistung", today_energy: "Heutige Energie", battery: "Batterie", energy_summary: "Energieübersicht" }, production: "Solarerzeugung heute", direct: "Direkter Solarverbrauch" },

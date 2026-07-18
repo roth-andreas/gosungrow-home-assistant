@@ -10,7 +10,7 @@ const assetPath = path.join(repoRoot, "addon", "gosungrow", "assets", "gosungrow
 const registry = new Map();
 const sandbox = {
   console,
-  CustomEvent: class CustomEvent {},
+  CustomEvent: class CustomEvent { constructor(type, options = {}) { this.type = type; this.detail = options.detail; this.bubbles = Boolean(options.bubbles); this.composed = Boolean(options.composed); } },
   HTMLElement: class HTMLElement {
     attachShadow() {
       this.shadowRoot = {
@@ -154,6 +154,19 @@ function sourceSaveFixture() {
   return { config, dashboard };
 }
 
+function transactionalWS(dashboard, onSave = () => {}) {
+  let current = structuredClone(dashboard);
+  return async (request) => {
+    if (request.type === "lovelace/config") return structuredClone(current);
+    if (request.type === "lovelace/config/save") {
+      current = structuredClone(request.config);
+      onSave(structuredClone(current));
+      return undefined;
+    }
+    throw new Error(`Unexpected websocket request: ${request.type}`);
+  };
+}
+
 test("source mapping selection remains pending until the explicit save action", () => {
   const card = new SourceCard();
   const { config } = sourceSaveFixture();
@@ -168,9 +181,12 @@ test("source mapping save mutates exactly its bindings and commits only after we
   const card = new SourceCard();
   const { config, dashboard } = sourceSaveFixture();
   let saved;
+  const events = [];
   card.setConfig(config);
-  card.hass = { user: { is_admin: true }, states: { "sensor.auto": { state: "4", attributes: {} }, "sensor.manual": { state: "5", attributes: {} } }, callWS: async (request) => request.type === "lovelace/config" ? structuredClone(dashboard) : (saved = request.config) };
+  card.dispatchEvent = (event) => { events.push(event.type); return true; };
+  card.hass = { user: { is_admin: true }, states: { "sensor.auto": { state: "4", attributes: {} }, "sensor.manual": { state: "5", attributes: {} } }, callWS: transactionalWS(dashboard, (config) => { saved = config; }) };
   await card._save("p13112", "sensor.manual");
+  await Promise.resolve();
   assert.equal(saved.views[0].cards[0].entity, "sensor.manual");
   assert.equal(saved.views[0].cards[1].entity, "sensor.manual");
   assert.equal(saved.views[0].cards[2].entity, "sensor.auto");
@@ -178,6 +194,7 @@ test("source mapping save mutates exactly its bindings and commits only after we
   assert.equal(dashboard.views[0].cards[0].entity, "sensor.auto");
   assert.equal(card._config.overrides.p13112, "sensor.manual");
   assert.equal(card._config.metrics[0].confidence, "medium");
+  assert.deepEqual(events, ["hass-notification", "config-refresh"]);
 });
 
 test("source mapping reset restores automatic and removes the override transactionally", async () => {
@@ -189,7 +206,7 @@ test("source mapping reset restores automatic and removes the override transacti
   dashboard.views[1].cards[0].overrides.p13112 = "sensor.manual";
   let saved;
   card.setConfig(config);
-  card.hass = { user: { is_admin: true }, states: { "sensor.auto": { state: "4", attributes: {} }, "sensor.manual": { state: "5", attributes: {} } }, callWS: async (request) => request.type === "lovelace/config" ? structuredClone(dashboard) : (saved = request.config) };
+  card.hass = { user: { is_admin: true }, states: { "sensor.auto": { state: "4", attributes: {} }, "sensor.manual": { state: "5", attributes: {} } }, callWS: transactionalWS(dashboard, (config) => { saved = config; }) };
   await card._save("p13112", null);
   assert.equal(saved.views[0].cards[0].entity, "sensor.auto");
   assert.equal(saved.views[0].cards[1].entity, "sensor.auto");
@@ -291,6 +308,45 @@ test("source mapping candidate values and warnings follow live Home Assistant st
   assert.equal(card._status(card._metric("p13116")), "automatic");
   delete card._hass.states["sensor.direct"];
   assert.equal(card._status(card._metric("p13116")), "unavailable");
+});
+
+test("source mapping candidate labels remove shared prefixes while preserving full accessible identity", () => {
+  const card = new SourceCard();
+  const candidates = [
+    { entity_id: "sensor.gosungrow_5072099_14_1_1_overview_pv_power" },
+    { entity_id: "sensor.gosungrow_5072099_14_1_1_overview_total_dc_power" },
+  ];
+  card.setConfig({ schema_version: 1, mapping_id: "target", defaults: { pv: candidates[0].entity_id }, candidates: { pv: candidates }, metrics: [{ key: "pv", group: "live_power", default: candidates[0].entity_id }], labels: { groups: { live_power: "Live" } } });
+  card.hass = { user: { is_admin: true }, states: {
+    [candidates[0].entity_id]: { state: "1.2", attributes: { friendly_name: "GoSungrow 5072099 roof inverter overview PV power", unit_of_measurement: "kW" } },
+    [candidates[1].entity_id]: { state: "1.1", attributes: { friendly_name: "GoSungrow 5072099 roof inverter overview total DC power", unit_of_measurement: "kW" } },
+  } };
+  const html = card._candidate(card._metrics()[0], candidates[1], candidates);
+  assert.match(html, />total DC power<\/strong>/);
+  assert.match(html, /title="GoSungrow 5072099 roof inverter overview total DC power"/);
+  assert.match(html, /aria-label="GoSungrow 5072099 roof inverter overview total DC power; sensor\.gosungrow_/);
+  assert.doesNotMatch(html, />GoSungrow 5072099 roof inverter overview total DC power<\/strong>/);
+});
+
+test("source mapping verifies the persisted dashboard before changing local state", async () => {
+  const card = new SourceCard();
+  const { config, dashboard } = sourceSaveFixture();
+  card.setConfig(config);
+  card.hass = { user: { is_admin: true }, states: {}, callWS: async (request) => request.type === "lovelace/config" ? structuredClone(dashboard) : undefined };
+  await card._save("p13112", "sensor.manual");
+  assert.equal(card._config.overrides.p13112, undefined);
+  assert.match(card._notice, /Could not save/);
+});
+
+test("source mapping requests a native Lovelace configuration refresh", () => {
+  const card = new SourceCard();
+  const events = [];
+  card.dispatchEvent = (event) => { events.push(event); return true; };
+  card._refreshDashboardView();
+  assert.equal(events.length, 1);
+  assert.equal(events[0].type, "config-refresh");
+  assert.equal(events[0].bubbles, true);
+  assert.equal(events[0].composed, true);
 });
 
 test("source mapping stale warning follows live timestamps and clears after an update", () => {
