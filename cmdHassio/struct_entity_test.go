@@ -69,3 +69,21 @@ func TestFixConfigKeepsTotalMetadataForNumericTotals(t *testing.T) {
 		t.Fatal("expected total sensor last reset template")
 	}
 }
+
+func TestFixConfigUsesCanonicalReactivePowerDeviceClass(t *testing.T) {
+	value := valueTypes.SetUnitValueFloat("var", "Reactive Power", 750)
+	config := EntityConfig{
+		Units: "var",
+		Value: &value,
+		Point: &api.Point{Unit: "var", ValueType: "Reactive Power", UpdateFreq: GoStruct.UpdateFreqInstant},
+	}
+
+	config.FixConfig()
+
+	if config.Units != "var" {
+		t.Fatalf("units = %q, want var", config.Units)
+	}
+	if config.DeviceClass != "reactive_power" {
+		t.Fatalf("device class = %q, want reactive_power", config.DeviceClass)
+	}
+}

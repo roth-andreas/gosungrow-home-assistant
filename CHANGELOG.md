@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.2.0.6
+
+- Normalize supported Sungrow reactive-power units to Home Assistant's canonical `var` unit before MQTT discovery and state publication.
+- Keep reactive-power values, point metadata, entity configuration, and MQTT discovery units aligned to prevent recurring unit-repair prompts.
+- Preserve entity identity and all non-reactive sensors unchanged. Existing recorder history is not deleted or rewritten.
+- Leave reactive-energy normalization and MQTT discovery lifecycle changes for separately audited follow-ups.
+
 ## 3.2.0.5
 
 - Honor Home Assistant language, system, and explicit DMY/MDY/YMD date preferences in Energy Summary chart labels.

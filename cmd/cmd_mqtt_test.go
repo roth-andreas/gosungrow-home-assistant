@@ -7,7 +7,50 @@ import (
 	"time"
 
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/getDeviceList"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/valueTypes"
 )
+
+func TestNormalizeEntityMeasurementKeepsReactivePowerMetadataAligned(t *testing.T) {
+	tests := []struct {
+		name  string
+		unit  string
+		value float64
+	}{
+		{name: "base reading", unit: "var", value: 750},
+		{name: "equivalent kilo reading", unit: "kVar", value: 0.75},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			entry := &api.DataEntry{
+				Point: &api.Point{Unit: tc.unit, ValueType: "Reactive Power"},
+				Value: valueTypes.SetUnitValueFloat(tc.unit, "Reactive Power", tc.value),
+			}
+			unit := normalizeEntityMeasurement(entry)
+			if entry.Value.Value() != 750 {
+				t.Fatalf("state value = %v, want 750", entry.Value.Value())
+			}
+			if unit != "var" || entry.Value.Unit() != unit || entry.Point.Unit != unit {
+				t.Fatalf("units disagree: returned=%q value=%q point=%q", unit, entry.Value.Unit(), entry.Point.Unit)
+			}
+			if entry.Point.ValueType != "Reactive Power" {
+				t.Fatalf("point type = %q", entry.Point.ValueType)
+			}
+		})
+	}
+}
+
+func TestNormalizeEntityMeasurementLeavesUnrelatedMetadataUntouched(t *testing.T) {
+	entry := &api.DataEntry{
+		Point: &api.Point{Unit: "%", ValueType: "Percent"},
+		Value: valueTypes.SetUnitValueFloat("%", "Percent", 75),
+	}
+	unit := normalizeEntityMeasurement(entry)
+	if unit != "%" || entry.Point.Unit != "%" || entry.Value.Value() != 75 {
+		t.Fatalf("unrelated measurement changed: %#v", entry)
+	}
+}
 
 func TestCmdMqttIsTokenInvalidError(t *testing.T) {
 	c := NewCmdMqtt("")

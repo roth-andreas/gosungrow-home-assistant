@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/MickMake/GoUnify/Only"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,7 +28,78 @@ type UnitValue struct {
 
 var zero = int64(0)
 
+type reactivePowerScale struct {
+	numerator   int64
+	denominator int64
+}
+
+var reactivePowerUnits = map[string]reactivePowerScale{
+	"var":  {numerator: 1, denominator: 1},
+	"Var":  {numerator: 1, denominator: 1},
+	"VAr":  {numerator: 1, denominator: 1},
+	"VAR":  {numerator: 1, denominator: 1},
+	"kvar": {numerator: 1_000, denominator: 1},
+	"kVar": {numerator: 1_000, denominator: 1},
+	"kVAr": {numerator: 1_000, denominator: 1},
+	"KVAR": {numerator: 1_000, denominator: 1},
+	"Mvar": {numerator: 1_000_000, denominator: 1},
+	"MVar": {numerator: 1_000_000, denominator: 1},
+	"MVAr": {numerator: 1_000_000, denominator: 1},
+	"MVAR": {numerator: 1_000_000, denominator: 1},
+	"mvar": {numerator: 1, denominator: 1_000},
+	"mVar": {numerator: 1, denominator: 1_000},
+	"mVAr": {numerator: 1, denominator: 1_000},
+	"mVAR": {numerator: 1, denominator: 1_000},
+}
+
+// IsReactivePowerUnit reports whether unit is an explicitly supported Sungrow
+// reactive-power spelling. Case is intentionally significant because M and m
+// represent different scales.
+func IsReactivePowerUnit(unit string) bool {
+	_, ok := reactivePowerUnits[strings.TrimSpace(unit)]
+	return ok
+}
+
+// normalizeReactivePower converts supported reactive-power values to Home
+// Assistant's canonical base unit. Unknown units are deliberately untouched.
+func (t *UnitValue) normalizeReactivePower() bool {
+	scale, ok := reactivePowerUnits[strings.TrimSpace(t.UnitValue)]
+	if !ok {
+		return false
+	}
+
+	if scale.numerator != scale.denominator {
+		switch {
+		case t.int64 != nil:
+			value := *t.int64
+			if scale.denominator == 1 && value <= math.MaxInt64/scale.numerator && value >= math.MinInt64/scale.numerator {
+				t.SetInteger(value * scale.numerator)
+			} else if scale.denominator != 1 && value%scale.denominator == 0 {
+				t.SetInteger(value / scale.denominator)
+			} else {
+				t.SetFloat(float64(value) * float64(scale.numerator) / float64(scale.denominator))
+			}
+
+		case t.float64 != nil:
+			t.SetFloat(*t.float64 * float64(scale.numerator) / float64(scale.denominator))
+
+		case t.StringValue != "" && t.StringValue != "--":
+			value, err := strconv.ParseFloat(t.StringValue, 64)
+			if err == nil {
+				t.SetFloat(value * float64(scale.numerator) / float64(scale.denominator))
+			}
+		}
+	}
+
+	t.SetUnit("var")
+	return true
+}
+
 func (t *UnitValue) UnitValueFix() UnitValue {
+	if t.normalizeReactivePower() {
+		return *t
+	}
+
 	switch t.UnitValue {
 	case "w":
 		t.UnitValue = "W"
@@ -112,6 +184,8 @@ func UnitValueType(unit string) string {
 	case "Hz":
 		ret = "Frequency"
 
+	case "var":
+		fallthrough
 	case "kvar":
 		ret = "Reactive Power"
 

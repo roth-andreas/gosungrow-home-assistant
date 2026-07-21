@@ -14,6 +14,7 @@ import (
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/getDeviceList"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/WebAppService/getDevicePointAttrs"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/valueTypes"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"os"
@@ -632,7 +633,7 @@ func (c *CmdMqtt) Update(endpoint string, data api.DataMap, newDay bool) error {
 			}
 
 			_ = c.UpdatePoint(r)
-			r.Value.UnitValueFix() // @TODO - Fix this up properly
+			entityUnit := normalizeEntityMeasurement(r)
 
 			id := r.EndPoint
 			name := c.friendlyEntityName(r)
@@ -656,7 +657,7 @@ func (c *CmdMqtt) Update(endpoint string, data api.DataMap, newDay bool) error {
 				// UniqueId:    r.Id,
 				FullId: id, // string(r.FullId),	// WAS r.Point.FullId
 				// FullName:    r.Point.Name,
-				Units: r.Point.Unit,
+				Units: entityUnit,
 				// ValueName:   r.Point.Description,
 				// ValueName:   r.Point.Id,
 				DeviceClass: "",
@@ -709,6 +710,24 @@ func (c *CmdMqtt) Update(endpoint string, data api.DataMap, newDay bool) error {
 		c.log.PlainInfo("\n")
 	}
 	return c.Error
+}
+
+// normalizeEntityMeasurement keeps the published state and discovery metadata
+// on one unit. The point synchronization is intentionally limited to the
+// explicit reactive-power allowlist so all unrelated sensor behavior remains
+// unchanged.
+func normalizeEntityMeasurement(entry *api.DataEntry) string {
+	if entry == nil || entry.Point == nil {
+		return ""
+	}
+
+	reactivePower := valueTypes.IsReactivePowerUnit(entry.Value.Unit())
+	entry.Value.UnitValueFix()
+	if reactivePower {
+		entry.Point.Unit = entry.Value.Unit()
+		entry.Point.ValueType = entry.Value.Type()
+	}
+	return entry.Point.Unit
 }
 
 func (c *CmdMqtt) friendlyEntityName(r *api.DataEntry) string {
