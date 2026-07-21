@@ -476,6 +476,78 @@ test("fresh install shows one live bucket for day, month, and year", () => {
   }
 });
 
+test("daily bucket labels follow Home Assistant language date ordering", () => {
+  const date = new Date(2026, 6, 21, 12);
+  const card = createCard("2026-07-21T12:00:00.000Z", 7);
+
+  card._hass.locale = { language: "en-US", date_format: "language" };
+  assert.equal(card._bucketLabel("day", date), "07/21");
+
+  card._hass.locale = { language: "en-GB", date_format: "language" };
+  assert.equal(card._bucketLabel("day", date), "21/07");
+});
+
+test("explicit Home Assistant date preferences override language ordering", () => {
+  const date = new Date(2026, 6, 21, 12);
+  const card = createCard("2026-07-21T12:00:00.000Z", 7);
+
+  for (const [language, dateFormat, expected] of [
+    ["en-US", "DMY", "21/07"],
+    ["en-GB", "MDY", "07/21"],
+    ["en-GB", "YMD", "07/21"],
+  ]) {
+    card._hass.locale = { language, date_format: dateFormat };
+    assert.equal(card._bucketLabel("day", date), expected);
+  }
+});
+
+test("system, missing, and invalid locale preferences have deterministic fallbacks", () => {
+  const date = new Date(2026, 6, 21, 12);
+  const card = createCard("2026-07-21T12:00:00.000Z", 7);
+
+  card._hass.locale = { language: "en-GB", date_format: "system" };
+  assert.equal(
+    card._bucketLabel("day", date),
+    new Intl.DateTimeFormat(undefined, { day: "2-digit", month: "2-digit" }).format(date),
+  );
+
+  card._hass.locale = { language: "en-US" };
+  assert.equal(card._bucketLabel("day", date), "07/21");
+
+  card._hass.locale = { language: "invalid_locale", date_format: "DMY" };
+  assert.equal(card._bucketLabel("day", date), "21/07");
+});
+
+test("month and year bucket labels remain localized", () => {
+  const date = new Date(2026, 6, 21, 12);
+  const card = createCard("2026-07-21T12:00:00.000Z", 7);
+  card._hass.locale = { language: "de-DE", date_format: "DMY" };
+
+  assert.equal(card._bucketLabel("month", date), new Intl.DateTimeFormat("de-DE", { month: "short" }).format(date));
+  assert.equal(card._bucketLabel("year", date), new Intl.DateTimeFormat("de-DE", { year: "2-digit" }).format(date));
+});
+
+test("cached chart buckets relabel after a date preference change without refetching statistics", () => {
+  const card = createCard("2026-05-17T12:00:00.000Z", 3);
+  card._hass.locale = { language: "en-US", date_format: "language" };
+  const initial = chartFor(card, "day", [stateRow("2026-05-16", 7)]);
+  assert.deepEqual(Array.from(initial.buckets, (bucket) => bucket.label), ["05/16", "05/17"]);
+
+  let requests = 0;
+  card.hass = {
+    ...card._hass,
+    locale: { language: "en-US", date_format: "DMY" },
+    callWS: () => {
+      requests += 1;
+      return Promise.resolve({});
+    },
+  };
+
+  const relabeled = card._chartDisplay("day", card._metricDefinitions());
+  assert.deepEqual(Array.from(relabeled.buckets, (bucket) => bucket.label), ["16/05", "17/05"]);
+  assert.equal(requests, 0);
+});
+
 test("month and year combine completed recorder days with today's live value", () => {
   const card = createCard("2026-05-16T12:00:00.000Z", 3);
   const rows = [
@@ -610,6 +682,7 @@ test("recorder requests use daily statistics for every view", () => {
 
 test("rendered bars expose bucket metadata and keyboard focus", () => {
   const card = createCard("2026-05-16T12:00:00.000Z", 7);
+  card._hass.locale = { language: "en-US", date_format: "DMY" };
   const chart = card._chartDisplay("day", card._metricDefinitions());
   const markup = card._renderChart(chart);
 
@@ -617,8 +690,31 @@ test("rendered bars expose bucket metadata and keyboard focus", () => {
   assert.match(markup, /data-series-key="production"/);
   assert.match(markup, /tabindex="0"/);
   assert.match(markup, /role="img"/);
-  assert.match(markup, /aria-label="[^"]*Production[^"]*7\.00 kWh/);
+  assert.match(markup, /aria-label="16\/05, Production, 7\.00 kWh"/);
+  assert.match(markup, />16\/05<\/text>/);
   assert.match(markup, /class="chart-tooltip hidden"/);
+});
+
+test("tooltip heading uses the same localized bucket label as the axis", () => {
+  const card = createCard("2026-05-16T12:00:00.000Z", 7);
+  card._hass.locale = { language: "en-US", date_format: "DMY" };
+  const chart = card._chartDisplay("day", card._metricDefinitions());
+  const tooltip = {
+    innerHTML: "",
+    classList: { remove() {} },
+    getBoundingClientRect: () => ({ width: 120, height: 60 }),
+    style: {},
+  };
+  const wrapper = {
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 720, height: 230 }),
+  };
+  card.shadowRoot = {
+    querySelector: (selector) => (selector === ".chart-tooltip" ? tooltip : selector === ".chart-wrap" ? wrapper : null),
+  };
+
+  card._showChartTooltip({ clientX: 100, clientY: 100 }, chart, 0);
+
+  assert.match(tooltip.innerHTML, /class="tooltip-title">16\/05<\/div>/);
 });
 
 test("tooltip rows include all configured metrics with color, label, and formatted value", () => {

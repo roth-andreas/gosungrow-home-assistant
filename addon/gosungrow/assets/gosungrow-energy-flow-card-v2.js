@@ -1458,7 +1458,7 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
 
   _chartDisplay(period, metrics) {
     const cache = this._statsCache[this._cacheKey(period)];
-    const buckets = this._populatedBuckets(cache?.buckets || []);
+    const buckets = this._localizedBuckets(period, this._populatedBuckets(cache?.buckets || []));
     const series = metrics
       .map((metric) => {
         const entityID = this._entity(metric.key);
@@ -1484,7 +1484,7 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
     const now = this._now();
     const bucket = {
       key: this._bucketKey(period, now),
-      label: this._bucketLabel(period, now),
+      start: now.getTime(),
       values: {},
     };
     const series = metrics
@@ -1503,13 +1503,23 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
         };
       })
       .filter(Boolean);
-    return { buckets: series.length > 0 ? [bucket] : [], series };
+    return { buckets: series.length > 0 ? this._localizedBuckets(period, [bucket]) : [], series };
   }
 
   _populatedBuckets(buckets) {
     return buckets.filter((bucket) => {
       const values = Object.values(bucket.values || {});
       return values.some((value) => Number.isFinite(value));
+    });
+  }
+
+  _localizedBuckets(period, buckets) {
+    return buckets.map((bucket) => {
+      const date = new Date(bucket.start);
+      return {
+        ...bucket,
+        label: Number.isNaN(date.getTime()) ? bucket.label || bucket.key : this._bucketLabel(period, date),
+      };
     });
   }
 
@@ -1707,7 +1717,7 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
       date.setHours(0, 0, 0, 0);
       buckets.push({
         key: this._bucketKey(period, date),
-        label: this._bucketLabel(period, date),
+        start: date.getTime(),
         values: {},
       });
     }
@@ -1747,23 +1757,55 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
   }
 
   _bucketLabel(period, date) {
-    const locale = this._locale();
+    if (period === "day") {
+      return this._formatDayMonth(date);
+    }
+    const options = period === "month" ? { month: "short" } : { year: "2-digit" };
+    const formatter = this._dateFormatter(options);
+    if (formatter) {
+      return formatter.format(date);
+    }
+    return period === "month" ? String(date.getMonth() + 1) : String(date.getFullYear()).slice(-2);
+  }
+
+  _formatDayMonth(date) {
+    const preference = this._dateFormatPreference();
+    const formatter = this._dateFormatter({ day: "2-digit", month: "2-digit" });
+    if (!formatter) {
+      const day = String(date.getDate()).padStart(2, "0");
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      return preference === "DMY" ? `${day}/${month}` : `${month}/${day}`;
+    }
+    if (preference === "language" || preference === "system") {
+      return formatter.format(date);
+    }
+
+    const parts = formatter.formatToParts(date);
+    const day = parts.find((part) => part.type === "day")?.value;
+    const month = parts.find((part) => part.type === "month")?.value;
+    const separator = parts.find((part) => part.type === "literal")?.value || "/";
+    if (!day || !month) {
+      return formatter.format(date);
+    }
+    return preference === "DMY" ? `${day}${separator}${month}` : `${month}${separator}${day}`;
+  }
+
+  _dateFormatPreference() {
+    const preference = this._hass?.locale?.date_format;
+    return ["language", "system", "DMY", "MDY", "YMD"].includes(preference) ? preference : "language";
+  }
+
+  _dateFormatter(options) {
+    const locale = this._dateFormatPreference() === "system" ? undefined : this._locale();
     try {
-      if (period === "day") {
-        return new Intl.DateTimeFormat(locale, { day: "2-digit", month: "2-digit" }).format(date);
-      }
-      if (period === "month") {
-        return new Intl.DateTimeFormat(locale, { month: "short" }).format(date);
-      }
-      return new Intl.DateTimeFormat(locale, { year: "2-digit" }).format(date);
+      return new Intl.DateTimeFormat(locale, options);
     } catch (_) {
-      if (period === "day") {
-        return `${date.getMonth() + 1}/${date.getDate()}`;
+      try {
+        const fallbackLocale = typeof navigator !== "undefined" && navigator.language ? navigator.language : "en-US";
+        return new Intl.DateTimeFormat(fallbackLocale, options);
+      } catch (_) {
+        return null;
       }
-      if (period === "month") {
-        return `${date.getMonth() + 1}`;
-      }
-      return String(date.getFullYear()).slice(-2);
     }
   }
 

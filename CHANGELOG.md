@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.2.0.5
+
+- Honor Home Assistant language, system, and explicit DMY/MDY/YMD date preferences in Energy Summary chart labels.
+- Relabel cached chart buckets when frontend date preferences change without refetching recorder statistics.
+
 ## 3.2.0.4
 
 - Add an administrator-only Data Sources view to review automatic dashboard matches and choose persistent overrides.
