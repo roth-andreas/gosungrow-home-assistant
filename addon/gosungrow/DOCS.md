@@ -37,7 +37,7 @@ Optional:
 - `mqtt_username`: custom MQTT username; leave empty to use the Home Assistant MQTT service credentials
 - `mqtt_password`: custom MQTT password; leave empty to use the Home Assistant MQTT service credentials
 - `install_dashboard`: create or update the managed dashboard automatically
-- `dashboard_language`: `auto` (default) or explicit locale (`en`, `de`, `sv`)
+- `dashboard_language`: `auto` (default) or explicit locale (`en`, `de`, `sv`, `es`)
 - `debug`: enable verbose logging
 
 ## What Happens On Startup
