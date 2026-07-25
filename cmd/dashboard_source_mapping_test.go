@@ -46,6 +46,76 @@ func TestDashboardSourceMappingsKeepAutomaticEntityReferences(t *testing.T) {
 	}
 }
 
+func TestDashboardSourceMappingPinsExistingChoiceAndOffersSemanticUpgrade(t *testing.T) {
+	target, states := issue19SemanticFixture()
+	placeholder := "sensor.gosungrow_template_pv_power"
+	oldEntity := states[0].EntityID
+	betterEntity := states[1].EntityID
+	makeConfig := func() map[string]any {
+		return map[string]any{"views": []any{
+			map[string]any{"path": "overview", "cards": []any{map[string]any{"type": "tile", "entity": placeholder}}},
+			map[string]any{"path": "data-sources", "cards": []any{map[string]any{"type": dashboardSourceMappingCardType, "schema_version": 1, "mapping_id": target.PsKey}}},
+		}}
+	}
+	trace := []dashboardMetricTrace{{Metric: "pv_power", TargetPsKey: target.PsKey, Placeholder: placeholder, Resolved: oldEntity}}
+	mappingID := dashboardSourceMappingID(target)
+	current := map[string]any{"views": []any{map[string]any{"cards": []any{map[string]any{
+		"type": dashboardSourceMappingCardType, "schema_version": 1, "mapping_id": mappingID,
+		"defaults": map[string]any{"pv_power": oldEntity}, "pinned_defaults": map[string]any{"pv_power": oldEntity},
+	}}}}}
+
+	existing, _ := applyDashboardSourceMappings(makeConfig(), current, nil, []haDashboardTarget{target}, states, trace, "gosungrow", defaultDashboardLocaleBundle)
+	existingViews := existing["views"].([]any)
+	if got := existingViews[0].(map[string]any)["cards"].([]any)[0].(map[string]any)["entity"]; got != oldEntity {
+		t.Fatalf("existing automatic choice changed without consent: got %v want %s", got, oldEntity)
+	}
+	card := findDashboardSourceMappingCard(existing, mappingID)
+	if got := anyMapToStringMap(card["recommendations"])["pv_power"]; got != betterEntity {
+		t.Fatalf("semantic upgrade was not offered: got %q want %q", got, betterEntity)
+	}
+	metric := card["metrics"].([]any)[0].(map[string]any)
+	if needsReview, _ := metric["needs_review"].(bool); !needsReview {
+		t.Fatalf("existing questionable source was not marked for review: %#v", metric)
+	}
+
+	fresh, _ := applyDashboardSourceMappings(makeConfig(), nil, nil, []haDashboardTarget{target}, states, trace, "gosungrow", defaultDashboardLocaleBundle)
+	freshViews := fresh["views"].([]any)
+	if got := freshViews[0].(map[string]any)["cards"].([]any)[0].(map[string]any)["entity"]; got != betterEntity {
+		t.Fatalf("new dashboard did not use confident semantic match: got %v want %s", got, betterEntity)
+	}
+}
+
+func TestDashboardSourceMappingSeparatesMetricsThatPreviouslySharedEntity(t *testing.T) {
+	target, states := issue19SemanticFixture()
+	exportPlaceholder := "sensor.gosungrow_template_grid_export_today"
+	importPlaceholder := "sensor.gosungrow_template_grid_import_today"
+	oldShared := "sensor.gosungrow_1498605_11_0_0_feed_in_energy_today"
+	config := map[string]any{"views": []any{
+		map[string]any{"path": "overview", "cards": []any{
+			map[string]any{"type": "tile", "entity": exportPlaceholder},
+			map[string]any{"type": "tile", "entity": importPlaceholder},
+		}},
+		map[string]any{"path": "data-sources", "cards": []any{map[string]any{"type": dashboardSourceMappingCardType, "schema_version": 1, "mapping_id": target.PsKey}}},
+	}}
+	traces := []dashboardMetricTrace{
+		{Metric: "p13173", TargetPsKey: target.PsKey, Placeholder: exportPlaceholder, Resolved: oldShared},
+		{Metric: "p13147", TargetPsKey: target.PsKey, Placeholder: importPlaceholder, Resolved: oldShared},
+	}
+	result, _ := applyDashboardSourceMappings(config, nil, nil, []haDashboardTarget{target}, states, traces, "gosungrow", defaultDashboardLocaleBundle)
+	cards := result["views"].([]any)[0].(map[string]any)["cards"].([]any)
+	if got := cards[0].(map[string]any)["entity"]; got != "sensor.gosungrow_1498605_11_0_0_feed_in_energy_today" {
+		t.Fatalf("export source changed incorrectly: %v", got)
+	}
+	if got := cards[1].(map[string]any)["entity"]; got != "sensor.gosungrow_1498605_11_0_0_energy_purchased_today" {
+		t.Fatalf("import source was not separated from export: %v", got)
+	}
+	card := findDashboardSourceMappingCard(result, dashboardSourceMappingID(target))
+	bindings := card["bindings"].(map[string]any)
+	if !reflect.DeepEqual(bindings["p13173"], []any{"/views/0/cards/0/entity"}) || !reflect.DeepEqual(bindings["p13147"], []any{"/views/0/cards/1/entity"}) {
+		t.Fatalf("metric bindings were conflated: %#v", bindings)
+	}
+}
+
 func TestDashboardSourceMappingBindsLiveFlowEntityMap(t *testing.T) {
 	psKey := "100_14_1_1"
 	defaultEntity := "sensor.gosungrow_virtual_" + psKey + "_pv_power"
@@ -289,6 +359,24 @@ func TestDashboardStructureHashIgnoresSourceOverridesButDetectsUnrelatedEdits(t 
 	}
 	if autoHash != manualHash {
 		t.Fatalf("override changed structure hash: %s != %s", autoHash, manualHash)
+	}
+	adoptedRaw, err := deepCopyJSONValue(automatic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adopted := adoptedRaw.(map[string]any)
+	adoptedCard := findDashboardSourceMappingCard(adopted, "target")
+	adoptedCard["defaults"] = map[string]any{"p13112": "sensor.safer_auto"}
+	adoptedCard["pinned_defaults"] = map[string]any{"p13112": "sensor.safer_auto"}
+	adoptedCard["matcher_version"] = dashboardSemanticMatcherVersion
+	adoptedCard["metrics"].([]any)[0].(map[string]any)["default"] = "sensor.safer_auto"
+	adopted["views"].([]any)[0].(map[string]any)["cards"].([]any)[0].(map[string]any)["entity"] = "sensor.safer_auto"
+	adoptedHash, err := hashDashboardStructure(adopted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if autoHash != adoptedHash {
+		t.Fatalf("adopted automatic source changed structure hash: %s != %s", autoHash, adoptedHash)
 	}
 	state := &haDashboardState{DashboardStructureHash: autoHash}
 	modified, err := dashboardModifiedOutsideGoSungrow(manual, automatic, state)

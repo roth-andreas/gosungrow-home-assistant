@@ -310,7 +310,10 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		diagnostics.TargetDiagnostics = buildDashboardTargetDiagnostics(targets, states)
 		diagnostics.AggregateHints = buildDashboardAggregateHints(targets, states)
 		config = pruneDashboardForUnavailableMetrics(config, targets, states)
-		config, remapReport = remapDashboardEntitiesWithReport(config, targets, states)
+		// Keep the metric-specific placeholders in the generated config until
+		// source bindings are built. Two metrics may resolve to the same entity;
+		// replacing strings here would make their binding paths indistinguishable.
+		_, remapReport = remapDashboardEntitiesWithReport(config, targets, states)
 	}
 	diagnostics.DashboardRefsFound = remapReport.TotalRefs
 	diagnostics.RemappedRefs = len(remapReport.Remapped)

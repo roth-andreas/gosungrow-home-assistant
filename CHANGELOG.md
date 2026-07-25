@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.2.0.7
+
+- Add constrained semantic matching for solar power, daily production, grid import/export, and daily home consumption.
+- Reject incompatible device roles, directions, phase readings, and lifetime totals for these dashboard metrics.
+- Preserve every existing automatic mapping and manual override; safer matches are offered for explicit review instead of silently remapping installed dashboards.
+- Use confident semantic matches automatically for newly generated dashboards and keep target bindings isolated when metrics previously shared an entity.
+
 ## 3.2.0.6
 
 - Normalize supported Sungrow reactive-power units to Home Assistant's canonical `var` unit before MQTT discovery and state publication.

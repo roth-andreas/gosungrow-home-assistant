@@ -63,10 +63,12 @@ var dashboardFlowEntityMetrics = map[string]string{
 
 func applyDashboardSourceMappings(config map[string]any, current map[string]any, persisted map[string]map[string]string, targets []haDashboardTarget, states []haState, traces []dashboardMetricTrace, dashboardURL string, locale dashboardLocaleBundle) (map[string]any, map[string]map[string]string) {
 	requestedOverrides := extractDashboardSourceOverrides(current)
+	currentDefaults := extractDashboardSourceDefaults(current)
 	acceptedOverrides := make(map[string]map[string]string)
 	singleTarget := len(targets) == 1
 
 	defaultsByTarget := make(map[string]map[string]string, len(targets))
+	placeholdersByTarget := make(map[string]map[string]string, len(targets))
 	for _, trace := range traces {
 		key := strings.ToLower(strings.TrimSpace(trace.TargetPsKey))
 		metric := strings.ToLower(strings.TrimSpace(trace.Metric))
@@ -75,23 +77,27 @@ func applyDashboardSourceMappings(config map[string]any, current map[string]any,
 		}
 		if defaultsByTarget[key] == nil {
 			defaultsByTarget[key] = make(map[string]string)
+			placeholdersByTarget[key] = make(map[string]string)
 		}
 		defaultsByTarget[key][metric] = trace.Resolved
+		placeholdersByTarget[key][metric] = trace.Placeholder
 	}
 
 	for _, target := range targets {
 		key := strings.ToLower(strings.TrimSpace(target.PsKey))
 		mappingID := dashboardSourceMappingID(target)
-		defaults := defaultsByTarget[key]
+		generatedDefaults := defaultsByTarget[key]
+		defaults := copyDashboardSourceMap(generatedDefaults)
 		card := findDashboardSourceMappingCard(config, target.PsKey)
 		if card == nil {
 			continue
 		}
 		card["schema_version"] = dashboardSourceMappingSchema
 		card["mapping_id"] = mappingID
+		card["matcher_version"] = dashboardSemanticMatcherVersion
 		card["dashboard_url_path"] = dashboardURL
 		card["labels"] = dashboardSourceMappingLabels(locale)
-		if len(defaults) == 0 {
+		if len(generatedDefaults) == 0 {
 			card["defaults"] = map[string]any{}
 			card["overrides"] = map[string]any{}
 			card["metrics"] = []any{}
@@ -99,8 +105,53 @@ func applyDashboardSourceMappings(config map[string]any, current map[string]any,
 			card["bindings"] = map[string]any{}
 			continue
 		}
+
+		recommendations := make(map[string]string)
+		recommendationReasons := make(map[string]string)
+		needsReview := make(map[string]bool)
+		pinned := currentDefaults[mappingID]
+		for metric, generated := range generatedDefaults {
+			match := dashboardSemanticRecommendation(target, metric, states, singleTarget)
+			if existing := strings.TrimSpace(pinned[metric]); existing != "" {
+				defaults[metric] = existing
+			} else if match.Confident && match.Entity != "" {
+				defaults[metric] = match.Entity
+			}
+			if _, contracted := dashboardSemanticContractFor(metric); contracted {
+				if match.Confident && match.Entity != "" && !strings.EqualFold(match.Entity, defaults[metric]) {
+					recommendations[metric] = match.Entity
+					recommendationReasons[metric] = match.Reason
+					needsReview[metric] = true
+				} else if !match.Confident {
+					existing := strings.TrimSpace(pinned[metric])
+					if existing != "" {
+						if state, ok := dashboardStateByEntityID(states)[strings.ToLower(existing)]; !ok || !dashboardSemanticCandidateAllowed(target, mustDashboardSemanticContract(metric), state) {
+							needsReview[metric] = true
+						}
+					}
+				}
+			}
+			if defaults[metric] == "" {
+				defaults[metric] = generated
+			}
+		}
 		viewIndexes := dashboardTargetViewIndexes(config, target, targets)
-		bindings := dashboardSourceBindingPaths(config, viewIndexes, defaults)
+		bindingSources := copyDashboardSourceMap(placeholdersByTarget[key])
+		// New reconciliations retain unique template placeholders until bindings are
+		// built. Older dashboards and unit-test fixtures only have resolved entities,
+		// so fall back to their generated defaults without weakening target scoping.
+		for metric, generated := range generatedDefaults {
+			if strings.TrimSpace(bindingSources[metric]) == "" {
+				bindingSources[metric] = generated
+			}
+		}
+		bindings := dashboardSourceBindingPaths(config, viewIndexes, bindingSources)
+		for metric, rawPaths := range bindings {
+			paths, _ := rawPaths.([]any)
+			for _, rawPath := range paths {
+				_ = setDashboardJSONPointer(config, stringValue(rawPath), defaults[metric])
+			}
+		}
 		setDashboardFlowAutomaticEntities(config, viewIndexes, defaults)
 		candidatesByMetric := make(map[string][]any, len(defaults))
 		remainingCandidates := dashboardSourceTargetLimit
@@ -110,6 +161,9 @@ func applyDashboardSourceMappings(config map[string]any, current map[string]any,
 				continue
 			}
 			candidates := dashboardSourceCandidates(target, def.Metric, defaultEntity, states, singleTarget)
+			if recommendation := recommendations[def.Metric]; recommendation != "" {
+				candidates = ensureDashboardRecommendedCandidate(candidates, def.Metric, recommendation, recommendationReasons[def.Metric], states)
+			}
 			if len(candidates) > remainingCandidates {
 				candidates = candidates[:remainingCandidates]
 			}
@@ -135,13 +189,58 @@ func applyDashboardSourceMappings(config map[string]any, current map[string]any,
 			}
 		}
 		card["defaults"] = stringMapToAny(defaults)
+		card["pinned_defaults"] = stringMapToAny(defaults)
+		card["recommendations"] = stringMapToAny(recommendations)
 		card["overrides"] = stringMapToAny(validOverrides)
-		card["metrics"] = dashboardSourceMetricConfigs(defaults, validOverrides, candidatesByMetric, locale)
+		card["metrics"] = dashboardSourceMetricConfigs(defaults, validOverrides, candidatesByMetric, recommendations, recommendationReasons, needsReview, locale)
 		card["candidates"] = candidateMapToAny(candidatesByMetric)
 		card["bindings"] = bindings
 	}
 
 	return config, acceptedOverrides
+}
+
+func copyDashboardSourceMap(values map[string]string) map[string]string {
+	ret := make(map[string]string, len(values))
+	for key, value := range values {
+		ret[key] = value
+	}
+	return ret
+}
+
+func mustDashboardSemanticContract(metric string) dashboardSemanticContract {
+	contract, _ := dashboardSemanticContractFor(metric)
+	return contract
+}
+
+func extractDashboardSourceDefaults(config map[string]any) map[string]map[string]string {
+	ret := make(map[string]map[string]string)
+	var walk func(any)
+	walk = func(value any) {
+		switch typed := value.(type) {
+		case map[string]any:
+			if stringValue(typed["type"]) == dashboardSourceMappingCardType && intValue(typed["schema_version"]) == dashboardSourceMappingSchema {
+				mappingID := strings.ToLower(strings.TrimSpace(stringValue(typed["mapping_id"])))
+				if mappingID != "" {
+					ret[mappingID] = anyMapToStringMap(typed["pinned_defaults"])
+					if len(ret[mappingID]) == 0 {
+						ret[mappingID] = anyMapToStringMap(typed["defaults"])
+					}
+				}
+			}
+			for _, entry := range typed {
+				walk(entry)
+			}
+		case []any:
+			for _, entry := range typed {
+				walk(entry)
+			}
+		}
+	}
+	if config != nil {
+		walk(config)
+	}
+	return ret
 }
 
 func extractDashboardSourceOverrides(config map[string]any) map[string]map[string]string {
@@ -181,7 +280,7 @@ func extractDashboardSourceOverrides(config map[string]any) map[string]map[strin
 	return ret
 }
 
-func dashboardSourceMetricConfigs(defaults, overrides map[string]string, candidatesByMetric map[string][]any, locale dashboardLocaleBundle) []any {
+func dashboardSourceMetricConfigs(defaults, overrides map[string]string, candidatesByMetric map[string][]any, recommendations, recommendationReasons map[string]string, needsReview map[string]bool, locale dashboardLocaleBundle) []any {
 	ret := make([]any, 0, len(defaults))
 	for _, def := range dashboardSourceMetricDefinitions {
 		defaultEntity := defaults[def.Metric]
@@ -191,6 +290,13 @@ func dashboardSourceMetricConfigs(defaults, overrides map[string]string, candida
 		metric := map[string]any{
 			"key": def.Metric, "group": def.Group, "icon": def.Icon, "label": localeText(locale, "source_metric_"+def.Metric, def.Label),
 			"default": defaultEntity,
+		}
+		if recommendation := recommendations[def.Metric]; recommendation != "" {
+			metric["recommendation"] = recommendation
+			metric["recommendation_reason"] = recommendationReasons[def.Metric]
+		}
+		if needsReview[def.Metric] {
+			metric["needs_review"] = true
 		}
 		rules := []any{map[string]any{"type": "freshness", "max_age_seconds": int(dashboardSourceFreshness(def.Metric).Seconds())}}
 		selected := defaultEntity
@@ -217,10 +323,17 @@ func dashboardSourceMetricConfigs(defaults, overrides map[string]string, candida
 func dashboardSourceCandidates(target haDashboardTarget, metric, defaultEntity string, states []haState, singleTarget bool) []any {
 	profile := dashboardMetricProfileFor(metric)
 	values := make([]dashboardMetricCandidate, 0)
+	semantic := dashboardSemanticRecommendation(target, metric, states, singleTarget)
+	values = append(values, semantic.Candidates...)
 	for _, state := range states {
 		entity, score, reason, ok := dashboardScoreMetricCandidate(target, metric, profile, state, singleTarget)
 		if !ok || entity == "" {
-			continue
+			if !dashboardManualCandidateCompatible(target, metric, state, singleTarget) {
+				continue
+			}
+			entity = strings.ToLower(strings.TrimSpace(state.EntityID))
+			score = 1
+			reason = "Compatible plant and unit; verify meaning before selecting"
 		}
 		recent := dashboardSourceStateRecent(state, metric, time.Now())
 		if !recent && !strings.EqualFold(entity, defaultEntity) {
@@ -233,7 +346,20 @@ func dashboardSourceCandidates(target haDashboardTarget, metric, defaultEntity s
 				score = 0
 			}
 		}
-		values = append(values, dashboardMetricCandidate{Entity: entity, Metric: metric, Score: score, State: state.State, Unit: dashboardStateUnit(state), Source: dashboardMetricSourceCategory(target, metric, entity), Reason: reason})
+		candidate := dashboardMetricCandidate{Entity: entity, Metric: metric, Score: score, State: state.State, Unit: dashboardStateUnit(state), Source: dashboardMetricSourceCategory(target, metric, entity), Reason: reason}
+		found := false
+		for index := range values {
+			if strings.EqualFold(values[index].Entity, entity) {
+				if candidate.Score > values[index].Score {
+					values[index] = candidate
+				}
+				found = true
+				break
+			}
+		}
+		if !found {
+			values = append(values, candidate)
+		}
 	}
 	sort.SliceStable(values, func(i, j int) bool {
 		iDefault := strings.EqualFold(values[i].Entity, defaultEntity)
@@ -269,6 +395,36 @@ func dashboardSourceCandidates(target haDashboardTarget, metric, defaultEntity s
 		if len(ret) > limit {
 			ret = ret[:limit]
 		}
+	}
+	return ret
+}
+
+func ensureDashboardRecommendedCandidate(candidates []any, metric, entity, reason string, states []haState) []any {
+	for index, raw := range candidates {
+		candidate, _ := raw.(map[string]any)
+		if strings.EqualFold(stringValue(candidate["entity_id"]), entity) {
+			candidate["recommended"] = true
+			candidate["reason"] = reason
+			if index > 0 {
+				ret := append([]any{candidate}, candidates[:index]...)
+				ret = append(ret, candidates[index+1:]...)
+				return ret
+			}
+			return candidates
+		}
+	}
+	state := dashboardStateByEntityID(states)[strings.ToLower(strings.TrimSpace(entity))]
+	candidate := map[string]any{
+		"entity_id": entity, "point_id": metric, "score": 10000, "confidence": "high",
+		"reason": reason, "source": "semantic", "recommended": true,
+	}
+	if state.Attributes != nil {
+		candidate["device"] = strings.TrimSpace(stringValue(state.Attributes["device_name"]))
+	}
+	ret := append([]any{candidate}, candidates...)
+	limit := dashboardSourceRecommendedLimit + dashboardSourceAdditionalLimit
+	if len(ret) > limit {
+		ret = ret[:limit]
 	}
 	return ret
 }
@@ -404,7 +560,7 @@ func validateDashboardSourceOverrides(mappingID string, defaults, requested, per
 		structurallyCompatible := false
 		if currentlyPresent {
 			resolved, _, _, ok := dashboardScoreMetricCandidate(target, metric, dashboardMetricProfileFor(metric), state, singleTarget)
-			structurallyCompatible = ok && strings.EqualFold(resolved, entity)
+			structurallyCompatible = (ok && strings.EqualFold(resolved, entity)) || dashboardManualCandidateCompatible(target, metric, state, singleTarget)
 			currentlyCompatible = structurallyCompatible && dashboardSourceStateRecent(state, metric, time.Now())
 		}
 		previouslyAccepted := strings.EqualFold(strings.TrimSpace(persisted[metric]), entity)
@@ -549,6 +705,7 @@ func normalizeDashboardStructure(config map[string]any) (map[string]any, error) 
 		switch typed := value.(type) {
 		case map[string]any:
 			if stringValue(typed["type"]) == dashboardSourceMappingCardType {
+				mappingID := strings.ToLower(strings.TrimSpace(stringValue(typed["mapping_id"])))
 				defaults := anyMapToStringMap(typed["defaults"])
 				overrides := anyMapToStringMap(typed["overrides"])
 				bindings, _ := typed["bindings"].(map[string]any)
@@ -561,17 +718,21 @@ func normalizeDashboardStructure(config map[string]any) (map[string]any, error) 
 					for _, rawPath := range paths {
 						path := stringValue(rawPath)
 						if current, ok := getDashboardJSONPointer(normalized, path); ok && strings.EqualFold(stringValue(current), effective) {
-							setDashboardJSONPointer(normalized, path, defaultEntity)
+							setDashboardJSONPointer(normalized, path, "__gosungrow_source__"+mappingID+"__"+metric)
 						}
 					}
 				}
 				delete(typed, "overrides")
 				delete(typed, "bindings")
 				delete(typed, "candidates")
+				delete(typed, "recommendations")
+				delete(typed, "pinned_defaults")
+				delete(typed, "defaults")
+				delete(typed, "matcher_version")
 				if metrics, ok := typed["metrics"].([]any); ok {
 					for _, rawMetric := range metrics {
 						if metric, ok := rawMetric.(map[string]any); ok {
-							for _, key := range []string{"candidates", "selected", "status", "warning", "value", "unit", "live_status", "confidence", "reason"} {
+							for _, key := range []string{"default", "candidates", "selected", "status", "warning", "value", "unit", "live_status", "confidence", "reason", "recommendation", "recommendation_reason", "needs_review"} {
 								delete(metric, key)
 							}
 						}
@@ -672,6 +833,9 @@ func dashboardSourceMappingLabels(locale dashboardLocaleBundle) map[string]any {
 		"configure": localeText(locale, "source_configure", "Configure"), "recommended": localeText(locale, "source_recommended", "Recommended"), "other": localeText(locale, "source_other", "Other compatible entities"),
 		"search": localeText(locale, "source_search", "Search entities"), "use_source": localeText(locale, "source_use", "Use this source"), "reset": localeText(locale, "source_reset", "Reset to automatic"), "cancel": localeText(locale, "source_cancel", "Cancel"),
 		"saved": localeText(locale, "source_saved", "Data source saved."), "readonly": localeText(locale, "source_readonly", "Only Home Assistant administrators can change data sources."),
+		"source_match_update":        localeText(locale, "source_match_update", "A safer automatic source is available."),
+		"source_match_unverified":    localeText(locale, "source_match_unverified", "The current automatic source could not be verified."),
+		"source_adopted":             localeText(locale, "source_adopted", "Automatic source updated."),
 		"source_unavailable_warning": localeText(locale, "source_unavailable_warning", "The selected entity is unavailable or non-numeric."),
 		"source_stale_warning":       localeText(locale, "source_stale_warning", "The selected entity has not updated recently."),
 		"source_physical_warning":    localeText(locale, "source_physical_warning", "Selected value ({value}) exceeds solar production ({reference}). Review this source."),

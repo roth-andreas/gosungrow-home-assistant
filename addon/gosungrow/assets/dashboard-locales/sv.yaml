@@ -16,6 +16,9 @@ dashboard:
   source_reset: Återställ till automatisk
   source_cancel: Avbryt
   source_saved: Datakällan sparades.
+  source_match_update: En säkrare automatisk källa är tillgänglig.
+  source_match_unverified: Den aktuella automatiska källan kunde inte verifieras.
+  source_adopted: Automatisk källa uppdaterad.
   source_unavailable_warning: Den valda entiteten är inte tillgänglig eller saknar numeriskt värde.
   source_stale_warning: Den valda entiteten har inte uppdaterats nyligen.
   source_physical_warning: Det valda värdet ({value}) överstiger solproduktionen ({reference}). Granska källan.

@@ -16,6 +16,9 @@ dashboard:
   source_reset: Auf Automatik zurücksetzen
   source_cancel: Abbrechen
   source_saved: Datenquelle gespeichert.
+  source_match_update: Eine sicherere automatische Quelle ist verfügbar.
+  source_match_unverified: Die aktuelle automatische Quelle konnte nicht verifiziert werden.
+  source_adopted: Automatische Quelle aktualisiert.
   source_unavailable_warning: Die ausgewählte Entität ist nicht verfügbar oder nicht numerisch.
   source_stale_warning: Die ausgewählte Entität wurde seit längerer Zeit nicht aktualisiert.
   source_physical_warning: Der ausgewählte Wert ({value}) überschreitet die Solarerzeugung ({reference}). Bitte Quelle prüfen.

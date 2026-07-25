@@ -1924,8 +1924,17 @@ class GoSungrowSourceMappingCard extends HTMLElement {
 
   _metric(key) { return this._metrics().find((metric) => metric.key === key); }
 
+  _matchReviewWarning(metric, selectedEntity) {
+    if (!metric?.needs_review || this._config?.overrides?.[metric.key] || selectedEntity !== this._selected(metric)) return "";
+    return metric.recommendation
+      ? this._label("source_match_update", "A safer automatic source is available.")
+      : this._label("source_match_unverified", "The current automatic source could not be verified.");
+  }
+
   _warning(metric, selectedEntity = this._selected(metric)) {
     if (this._numericState(selectedEntity) === null) return this._label("source_unavailable_warning", "The selected entity is unavailable or non-numeric.");
+    const matchWarning = this._matchReviewWarning(metric, selectedEntity);
+    if (matchWarning) return matchWarning;
     const validation = metric?.validation;
     if (Number(validation?.schema_version) !== 1 || !Array.isArray(validation?.rules)) return "";
     for (const rule of validation.rules) {
@@ -2111,7 +2120,7 @@ class GoSungrowSourceMappingCard extends HTMLElement {
       const dashboard = await this._hass.callWS({ type: "lovelace/config", url_path: this._config.dashboard_url_path, force: true });
       const card = this._findMappingCard(dashboard, this._config.mapping_id);
       const stale = () => new Error(this._label("source_stale", "Dashboard changed; reload and try again."));
-      if (!card || Number(card.schema_version) !== 1 || !this._sameMap(card.defaults, this._config.defaults) || !this._sameMap(card.overrides || {}, this._config.overrides || {}) || !this._sameValue(card.bindings, this._config.bindings)) throw stale();
+      if (!card || Number(card.schema_version) !== 1 || !this._sameMap(card.defaults, this._config.defaults) || !this._sameMap(card.overrides || {}, this._config.overrides || {}) || !this._sameMap(card.recommendations || {}, this._config.recommendations || {}) || !this._sameValue(card.bindings, this._config.bindings)) throw stale();
       if (entityID) {
         const cardMetric = Array.isArray(card.metrics) ? card.metrics.find((entry) => entry.key === metricKey) : null;
         const localCandidates = this._candidates(metric);
@@ -2122,6 +2131,7 @@ class GoSungrowSourceMappingCard extends HTMLElement {
       }
       const oldEntity = card.overrides?.[metricKey] || card.defaults?.[metricKey];
       const nextEntity = entityID || card.defaults?.[metricKey];
+      const adoptRecommendation = Boolean(entityID && !card.overrides?.[metricKey] && card.recommendations?.[metricKey] === entityID);
       const paths = card.bindings?.[metricKey] || [];
       for (const path of paths) {
         if (this._getPointer(dashboard, path) !== oldEntity) throw stale();
@@ -2130,9 +2140,22 @@ class GoSungrowSourceMappingCard extends HTMLElement {
       const nextCard = this._findMappingCard(nextDashboard, this._config.mapping_id);
       for (const path of paths) this._setPointer(nextDashboard, path, nextEntity);
       nextCard.overrides = { ...(nextCard.overrides || {}) };
-      if (entityID) nextCard.overrides[metricKey] = entityID; else delete nextCard.overrides[metricKey];
       const nextMetric = Array.isArray(nextCard.metrics) ? nextCard.metrics.find((entry) => entry.key === metricKey) : null;
       const nextCandidate = (nextCard.candidates?.[metricKey] || nextMetric?.candidates || []).find((candidate) => candidate.entity_id === nextEntity);
+      if (adoptRecommendation) {
+        nextCard.defaults = { ...(nextCard.defaults || {}), [metricKey]: nextEntity };
+        nextCard.pinned_defaults = { ...(nextCard.pinned_defaults || {}), [metricKey]: nextEntity };
+        nextCard.recommendations = { ...(nextCard.recommendations || {}) };
+        delete nextCard.recommendations[metricKey];
+        delete nextCard.overrides[metricKey];
+        if (nextMetric) {
+          nextMetric.default = nextEntity;
+          delete nextMetric.recommendation;
+          delete nextMetric.recommendation_reason;
+          delete nextMetric.needs_review;
+        }
+      } else if (entityID) nextCard.overrides[metricKey] = entityID;
+      else delete nextCard.overrides[metricKey];
       if (nextMetric) { nextMetric.confidence = nextCandidate?.confidence; nextMetric.reason = nextCandidate?.reason; }
       await this._hass.callWS({ type: "lovelace/config/save", url_path: this._config.dashboard_url_path, config: nextDashboard });
       const verifiedDashboard = await this._hass.callWS({ type: "lovelace/config", url_path: this._config.dashboard_url_path, force: true });
@@ -2142,11 +2165,22 @@ class GoSungrowSourceMappingCard extends HTMLElement {
         throw new Error(this._label("source_save_error", "Could not save the data source. Check your administrator access and connection, then try again."));
       }
       this._config.overrides = { ...(this._config.overrides || {}) };
-      if (entityID) this._config.overrides[metricKey] = entityID; else delete this._config.overrides[metricKey];
+      if (adoptRecommendation) {
+        this._config.defaults = { ...(this._config.defaults || {}), [metricKey]: nextEntity };
+        this._config.pinned_defaults = { ...(this._config.pinned_defaults || {}), [metricKey]: nextEntity };
+        this._config.recommendations = { ...(this._config.recommendations || {}) };
+        delete this._config.recommendations[metricKey];
+        delete this._config.overrides[metricKey];
+        metric.default = nextEntity;
+        delete metric.recommendation;
+        delete metric.recommendation_reason;
+        delete metric.needs_review;
+      } else if (entityID) this._config.overrides[metricKey] = entityID;
+      else delete this._config.overrides[metricKey];
       const localCandidate = this._candidates(metric).find((candidate) => candidate.entity_id === nextEntity);
       metric.confidence = localCandidate?.confidence;
       metric.reason = localCandidate?.reason;
-      this._notice = this._label("saved", "Data source saved.");
+      this._notice = adoptRecommendation ? this._label("source_adopted", "Automatic source updated.") : this._label("saved", "Data source saved.");
       this._activeMetric = null;
       this._pendingEntity = null;
       this._render();
