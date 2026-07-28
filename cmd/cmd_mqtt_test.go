@@ -84,6 +84,7 @@ func TestCmdMqttIsRecoverableGatewayError(t *testing.T) {
 		{name: "nil", err: nil, want: false},
 		{name: "token invalid", err: errors.New("er_token_login_invalid"), want: true},
 		{name: "http 500", err: errors.New("API httpResponse is 500 Internal Server Error"), want: true},
+		{name: "request timeout", err: errors.New("context deadline exceeded (Client.Timeout exceeded while awaiting headers)"), want: true},
 		{name: "other", err: errors.New("mqtt publish failed"), want: false},
 	}
 

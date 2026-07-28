@@ -33,6 +33,13 @@ type Web struct {
 	httpResponse *http.Response
 }
 
+func (w *Web) do(httpReq *http.Request) (*http.Response, error) {
+	if w.client.Timeout <= 0 {
+		w.client.Timeout = DefaultTimeout
+	}
+	return w.client.Do(httpReq)
+}
+
 const defaultWebClientVersion = "2026011301"
 
 func randomDigits(length int) (string, error) {
@@ -360,7 +367,7 @@ func (w *Web) getApi(endpoint EndPoint) ([]byte, error) {
 			}
 		}
 
-		w.httpResponse, w.Error = http.DefaultClient.Do(httpReq)
+		w.httpResponse, w.Error = w.do(httpReq)
 		if w.Error != nil {
 			break
 		}

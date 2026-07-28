@@ -19,6 +19,10 @@ dashboard:
   source_match_update: A safer automatic source is available.
   source_match_unverified: The current automatic source could not be verified.
   source_adopted: Automatic source updated.
+  source_legacy_automatic: Legacy automatic — review required
+  source_unsupported_calculated: Unsupported calculated source
+  source_native_unavailable: Native source unavailable
+  source_recommended_automatic: Recommended automatic source
   source_unavailable_warning: The selected entity is unavailable or non-numeric.
   source_stale_warning: The selected entity has not updated recently.
   source_physical_warning: Selected value ({value}) exceeds solar production ({reference}). Review this source.

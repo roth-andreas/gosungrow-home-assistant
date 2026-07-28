@@ -86,6 +86,8 @@ type CmdMqtt struct {
 	dockerDNSErrorCount int
 	dockerDNSOutageAt   time.Time
 	now                 func() time.Time
+	syncCycle           uint64
+	currentSyncEndpoint string
 }
 
 func NewCmdMqtt(logLevel string) *CmdMqtt {
@@ -381,12 +383,17 @@ func (c *CmdMqtt) CmdMqttSync(_ *cobra.Command, args []string) error {
 // -------------------------------------------------------------------------------- //
 
 func (c *CmdMqtt) Cron() error {
+	if c == nil {
+		return errors.New("mqtt not available")
+	}
+	now := c.now
+	if now == nil {
+		now = time.Now
+	}
+	var started time.Time
+	var cycle uint64
+	failureEndpoint := ""
 	for range Only.Once {
-		if c == nil {
-			c.Error = errors.New("mqtt not available")
-			break
-		}
-
 		if cmds.Api.SunGrow == nil {
 			c.Error = errors.New("sungrow not available")
 			break
@@ -398,6 +405,10 @@ func (c *CmdMqtt) Cron() error {
 			c.log.Debug("Sleeping for %s...\n", c.GetSleepDelay())
 			time.Sleep(c.optionSleepDelay)
 		}
+		started = now()
+		c.syncCycle++
+		cycle = c.syncCycle
+		c.log.Info("Starting iSolarCloud sync cycle %d.\n", cycle)
 
 		newDay := false
 		if c.Client.IsNewDay() {
@@ -405,6 +416,10 @@ func (c *CmdMqtt) Cron() error {
 		}
 
 		c.Error = c.collectAndPublish(newDay)
+		failureEndpoint = c.currentSyncEndpoint
+		if c.Error != nil {
+			c.log.Info("iSolarCloud sync cycle %d failed at %s after %s: %s\n", cycle, failureEndpoint, now().Sub(started).Round(time.Millisecond), c.Error)
+		}
 		if c.Error != nil && c.isTokenInvalidError(c.Error) {
 			c.log.Info("Token expired/invalid. Re-authenticating...\n")
 
@@ -419,6 +434,10 @@ func (c *CmdMqtt) Cron() error {
 			}
 
 			c.Error = c.collectAndPublish(newDay)
+			failureEndpoint = c.currentSyncEndpoint
+			if c.Error != nil {
+				c.log.Info("iSolarCloud sync cycle %d retry failed at %s after %s: %s\n", cycle, failureEndpoint, now().Sub(started).Round(time.Millisecond), c.Error)
+			}
 			if c.Error != nil {
 				break
 			}
@@ -439,6 +458,7 @@ func (c *CmdMqtt) Cron() error {
 
 		c.clearDockerDNSOutage()
 		c.Client.LastRefresh = time.Now()
+		c.log.Info("Completed iSolarCloud sync cycle %d in %s.\n", cycle, now().Sub(started).Round(time.Millisecond))
 	}
 
 	if c.Error != nil {
@@ -463,6 +483,9 @@ func (c *CmdMqtt) collectAndPublishBatch(batch mqttEndpointBatch, newDay bool) e
 		return nil
 	}
 
+	c.currentSyncEndpoint = strings.Join(batch.Endpoints, ", ")
+	c.log.Info("Sync cycle %d: requesting %s.\n", c.syncCycle, c.currentSyncEndpoint)
+
 	data := cmds.Api.SunGrow.NewSunGrowData()
 	data.SetCacheTimeout(c.optionFetchSchedule)
 
@@ -482,6 +505,7 @@ func (c *CmdMqtt) collectAndPublishBatch(batch mqttEndpointBatch, newDay bool) e
 			return err
 		}
 	}
+	c.log.Info("Sync cycle %d: completed %s.\n", c.syncCycle, c.currentSyncEndpoint)
 
 	return nil
 }

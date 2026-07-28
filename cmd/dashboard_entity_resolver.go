@@ -35,13 +35,19 @@ type dashboardUnresolvedEntityRef struct {
 }
 
 type dashboardMetricCandidate struct {
-	Entity string
-	Metric string
-	Score  int
-	State  string
-	Unit   string
-	Source string
-	Reason string
+	Entity        string
+	Metric        string
+	Score         int
+	State         string
+	Unit          string
+	Source        string
+	Reason        string
+	PointID       string
+	Provenance    string
+	Period        string
+	Scope         string
+	Role          string
+	Compatibility string
 }
 
 type dashboardMetricTrace struct {

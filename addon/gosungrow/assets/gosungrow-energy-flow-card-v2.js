@@ -1889,6 +1889,9 @@ class GoSungrowSourceMappingCard extends HTMLElement {
     this._lastFocus = null;
     this._lastFocusMetric = null;
     this._pendingEntity = null;
+    this._expandedOther = new Set();
+    this._dialogScroll = 0;
+    this._dialogFocus = null;
   }
 
   setConfig(config) {
@@ -1898,8 +1901,10 @@ class GoSungrowSourceMappingCard extends HTMLElement {
   }
 
   set hass(hass) {
+    this._captureDialogState();
     this._hass = hass;
     this._render();
+    queueMicrotask(() => this._restoreDialogState());
   }
 
   getCardSize() { return 8; }
@@ -1925,6 +1930,9 @@ class GoSungrowSourceMappingCard extends HTMLElement {
   _metric(key) { return this._metrics().find((metric) => metric.key === key); }
 
   _matchReviewWarning(metric, selectedEntity) {
+    const current = this._selected(metric);
+    if (metric?.native_unavailable && selectedEntity === current) return this._label("source_native_unavailable", "Native source unavailable");
+    if (metric?.unsupported_calculated && selectedEntity === current) return this._label("source_unsupported_calculated", "Unsupported calculated source");
     if (!metric?.needs_review || this._config?.overrides?.[metric.key] || selectedEntity !== this._selected(metric)) return "";
     return metric.recommendation
       ? this._label("source_match_update", "A safer automatic source is available.")
@@ -1932,9 +1940,9 @@ class GoSungrowSourceMappingCard extends HTMLElement {
   }
 
   _warning(metric, selectedEntity = this._selected(metric)) {
-    if (this._numericState(selectedEntity) === null) return this._label("source_unavailable_warning", "The selected entity is unavailable or non-numeric.");
     const matchWarning = this._matchReviewWarning(metric, selectedEntity);
     if (matchWarning) return matchWarning;
+    if (this._numericState(selectedEntity) === null) return this._label("source_unavailable_warning", "The selected entity is unavailable or non-numeric.");
     const validation = metric?.validation;
     if (Number(validation?.schema_version) !== 1 || !Array.isArray(validation?.rules)) return "";
     for (const rule of validation.rules) {
@@ -1965,6 +1973,9 @@ class GoSungrowSourceMappingCard extends HTMLElement {
   _formatLiveValue(entityID) {
     const state = this._state(entityID);
     if (!state) return this._label("unavailable", "Unavailable");
+    if (typeof this._hass?.formatEntityState === "function") {
+      try { return this._hass.formatEntityState(state); } catch (_) { /* fall through to raw HA state */ }
+    }
     const unit = state.attributes?.unit_of_measurement || "";
     return `${state.state}${unit ? ` ${unit}` : ""}`;
   }
@@ -1972,9 +1983,8 @@ class GoSungrowSourceMappingCard extends HTMLElement {
   _displayValue(metric) {
     const state = this._state(this._selected(metric));
     const value = state?.state;
-    const unit = state?.attributes?.unit_of_measurement ?? "";
     if (value === undefined || value === null || ["unknown", "unavailable", ""].includes(String(value).toLowerCase())) return this._label("unavailable", "Unavailable");
-    return `${value}${unit ? ` ${unit}` : ""}`;
+    return this._formatLiveValue(this._selected(metric));
   }
 
   _status(metric) {
@@ -2015,17 +2025,24 @@ class GoSungrowSourceMappingCard extends HTMLElement {
     const status = this._status(metric);
     const selected = this._selected(metric);
     const state = this._state(selected);
-    const friendly = state?.attributes?.friendly_name || selected;
+    const friendly = state?.attributes?.friendly_name || selected || this._label("source_native_unavailable", "Native source unavailable");
     const peerNames = this._metrics().map((entry) => {
       const entityID = this._selected(entry);
       return this._state(entityID)?.attributes?.friendly_name || entityID;
     });
     const displayName = this._compactCandidateText(friendly, peerNames, 58);
     const warning = this._warning(metric);
+    const statusLabel = metric.unsupported_calculated
+      ? this._label("source_unsupported_calculated", "Unsupported calculated source")
+      : metric.native_unavailable
+        ? this._label("source_native_unavailable", "Native source unavailable")
+        : metric.needs_review && !this._config?.overrides?.[metric.key]
+          ? this._label("source_legacy_automatic", "Legacy automatic — review required")
+          : this._statusLabel(status);
     return `<article class="metric-row ${status === "needs_review" ? "warning" : ""}">
       <div class="metric-icon"><ha-icon icon="${this._escape(metric.icon || "mdi:chart-line")}"></ha-icon></div>
-      <div class="metric-main"><div class="metric-title-line"><strong>${this._escape(metric.label || metric.key)}</strong><span class="badge ${status}"><span class="badge-dot"></span>${this._escape(this._statusLabel(status))}</span></div>
-      <div class="metric-value">${this._escape(this._displayValue(metric))}</div><div class="entity-name" title="${this._escape(`${friendly || selected} · ${selected}`)}" aria-label="${this._escape(`${friendly || selected}; ${selected}`)}">${this._escape(displayName || selected)}</div><div class="match-reason"><span>${this._escape(this._confidenceLabel(metric.confidence))}</span>${this._escape(metric.reason || this._label("source_compatible", "Compatible source"))}</div>${warning ? `<div class="warning-text"><ha-icon icon="mdi:alert-circle-outline"></ha-icon>${this._escape(warning)}</div>` : ""}</div>
+      <div class="metric-main"><div class="metric-title-line"><strong>${this._escape(metric.label || metric.key)}</strong><span class="badge ${status}"><span class="badge-dot"></span>${this._escape(statusLabel)}</span></div>
+      <div class="metric-value">${this._escape(this._displayValue(metric))}</div><div class="entity-name" title="${this._escape(selected ? `${friendly} · ${selected}` : friendly)}" aria-label="${this._escape(selected ? `${friendly}; ${selected}` : friendly)}">${this._escape(displayName)}</div><div class="match-reason"><span>${this._escape(this._confidenceLabel(metric.confidence))}</span>${this._escape(metric.reason || this._label("source_compatible", "Compatible source"))}</div>${warning ? `<div class="warning-text"><ha-icon icon="mdi:alert-circle-outline"></ha-icon>${this._escape(warning)}</div>` : ""}</div>
       <button class="configure" data-metric="${this._escape(metric.key)}" ${!this._isAdmin() ? "disabled" : ""} aria-label="${this._escape(this._label("configure", "Configure"))} ${this._escape(metric.label || metric.key)}"><ha-icon icon="mdi:tune"></ha-icon><span>${this._escape(this._label("configure", "Configure"))}</span></button>
     </article>`;
   }
@@ -2045,8 +2062,8 @@ class GoSungrowSourceMappingCard extends HTMLElement {
       <div class="dialog-head"><div><div class="eyebrow">${this._escape(this._label("configure", "Configure"))}</div><h2 id="source-dialog-title">${this._escape(metric.label || metric.key)}</h2></div><button class="icon-button close" aria-label="${this._escape(this._label("cancel", "Cancel"))}"><ha-icon icon="mdi:close"></ha-icon></button></div>
       ${warning ? `<div class="dialog-warning"><ha-icon icon="mdi:alert-circle-outline"></ha-icon><div><strong>${this._escape(this._label("needs_review", "Needs review"))}</strong><span>${this._escape(warning)}</span></div></div>` : ""}
       <label class="search"><ha-icon icon="mdi:magnify"></ha-icon><input type="search" value="${this._escape(this._search)}" placeholder="${this._escape(this._label("search", "Search entities"))}" aria-label="${this._escape(this._label("search", "Search entities"))}"></label>
-      <div class="candidate-scroll"><h3>${this._escape(this._label("recommended", "Recommended"))}</h3>${recommended.map((candidate) => this._candidate(metric, candidate, filtered)).join("") || `<div class="empty">No matching entities</div>`}
-      ${other.length ? `<details ${query ? "open" : ""}><summary>${this._escape(this._label("other", "Other compatible entities"))}<span>${other.length}</span></summary>${other.map((candidate) => this._candidate(metric, candidate, filtered)).join("")}</details>` : ""}</div>
+      <div class="candidate-scroll"><h3>${this._escape(this._label("recommended", "Recommended"))}</h3>${recommended.map((candidate) => this._candidate(metric, candidate, filtered)).join("") || `<div class="empty">${this._escape(this._label("source_native_unavailable", "Native source unavailable"))}</div>`}
+      ${other.length ? `<details data-other-metric="${this._escape(metric.key)}" ${query || this._expandedOther.has(metric.key) ? "open" : ""}><summary>${this._escape(this._label("other", "Other compatible entities"))}<span>${other.length}</span></summary>${other.map((candidate) => this._candidate(metric, candidate, filtered)).join("")}</details>` : ""}</div>
       <div class="dialog-actions">${this._config?.overrides?.[metric.key] ? `<button class="reset" data-reset="${this._escape(metric.key)}" ${this._busy ? "disabled" : ""}>${this._escape(this._label("reset", "Reset to automatic"))}</button>` : ""}<button class="cancel">${this._escape(this._label("cancel", "Cancel"))}</button><button class="use-source" data-commit="${this._escape(metric.key)}" ${!changed || this._busy ? "disabled" : ""}>${this._escape(this._label("use_source", "Use this source"))}</button></div>
     </div></div>`;
   }
@@ -2059,11 +2076,15 @@ class GoSungrowSourceMappingCard extends HTMLElement {
     const peerIDs = peers.map((entry) => entry.entity_id);
     const displayName = this._compactCandidateText(friendly, peerNames, 76);
     const displayID = this._compactCandidateText(candidate.entity_id, peerIDs, 68, true);
-    const value = this._numericState(candidate.entity_id) === null ? this._label("unavailable", "Unavailable") : state.state;
-    const unit = state?.attributes?.unit_of_measurement || "";
-    const accessible = `${friendly}; ${candidate.entity_id}; ${value}${unit ? ` ${unit}` : ""}`;
-    return `<button class="candidate ${selected ? "selected" : ""}" data-select="${this._escape(candidate.entity_id)}" data-metric="${this._escape(metric.key)}" aria-label="${this._escape(accessible)}">
-      <span class="radio"><span></span></span><span class="candidate-main"><strong title="${this._escape(friendly)}">${this._escape(displayName)}</strong><code title="${this._escape(candidate.entity_id)}">${this._escape(displayID)}</code><small>${this._escape([candidate.device, candidate.point_id].filter(Boolean).join(" · "))}</small><small>${this._escape(candidate.reason || candidate.source || "Compatible entity")}</small></span><span class="candidate-value">${this._escape(value)}<small>${this._escape(unit)}</small></span>
+    const value = this._numericState(candidate.entity_id) === null ? this._label("unavailable", "Unavailable") : this._formatLiveValue(candidate.entity_id);
+    const accessible = `${friendly}; ${candidate.entity_id}; ${value}`;
+    const disabled = candidate.selectable === false;
+    const semantic = [...new Set([candidate.canonical_point, candidate.period, candidate.scope, candidate.role, candidate.provenance].filter(Boolean))].join(" · ");
+    const reason = metric.recommendation === candidate.entity_id
+      ? this._label("source_recommended_automatic", "Recommended automatic source")
+      : candidate.reason || candidate.source || "Compatible entity";
+    return `<button class="candidate ${selected ? "selected" : ""}" data-select="${this._escape(candidate.entity_id)}" data-metric="${this._escape(metric.key)}" aria-label="${this._escape(accessible)}" ${disabled ? "disabled" : ""}>
+      <span class="radio"><span></span></span><span class="candidate-main"><strong title="${this._escape(friendly)}">${this._escape(displayName)}</strong><code title="${this._escape(candidate.entity_id)}">${this._escape(displayID)}</code><small>${this._escape([candidate.device, candidate.point_id].filter(Boolean).join(" · "))}</small><small>${this._escape(reason)}</small>${semantic ? `<small>${this._escape(semantic)}</small>` : ""}</span><span class="candidate-value">${this._escape(value)}</span>
     </button>`;
   }
 
@@ -2092,12 +2113,17 @@ class GoSungrowSourceMappingCard extends HTMLElement {
     this.shadowRoot.querySelector(".scrim")?.addEventListener("click", (event) => { if (event.target?.dataset?.close) this._close(); });
     this.shadowRoot.querySelector("input[type=search]")?.addEventListener("input", (event) => { this._search = event.target.value; this._render(); queueMicrotask(() => { const input = this.shadowRoot.querySelector("input[type=search]"); input?.focus(); input?.setSelectionRange(this._search.length, this._search.length); }); });
     this.shadowRoot.querySelectorAll("[data-select]").forEach((button) => button.addEventListener("click", () => { const entity = button.dataset.select; this._pendingEntity = entity; this._render(); queueMicrotask(() => [...this.shadowRoot.querySelectorAll("[data-select]")].find((entry) => entry.dataset.select === entity)?.focus()); }));
+    this.shadowRoot.querySelector("details[data-other-metric]")?.addEventListener("toggle", (event) => {
+      const key = event.currentTarget.dataset.otherMetric;
+      if (event.currentTarget.open) this._expandedOther.add(key); else this._expandedOther.delete(key);
+    });
+    this.shadowRoot.querySelector(".candidate-scroll")?.addEventListener("scroll", (event) => { this._dialogScroll = event.currentTarget.scrollTop; }, { passive: true });
     this.shadowRoot.querySelector("[data-commit]")?.addEventListener("click", (event) => this._save(event.currentTarget.dataset.commit, this._pendingEntity));
     this.shadowRoot.querySelector("[data-reset]")?.addEventListener("click", (event) => this._save(event.currentTarget.dataset.reset, null));
     this.shadowRoot.querySelector(".dialog")?.addEventListener("keydown", (event) => this._trapDialogKeys(event));
   }
 
-  _close() { this._activeMetric = null; this._pendingEntity = null; this._search = ""; this._render(); queueMicrotask(() => ([...this.shadowRoot.querySelectorAll("button[data-metric]:not([data-select])")].find((button) => button.dataset.metric === this._lastFocusMetric) || this._lastFocus)?.focus()); }
+  _close() { this._activeMetric = null; this._pendingEntity = null; this._search = ""; this._dialogScroll = 0; this._dialogFocus = null; this._render(); queueMicrotask(() => ([...this.shadowRoot.querySelectorAll("button[data-metric]:not([data-select])")].find((button) => button.dataset.metric === this._lastFocusMetric) || this._lastFocus)?.focus()); }
 
   _trapDialogKeys(event) {
     if (event.key === "Escape") { event.preventDefault(); this._close(); return; }
@@ -2107,6 +2133,29 @@ class GoSungrowSourceMappingCard extends HTMLElement {
     const first = focusable[0], last = focusable[focusable.length - 1];
     if (event.shiftKey && this.shadowRoot.activeElement === first) { event.preventDefault(); last.focus(); }
     else if (!event.shiftKey && this.shadowRoot.activeElement === last) { event.preventDefault(); first.focus(); }
+  }
+
+  _captureDialogState() {
+    if (!this._activeMetric || !this.shadowRoot) return;
+    const active = this.shadowRoot.activeElement;
+    this._dialogFocus = active?.matches?.("input[type=search]") ? { type: "search", start: active.selectionStart, end: active.selectionEnd }
+      : active?.dataset?.select ? { type: "candidate", entity: active.dataset.select }
+        : active?.classList?.contains("use-source") ? { type: "commit" }
+          : null;
+    this._dialogScroll = this.shadowRoot.querySelector(".candidate-scroll")?.scrollTop || this._dialogScroll;
+  }
+
+  _restoreDialogState() {
+    if (!this._activeMetric || !this.shadowRoot) return;
+    const scroller = this.shadowRoot.querySelector(".candidate-scroll");
+    if (scroller) scroller.scrollTop = this._dialogScroll;
+    if (!this._dialogFocus) return;
+    let target = null;
+    if (this._dialogFocus.type === "search") target = this.shadowRoot.querySelector("input[type=search]");
+    if (this._dialogFocus.type === "candidate") target = [...this.shadowRoot.querySelectorAll("[data-select]")].find((entry) => entry.dataset.select === this._dialogFocus.entity);
+    if (this._dialogFocus.type === "commit") target = this.shadowRoot.querySelector(".use-source");
+    target?.focus();
+    if (this._dialogFocus.type === "search" && target?.setSelectionRange) target.setSelectionRange(this._dialogFocus.start, this._dialogFocus.end);
   }
 
   async _save(metricKey, entityID) {
@@ -2125,8 +2174,8 @@ class GoSungrowSourceMappingCard extends HTMLElement {
         const cardMetric = Array.isArray(card.metrics) ? card.metrics.find((entry) => entry.key === metricKey) : null;
         const localCandidates = this._candidates(metric);
         const cardCandidates = card.candidates?.[metricKey] || cardMetric?.candidates || [];
-        const allowedLocally = localCandidates.some((candidate) => candidate.entity_id === entityID);
-        const allowed = allowedLocally && cardCandidates.some((candidate) => candidate.entity_id === entityID);
+        const allowedLocally = localCandidates.some((candidate) => candidate.entity_id === entityID && candidate.selectable !== false);
+        const allowed = allowedLocally && cardCandidates.some((candidate) => candidate.entity_id === entityID && candidate.selectable !== false);
         if (!allowed) throw new Error(this._label("source_incompatible", "This entity is no longer an available compatible source."));
       }
       const oldEntity = card.overrides?.[metricKey] || card.defaults?.[metricKey];
@@ -2153,6 +2202,8 @@ class GoSungrowSourceMappingCard extends HTMLElement {
           delete nextMetric.recommendation;
           delete nextMetric.recommendation_reason;
           delete nextMetric.needs_review;
+          delete nextMetric.unsupported_calculated;
+          delete nextMetric.native_unavailable;
         }
       } else if (entityID) nextCard.overrides[metricKey] = entityID;
       else delete nextCard.overrides[metricKey];
@@ -2175,6 +2226,8 @@ class GoSungrowSourceMappingCard extends HTMLElement {
         delete metric.recommendation;
         delete metric.recommendation_reason;
         delete metric.needs_review;
+        delete metric.unsupported_calculated;
+        delete metric.native_unavailable;
       } else if (entityID) this._config.overrides[metricKey] = entityID;
       else delete this._config.overrides[metricKey];
       const localCandidate = this._candidates(metric).find((candidate) => candidate.entity_id === nextEntity);

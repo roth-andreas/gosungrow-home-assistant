@@ -87,11 +87,21 @@ type haResourceMetadata struct {
 }
 
 type haState struct {
-	EntityID    string         `json:"entity_id"`
-	State       string         `json:"state"`
-	LastChanged string         `json:"last_changed,omitempty"`
-	LastUpdated string         `json:"last_updated,omitempty"`
-	Attributes  map[string]any `json:"attributes,omitempty"`
+	EntityID         string         `json:"entity_id"`
+	State            string         `json:"state"`
+	LastChanged      string         `json:"last_changed,omitempty"`
+	LastUpdated      string         `json:"last_updated,omitempty"`
+	Attributes       map[string]any `json:"attributes,omitempty"`
+	RegistryUniqueID string         `json:"-"`
+	RegistryDeviceID string         `json:"-"`
+	RegistryPlatform string         `json:"-"`
+}
+
+type haEntityRegistryEntry struct {
+	EntityID string `json:"entity_id"`
+	UniqueID string `json:"unique_id"`
+	DeviceID string `json:"device_id"`
+	Platform string `json:"platform"`
 }
 
 type dashboardInstallDiagnostics struct {
@@ -303,17 +313,22 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		diagnostics.HAStatesLoadError = listErr.Error()
 		_, remapReport = remapDashboardEntitiesWithReport(config, targets, nil)
 	} else {
+		if registry, registryErr := client.ListEntityRegistry(ctx); registryErr == nil {
+			states = enrichDashboardStatesWithRegistry(states, registry)
+		} else {
+			fmt.Printf("Managed dashboard could not load the Home Assistant entity registry; canonical matching will use conservative fallbacks: %s\n", registryErr)
+		}
 		diagnostics.HAStatesLoaded = len(states)
 		diagnostics.GoSungrowStatesFound = countDashboardGoSungrowStates(states)
 		diagnostics.BatteryDetectionKnown = true
 		diagnostics.BatteryTargetsFound = countDashboardBatteryTargets(targets, states)
 		diagnostics.TargetDiagnostics = buildDashboardTargetDiagnostics(targets, states)
 		diagnostics.AggregateHints = buildDashboardAggregateHints(targets, states)
-		config = pruneDashboardForUnavailableMetrics(config, targets, states)
 		// Keep the metric-specific placeholders in the generated config until
 		// source bindings are built. Two metrics may resolve to the same entity;
 		// replacing strings here would make their binding paths indistinguishable.
 		_, remapReport = remapDashboardEntitiesWithReport(config, targets, states)
+		config = pruneDashboardForUnavailableMetricsWithPinned(config, targets, states, extractDashboardSourceDefaults(currentConfig))
 	}
 	diagnostics.DashboardRefsFound = remapReport.TotalRefs
 	diagnostics.RemappedRefs = len(remapReport.Remapped)
@@ -1355,6 +1370,32 @@ func (c *haWSClient) ListStates(_ context.Context) ([]haState, error) {
 		deduped = append(deduped, state)
 	}
 	return deduped, nil
+}
+
+func (c *haWSClient) ListEntityRegistry(_ context.Context) ([]haEntityRegistryEntry, error) {
+	var entries []haEntityRegistryEntry
+	if err := c.call(map[string]any{"type": "config/entity_registry/list"}, &entries); err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+func enrichDashboardStatesWithRegistry(states []haState, registry []haEntityRegistryEntry) []haState {
+	byEntity := make(map[string]haEntityRegistryEntry, len(registry))
+	for _, entry := range registry {
+		byEntity[strings.ToLower(strings.TrimSpace(entry.EntityID))] = entry
+	}
+	ret := append([]haState(nil), states...)
+	for index := range ret {
+		entry, ok := byEntity[strings.ToLower(strings.TrimSpace(ret[index].EntityID))]
+		if !ok {
+			continue
+		}
+		ret[index].RegistryUniqueID = strings.TrimSpace(entry.UniqueID)
+		ret[index].RegistryDeviceID = strings.TrimSpace(entry.DeviceID)
+		ret[index].RegistryPlatform = strings.TrimSpace(entry.Platform)
+	}
+	return ret
 }
 
 func (c *haWSClient) ListStateEntityIDs(ctx context.Context) ([]string, error) {

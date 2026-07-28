@@ -16,6 +16,21 @@ import (
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/WebIscmAppService/getPsTreeMenu"
 )
 
+func TestEnrichDashboardStatesWithEntityRegistry(t *testing.T) {
+	states := []haState{{EntityID: "sensor.renamed", State: "4"}, {EntityID: "sensor.untouched", State: "5"}}
+	registry := []haEntityRegistryEntry{{EntityID: "SENSOR.RENAMED", UniqueID: "gosungrow_100_11_0_0_p13112", DeviceID: "device-1", Platform: "mqtt"}}
+	got := enrichDashboardStatesWithRegistry(states, registry)
+	if got[0].RegistryUniqueID != registry[0].UniqueID || got[0].RegistryDeviceID != "device-1" || got[0].RegistryPlatform != "mqtt" {
+		t.Fatalf("registry metadata missing: %#v", got[0])
+	}
+	if got[1].RegistryUniqueID != "" {
+		t.Fatalf("unmatched state was changed: %#v", got[1])
+	}
+	if states[0].RegistryUniqueID != "" {
+		t.Fatal("input states were mutated")
+	}
+}
+
 func testPsTreeDevice(psID string, psKey string, deviceType int64, plantName string, deviceName string) getPsTreeMenu.Ps {
 	var ps getPsTreeMenu.Ps
 	ps.PsId.SetString(psID)

@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.2.0.8
+
+- Match daily energy sources through canonical Sungrow point semantics and Home Assistant entity-registry unique IDs, independent of renamed or translated entity names.
+- Preserve installed automatic and manual mappings while offering safer canonical sources for explicit adoption; unsupported calculated direct-solar values remain visible only as warned legacy mappings.
+- Show direct solar consumption as unavailable when no native `p13116` or `p83097` source exists, and keep ambiguous calculated values out of new defaults and candidate searches.
+- Keep the Data Sources selector stable across live Home Assistant updates, including expanded candidates, search, pending selection, scroll position, and keyboard focus.
+- Interpret Data Last Update Time using the plant timezone supplied by Sungrow and publish the resulting instant as RFC 3339.
+- Bound iSolarCloud HTTP requests to 60 seconds and add endpoint-aware synchronization progress and duration logs while preserving MQTT state through recoverable timeouts.
+
 ## 3.2.0.7
 
 - Add constrained semantic matching for solar power, daily production, grid import/export, and daily home consumption.

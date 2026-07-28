@@ -3,11 +3,15 @@ package cmd
 import "strings"
 
 func pruneDashboardForUnavailableMetrics(config map[string]any, targets []haDashboardTarget, states []haState) map[string]any {
+	return pruneDashboardForUnavailableMetricsWithPinned(config, targets, states, nil)
+}
+
+func pruneDashboardForUnavailableMetricsWithPinned(config map[string]any, targets []haDashboardTarget, states []haState, pinned map[string]map[string]string) map[string]any {
 	if len(config) == 0 || len(targets) == 0 || len(states) == 0 {
 		return config
 	}
 
-	unsupportedByTarget := dashboardUnsupportedMetricsByTarget(config, targets, states)
+	unsupportedByTarget := dashboardUnsupportedMetricsByTargetWithPinned(config, targets, states, pinned)
 	if len(unsupportedByTarget) == 0 {
 		return config
 	}
@@ -62,6 +66,10 @@ func pruneDashboardForMissingBattery(config map[string]any, targets []haDashboar
 }
 
 func dashboardUnsupportedMetricsByTarget(config map[string]any, targets []haDashboardTarget, states []haState) map[string]map[string]struct{} {
+	return dashboardUnsupportedMetricsByTargetWithPinned(config, targets, states, nil)
+}
+
+func dashboardUnsupportedMetricsByTargetWithPinned(config map[string]any, targets []haDashboardTarget, states []haState, pinned map[string]map[string]string) map[string]map[string]struct{} {
 	refs := collectLegacyDashboardEntityRefs(config, targets)
 	if len(refs) == 0 {
 		return nil
@@ -99,6 +107,13 @@ func dashboardUnsupportedMetricsByTarget(config map[string]any, targets []haDash
 			if isBatteryDashboardMetric(metric) && !hasBattery {
 				unsupported[metric] = struct{}{}
 				continue
+			}
+			if metric == "p13116" {
+				match := dashboardSemanticRecommendation(target, metric, states, singleTarget)
+				if len(match.Candidates) == 0 && strings.TrimSpace(pinned[dashboardSourceMappingID(target)][metric]) == "" {
+					unsupported[metric] = struct{}{}
+					continue
+				}
 			}
 			if resolveDashboardMetricEntity(target, metric, states, stateByID, singleTarget) == "" {
 				unsupported[metric] = struct{}{}

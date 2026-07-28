@@ -109,15 +109,36 @@ func applyDashboardSourceMappings(config map[string]any, current map[string]any,
 		recommendations := make(map[string]string)
 		recommendationReasons := make(map[string]string)
 		needsReview := make(map[string]bool)
+		unsupportedCalculated := make(map[string]bool)
 		pinned := currentDefaults[mappingID]
+		stateByID := dashboardStateByEntityID(states)
+		registryAvailable := dashboardRegistryMetadataAvailable(states)
 		for metric, generated := range generatedDefaults {
 			match := dashboardSemanticRecommendation(target, metric, states, singleTarget)
 			if existing := strings.TrimSpace(pinned[metric]); existing != "" {
 				defaults[metric] = existing
+				if metric == "p13116" {
+					if state, ok := stateByID[strings.ToLower(existing)]; ok && dashboardIsUnsupportedCalculatedDirectSolar(state) {
+						unsupportedCalculated[metric] = true
+						needsReview[metric] = true
+					}
+				}
 			} else if match.Confident && match.Entity != "" {
 				defaults[metric] = match.Entity
+			} else if metric == "p13116" && len(match.Candidates) == 0 {
+				generatedState, present := stateByID[strings.ToLower(strings.TrimSpace(generated))]
+				_, nativeGenerated := dashboardSemanticSourceState(generatedState, mustDashboardSemanticContract(metric).sources)
+				if present && nativeGenerated && !dashboardIsUnsupportedCalculatedDirectSolar(generatedState) {
+					defaults[metric] = generated
+				} else {
+					defaults[metric] = ""
+				}
+				needsReview[metric] = true
 			}
 			if _, contracted := dashboardSemanticContractFor(metric); contracted {
+				if contract := mustDashboardSemanticContract(metric); contract.daily && !registryAvailable {
+					needsReview[metric] = true
+				}
 				if match.Confident && match.Entity != "" && !strings.EqualFold(match.Entity, defaults[metric]) {
 					recommendations[metric] = match.Entity
 					recommendationReasons[metric] = match.Reason
@@ -131,7 +152,7 @@ func applyDashboardSourceMappings(config map[string]any, current map[string]any,
 					}
 				}
 			}
-			if defaults[metric] == "" {
+			if defaults[metric] == "" && metric != "p13116" {
 				defaults[metric] = generated
 			}
 		}
@@ -147,6 +168,9 @@ func applyDashboardSourceMappings(config map[string]any, current map[string]any,
 		}
 		bindings := dashboardSourceBindingPaths(config, viewIndexes, bindingSources)
 		for metric, rawPaths := range bindings {
+			if strings.TrimSpace(defaults[metric]) == "" {
+				continue
+			}
 			paths, _ := rawPaths.([]any)
 			for _, rawPath := range paths {
 				_ = setDashboardJSONPointer(config, stringValue(rawPath), defaults[metric])
@@ -157,7 +181,7 @@ func applyDashboardSourceMappings(config map[string]any, current map[string]any,
 		remainingCandidates := dashboardSourceTargetLimit
 		for _, def := range dashboardSourceMetricDefinitions {
 			defaultEntity := defaults[def.Metric]
-			if defaultEntity == "" || remainingCandidates <= 0 {
+			if (defaultEntity == "" && def.Metric != "p13116") || remainingCandidates <= 0 {
 				continue
 			}
 			candidates := dashboardSourceCandidates(target, def.Metric, defaultEntity, states, singleTarget)
@@ -177,6 +201,13 @@ func applyDashboardSourceMappings(config map[string]any, current map[string]any,
 		}
 		for metric, entity := range validOverrides {
 			candidatesByMetric[metric] = ensureDashboardSourceCandidate(candidatesByMetric[metric], metric, entity)
+			if metric == "p13116" {
+				if state, ok := stateByID[strings.ToLower(strings.TrimSpace(entity))]; ok && dashboardIsUnsupportedCalculatedDirectSolar(state) {
+					unsupportedCalculated[metric] = true
+					needsReview[metric] = true
+					markDashboardCalculatedCandidateUnsupported(candidatesByMetric[metric], entity)
+				}
+			}
 		}
 		for metric, rawPaths := range bindings {
 			paths, _ := rawPaths.([]any)
@@ -192,7 +223,7 @@ func applyDashboardSourceMappings(config map[string]any, current map[string]any,
 		card["pinned_defaults"] = stringMapToAny(defaults)
 		card["recommendations"] = stringMapToAny(recommendations)
 		card["overrides"] = stringMapToAny(validOverrides)
-		card["metrics"] = dashboardSourceMetricConfigs(defaults, validOverrides, candidatesByMetric, recommendations, recommendationReasons, needsReview, locale)
+		card["metrics"] = dashboardSourceMetricConfigs(defaults, validOverrides, candidatesByMetric, recommendations, recommendationReasons, needsReview, unsupportedCalculated, locale)
 		card["candidates"] = candidateMapToAny(candidatesByMetric)
 		card["bindings"] = bindings
 	}
@@ -280,11 +311,11 @@ func extractDashboardSourceOverrides(config map[string]any) map[string]map[strin
 	return ret
 }
 
-func dashboardSourceMetricConfigs(defaults, overrides map[string]string, candidatesByMetric map[string][]any, recommendations, recommendationReasons map[string]string, needsReview map[string]bool, locale dashboardLocaleBundle) []any {
+func dashboardSourceMetricConfigs(defaults, overrides map[string]string, candidatesByMetric map[string][]any, recommendations, recommendationReasons map[string]string, needsReview, unsupportedCalculated map[string]bool, locale dashboardLocaleBundle) []any {
 	ret := make([]any, 0, len(defaults))
 	for _, def := range dashboardSourceMetricDefinitions {
 		defaultEntity := defaults[def.Metric]
-		if defaultEntity == "" {
+		if defaultEntity == "" && def.Metric != "p13116" {
 			continue
 		}
 		metric := map[string]any{
@@ -297,6 +328,14 @@ func dashboardSourceMetricConfigs(defaults, overrides map[string]string, candida
 		}
 		if needsReview[def.Metric] {
 			metric["needs_review"] = true
+		}
+		if unsupportedCalculated[def.Metric] {
+			metric["unsupported_calculated"] = true
+		}
+		if def.Metric == "p13116" && defaultEntity == "" {
+			metric["native_unavailable"] = true
+			metric["confidence"] = "low"
+			metric["reason"] = "Native direct-solar source unavailable"
 		}
 		rules := []any{map[string]any{"type": "freshness", "max_age_seconds": int(dashboardSourceFreshness(def.Metric).Seconds())}}
 		selected := defaultEntity
@@ -325,7 +364,23 @@ func dashboardSourceCandidates(target haDashboardTarget, metric, defaultEntity s
 	values := make([]dashboardMetricCandidate, 0)
 	semantic := dashboardSemanticRecommendation(target, metric, states, singleTarget)
 	values = append(values, semantic.Candidates...)
+	contract, contracted := dashboardSemanticContractFor(metric)
+	canonicalContract := contracted && len(contract.sources) > 0
+	registryAvailable := dashboardRegistryMetadataAvailable(states)
 	for _, state := range states {
+		legacyCalculated := metric == "p13116" && dashboardIsUnsupportedCalculatedDirectSolar(state)
+		if legacyCalculated && !strings.EqualFold(state.EntityID, defaultEntity) {
+			continue
+		}
+		if canonicalContract && !strings.EqualFold(state.EntityID, defaultEntity) {
+			identity := state.RegistryUniqueID
+			if !registryAvailable {
+				identity = state.EntityID
+			}
+			if _, ok := dashboardSemanticSource(identity, contract.sources); !ok {
+				continue
+			}
+		}
 		entity, score, reason, ok := dashboardScoreMetricCandidate(target, metric, profile, state, singleTarget)
 		if !ok || entity == "" {
 			if !dashboardManualCandidateCompatible(target, metric, state, singleTarget) {
@@ -341,16 +396,25 @@ func dashboardSourceCandidates(target haDashboardTarget, metric, defaultEntity s
 		}
 		if strings.EqualFold(entity, defaultEntity) {
 			reason = "Current automatic match"
+			if legacyCalculated {
+				reason = "Unsupported calculated legacy source"
+				score = 0
+			}
 			if !recent {
 				reason += " (state is stale)"
 				score = 0
 			}
 		}
 		candidate := dashboardMetricCandidate{Entity: entity, Metric: metric, Score: score, State: state.State, Unit: dashboardStateUnit(state), Source: dashboardMetricSourceCategory(target, metric, entity), Reason: reason}
+		if legacyCalculated {
+			candidate.Provenance = "calculated_legacy"
+			candidate.Period = "day"
+			candidate.Compatibility = "unsupported"
+		}
 		found := false
 		for index := range values {
 			if strings.EqualFold(values[index].Entity, entity) {
-				if candidate.Score > values[index].Score {
+				if values[index].Provenance == "" && candidate.Score > values[index].Score {
 					values[index] = candidate
 				}
 				found = true
@@ -388,10 +452,39 @@ func dashboardSourceCandidates(target haDashboardTarget, metric, defaultEntity s
 		if state.Attributes != nil {
 			device = strings.TrimSpace(stringValue(state.Attributes["device_name"]))
 		}
-		ret = append(ret, map[string]any{"entity_id": value.Entity, "device": device, "point_id": metric, "score": value.Score, "confidence": dashboardSourceConfidence(value.Score), "reason": value.Reason, "source": value.Source, "recommended": len(ret) < dashboardSourceRecommendedLimit})
+		candidate := map[string]any{"entity_id": value.Entity, "device": device, "point_id": metric, "score": value.Score, "confidence": dashboardSourceConfidence(value.Score), "reason": value.Reason, "source": value.Source, "recommended": len(ret) < dashboardSourceRecommendedLimit}
+		if value.PointID != "" {
+			candidate["canonical_point"] = value.PointID
+		}
+		if value.Provenance != "" {
+			candidate["provenance"] = value.Provenance
+		}
+		if value.Period != "" {
+			candidate["period"] = value.Period
+		}
+		if value.Scope != "" {
+			candidate["scope"] = value.Scope
+		}
+		if value.Role != "" {
+			candidate["role"] = value.Role
+		}
+		if value.Compatibility != "" {
+			candidate["compatibility"] = value.Compatibility
+		}
+		if value.Compatibility == "unsupported" {
+			candidate["selectable"] = false
+		}
+		ret = append(ret, candidate)
 	}
 	if !foundDefault && defaultEntity != "" {
-		ret = append([]any{map[string]any{"entity_id": defaultEntity, "point_id": metric, "score": 0, "confidence": "low", "reason": "Current automatic match", "recommended": true}}, ret...)
+		fallback := map[string]any{"entity_id": defaultEntity, "point_id": metric, "score": 0, "confidence": "low", "reason": "Current automatic match", "recommended": true}
+		if state, ok := stateByID[strings.ToLower(defaultEntity)]; ok && metric == "p13116" && dashboardIsUnsupportedCalculatedDirectSolar(state) {
+			fallback["reason"] = "Unsupported calculated legacy source"
+			fallback["provenance"] = "calculated_legacy"
+			fallback["compatibility"] = "unsupported"
+			fallback["selectable"] = false
+		}
+		ret = append([]any{fallback}, ret...)
 		if len(ret) > limit {
 			ret = ret[:limit]
 		}
@@ -548,6 +641,7 @@ func setDashboardFlowAutomaticEntities(config map[string]any, viewIndexes []int,
 func validateDashboardSourceOverrides(mappingID string, defaults, requested, persisted map[string]string, target haDashboardTarget, singleTarget bool, states []haState) map[string]string {
 	ret := make(map[string]string)
 	stateByID := dashboardStateByEntityID(states)
+	registryAvailable := dashboardRegistryMetadataAvailable(states)
 	for metric, rawEntity := range requested {
 		entity := strings.TrimSpace(rawEntity)
 		if defaults[metric] == "" || entity == "" {
@@ -561,9 +655,18 @@ func validateDashboardSourceOverrides(mappingID string, defaults, requested, per
 		if currentlyPresent {
 			resolved, _, _, ok := dashboardScoreMetricCandidate(target, metric, dashboardMetricProfileFor(metric), state, singleTarget)
 			structurallyCompatible = (ok && strings.EqualFold(resolved, entity)) || dashboardManualCandidateCompatible(target, metric, state, singleTarget)
-			currentlyCompatible = structurallyCompatible && dashboardSourceStateRecent(state, metric, time.Now())
+			currentlyCompatible = structurallyCompatible
+			if contract, contracted := dashboardSemanticContractFor(metric); contracted && len(contract.sources) > 0 {
+				currentlyCompatible = dashboardCanonicalCandidateCompatible(target, metric, state, singleTarget, registryAvailable)
+			}
+			currentlyCompatible = currentlyCompatible && dashboardSourceStateRecent(state, metric, time.Now())
 		}
 		previouslyAccepted := strings.EqualFold(strings.TrimSpace(persisted[metric]), entity)
+		legacyCalculated := currentlyPresent && metric == "p13116" && dashboardIsUnsupportedCalculatedDirectSolar(state)
+		if previouslyAccepted && legacyCalculated {
+			ret[metric] = entity
+			continue
+		}
 		if currentlyCompatible || (previouslyAccepted && (!currentlyPresent || structurallyCompatible)) {
 			ret[metric] = entity
 			continue
@@ -620,6 +723,21 @@ func ensureDashboardSourceCandidate(candidates []any, metric, entity string) []a
 		}
 	}
 	return ret
+}
+
+func markDashboardCalculatedCandidateUnsupported(candidates []any, entity string) {
+	for _, raw := range candidates {
+		candidate, _ := raw.(map[string]any)
+		if !strings.EqualFold(stringValue(candidate["entity_id"]), entity) {
+			continue
+		}
+		candidate["reason"] = "Unsupported calculated legacy source"
+		candidate["provenance"] = "calculated_legacy"
+		candidate["compatibility"] = "unsupported"
+		candidate["selectable"] = false
+		candidate["confidence"] = "low"
+		return
+	}
 }
 
 func fmtDashboardSourceWarning(mappingID, metric, entity, reason string) {
@@ -732,7 +850,7 @@ func normalizeDashboardStructure(config map[string]any) (map[string]any, error) 
 				if metrics, ok := typed["metrics"].([]any); ok {
 					for _, rawMetric := range metrics {
 						if metric, ok := rawMetric.(map[string]any); ok {
-							for _, key := range []string{"default", "candidates", "selected", "status", "warning", "value", "unit", "live_status", "confidence", "reason", "recommendation", "recommendation_reason", "needs_review"} {
+							for _, key := range []string{"default", "candidates", "selected", "status", "warning", "value", "unit", "live_status", "confidence", "reason", "recommendation", "recommendation_reason", "needs_review", "unsupported_calculated", "native_unavailable"} {
 								delete(metric, key)
 							}
 						}
@@ -833,23 +951,27 @@ func dashboardSourceMappingLabels(locale dashboardLocaleBundle) map[string]any {
 		"configure": localeText(locale, "source_configure", "Configure"), "recommended": localeText(locale, "source_recommended", "Recommended"), "other": localeText(locale, "source_other", "Other compatible entities"),
 		"search": localeText(locale, "source_search", "Search entities"), "use_source": localeText(locale, "source_use", "Use this source"), "reset": localeText(locale, "source_reset", "Reset to automatic"), "cancel": localeText(locale, "source_cancel", "Cancel"),
 		"saved": localeText(locale, "source_saved", "Data source saved."), "readonly": localeText(locale, "source_readonly", "Only Home Assistant administrators can change data sources."),
-		"source_match_update":        localeText(locale, "source_match_update", "A safer automatic source is available."),
-		"source_match_unverified":    localeText(locale, "source_match_unverified", "The current automatic source could not be verified."),
-		"source_adopted":             localeText(locale, "source_adopted", "Automatic source updated."),
-		"source_unavailable_warning": localeText(locale, "source_unavailable_warning", "The selected entity is unavailable or non-numeric."),
-		"source_stale_warning":       localeText(locale, "source_stale_warning", "The selected entity has not updated recently."),
-		"source_physical_warning":    localeText(locale, "source_physical_warning", "Selected value ({value}) exceeds solar production ({reference}). Review this source."),
-		"source_confirm_warning":     localeText(locale, "source_confirm_warning", "Use this source anyway?"),
-		"source_stale":               localeText(locale, "source_stale", "Dashboard changed; reload and try again."),
-		"source_incompatible":        localeText(locale, "source_incompatible", "This entity is no longer an available compatible source."),
-		"source_save_error":          localeText(locale, "source_save_error", "Could not save the data source. Check your administrator access and connection, then try again."),
-		"confidence_high":            localeText(locale, "source_confidence_high", "High confidence"),
-		"confidence_medium":          localeText(locale, "source_confidence_medium", "Medium confidence"),
-		"confidence_low":             localeText(locale, "source_confidence_low", "Low confidence"),
-		"confidence_manual":          localeText(locale, "source_confidence_manual", "User selected"),
-		"confidence_unknown":         localeText(locale, "source_confidence_unknown", "Confidence unavailable"),
-		"source_compatible":          localeText(locale, "source_compatible", "Compatible source"),
-		"groups":                     map[string]any{"live_power": localeText(locale, "source_group_live", "Live power"), "today_energy": localeText(locale, "source_group_today", "Today's energy"), "battery": localeText(locale, "source_group_battery", "Battery"), "energy_summary": localeText(locale, "source_group_summary", "Energy summary")},
+		"source_match_update":           localeText(locale, "source_match_update", "A safer automatic source is available."),
+		"source_match_unverified":       localeText(locale, "source_match_unverified", "The current automatic source could not be verified."),
+		"source_adopted":                localeText(locale, "source_adopted", "Automatic source updated."),
+		"source_legacy_automatic":       localeText(locale, "source_legacy_automatic", "Legacy automatic — review required"),
+		"source_unsupported_calculated": localeText(locale, "source_unsupported_calculated", "Unsupported calculated source"),
+		"source_native_unavailable":     localeText(locale, "source_native_unavailable", "Native source unavailable"),
+		"source_recommended_automatic":  localeText(locale, "source_recommended_automatic", "Recommended automatic source"),
+		"source_unavailable_warning":    localeText(locale, "source_unavailable_warning", "The selected entity is unavailable or non-numeric."),
+		"source_stale_warning":          localeText(locale, "source_stale_warning", "The selected entity has not updated recently."),
+		"source_physical_warning":       localeText(locale, "source_physical_warning", "Selected value ({value}) exceeds solar production ({reference}). Review this source."),
+		"source_confirm_warning":        localeText(locale, "source_confirm_warning", "Use this source anyway?"),
+		"source_stale":                  localeText(locale, "source_stale", "Dashboard changed; reload and try again."),
+		"source_incompatible":           localeText(locale, "source_incompatible", "This entity is no longer an available compatible source."),
+		"source_save_error":             localeText(locale, "source_save_error", "Could not save the data source. Check your administrator access and connection, then try again."),
+		"confidence_high":               localeText(locale, "source_confidence_high", "High confidence"),
+		"confidence_medium":             localeText(locale, "source_confidence_medium", "Medium confidence"),
+		"confidence_low":                localeText(locale, "source_confidence_low", "Low confidence"),
+		"confidence_manual":             localeText(locale, "source_confidence_manual", "User selected"),
+		"confidence_unknown":            localeText(locale, "source_confidence_unknown", "Confidence unavailable"),
+		"source_compatible":             localeText(locale, "source_compatible", "Compatible source"),
+		"groups":                        map[string]any{"live_power": localeText(locale, "source_group_live", "Live power"), "today_energy": localeText(locale, "source_group_today", "Today's energy"), "battery": localeText(locale, "source_group_battery", "Battery"), "energy_summary": localeText(locale, "source_group_summary", "Energy summary")},
 	}
 }
 

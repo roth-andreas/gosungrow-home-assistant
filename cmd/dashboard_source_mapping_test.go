@@ -61,7 +61,7 @@ func TestDashboardSourceMappingPinsExistingChoiceAndOffersSemanticUpgrade(t *tes
 	mappingID := dashboardSourceMappingID(target)
 	current := map[string]any{"views": []any{map[string]any{"cards": []any{map[string]any{
 		"type": dashboardSourceMappingCardType, "schema_version": 1, "mapping_id": mappingID,
-		"defaults": map[string]any{"pv_power": oldEntity}, "pinned_defaults": map[string]any{"pv_power": oldEntity},
+		"matcher_version": 2, "defaults": map[string]any{"pv_power": oldEntity}, "pinned_defaults": map[string]any{"pv_power": oldEntity},
 	}}}}}
 
 	existing, _ := applyDashboardSourceMappings(makeConfig(), current, nil, []haDashboardTarget{target}, states, trace, "gosungrow", defaultDashboardLocaleBundle)
@@ -70,6 +70,9 @@ func TestDashboardSourceMappingPinsExistingChoiceAndOffersSemanticUpgrade(t *tes
 		t.Fatalf("existing automatic choice changed without consent: got %v want %s", got, oldEntity)
 	}
 	card := findDashboardSourceMappingCard(existing, mappingID)
+	if got := intValue(card["matcher_version"]); got != dashboardSemanticMatcherVersion {
+		t.Fatalf("matcher-v2 card was not migrated in place: %d", got)
+	}
 	if got := anyMapToStringMap(card["recommendations"])["pv_power"]; got != betterEntity {
 		t.Fatalf("semantic upgrade was not offered: got %q want %q", got, betterEntity)
 	}
@@ -227,6 +230,120 @@ func TestDashboardSourceMappingFlagsImpossibleDirectSolarConsumption(t *testing.
 	}
 	if !found {
 		t.Fatal("direct solar metric missing")
+	}
+}
+
+func TestDashboardSourceCandidatesExcludeAmbiguousDailyEnergyAliases(t *testing.T) {
+	target, states := issue19SemanticFixture()
+	states = append(states,
+		haState{EntityID: "sensor.wrong_export", RegistryUniqueID: "gosungrow_1498605_11_0_0_p13173", State: "3", Attributes: map[string]any{"unit_of_measurement": "kWh"}},
+		haState{EntityID: "sensor.calculated_direct", RegistryUniqueID: "gosungrow_1498605_11_0_0_pv_consumption_energy", State: "4", Attributes: map[string]any{"unit_of_measurement": "kWh"}},
+	)
+	production := dashboardSourceCandidates(target, "p13112", "", states, true)
+	for _, raw := range production {
+		if stringValue(raw.(map[string]any)["entity_id"]) == "sensor.wrong_export" {
+			t.Fatalf("feed-in was offered as production: %#v", production)
+		}
+	}
+	direct := dashboardSourceCandidates(target, "p13116", "", states, true)
+	for _, raw := range direct {
+		if stringValue(raw.(map[string]any)["entity_id"]) == "sensor.calculated_direct" {
+			t.Fatalf("calculated direct solar was offered: %#v", direct)
+		}
+	}
+}
+
+func TestDashboardSourceOverrideValidationRejectsInjectedDirectionConflict(t *testing.T) {
+	target, states := issue19SemanticFixture()
+	production := states[2].EntityID
+	export := states[3].EntityID
+	got := validateDashboardSourceOverrides("source-test", map[string]string{"p13112": production}, map[string]string{"p13112": export}, nil, target, true, states)
+	if len(got) != 0 {
+		t.Fatalf("injected feed-in override was accepted as production: %#v", got)
+	}
+}
+
+func TestDashboardSourceMappingShowsUnavailableWithoutNativeDirectSolar(t *testing.T) {
+	target := haDashboardTarget{PsID: "100", PsKey: "100_14_1_1"}
+	calculated := "sensor.gosungrow_100_14_1_1_pv_consumption_energy"
+	config := sourceMappingTestConfig(target.PsKey)
+	states := []haState{{EntityID: calculated, RegistryUniqueID: calculated, State: "12", Attributes: map[string]any{"unit_of_measurement": "kWh"}}}
+	traces := []dashboardMetricTrace{{Metric: "p13116", TargetPsKey: target.PsKey, Resolved: calculated}}
+	result, _ := applyDashboardSourceMappings(config, nil, nil, []haDashboardTarget{target}, states, traces, "gosungrow", defaultDashboardLocaleBundle)
+	card := findDashboardSourceMappingCard(result, dashboardSourceMappingID(target))
+	if got := anyMapToStringMap(card["defaults"])["p13116"]; got != "" {
+		t.Fatalf("calculated source remained a new default: %q", got)
+	}
+	metrics := card["metrics"].([]any)
+	metric := metrics[0].(map[string]any)
+	if unavailable, _ := metric["native_unavailable"].(bool); !unavailable {
+		t.Fatalf("native-unavailable state missing: %#v", metric)
+	}
+	if got := card["candidates"].(map[string]any)["p13116"].([]any); len(got) != 0 {
+		t.Fatalf("calculated candidates leaked into selector: %#v", got)
+	}
+}
+
+func TestDashboardSourceMappingPreservesLegacyCalculatedDefaultWithBlockingWarning(t *testing.T) {
+	target := haDashboardTarget{PsID: "100", PsKey: "100_14_1_1"}
+	calculated := "sensor.gosungrow_100_14_1_1_pv_consumption_energy"
+	config := sourceMappingTestConfig(target.PsKey)
+	current := sourceMappingTestConfig(target.PsKey)
+	currentCard := findDashboardSourceMappingCard(current, target.PsKey)
+	currentCard["mapping_id"] = dashboardSourceMappingID(target)
+	currentCard["pinned_defaults"] = map[string]any{"p13116": calculated}
+	states := []haState{{EntityID: calculated, RegistryUniqueID: calculated, State: "12", Attributes: map[string]any{"unit_of_measurement": "kWh"}}}
+	traces := []dashboardMetricTrace{{Metric: "p13116", TargetPsKey: target.PsKey, Resolved: calculated}}
+	result, _ := applyDashboardSourceMappings(config, current, nil, []haDashboardTarget{target}, states, traces, "gosungrow", defaultDashboardLocaleBundle)
+	card := findDashboardSourceMappingCard(result, dashboardSourceMappingID(target))
+	if got := anyMapToStringMap(card["defaults"])["p13116"]; got != calculated {
+		t.Fatalf("legacy source was not preserved: %q", got)
+	}
+	metric := card["metrics"].([]any)[0].(map[string]any)
+	if unsupported, _ := metric["unsupported_calculated"].(bool); !unsupported {
+		t.Fatalf("legacy source lacks blocking warning: %#v", metric)
+	}
+	candidates := card["candidates"].(map[string]any)["p13116"].([]any)
+	if selectable, exists := candidates[0].(map[string]any)["selectable"]; !exists || selectable != false {
+		t.Fatalf("legacy calculated source remained selectable: %#v", candidates)
+	}
+}
+
+func TestDashboardSourceMappingPreservesLegacyCalculatedManualOverrideWithBlockingWarning(t *testing.T) {
+	target := haDashboardTarget{PsID: "100", PsKey: "100_14_1_1"}
+	automatic := "sensor.gosungrow_100_14_1_1_p83097"
+	calculated := "sensor.gosungrow_100_14_1_1_pv_to_load_energy"
+	config := sourceMappingTestConfig(target.PsKey)
+	current := sourceMappingTestConfig(target.PsKey)
+	currentCard := findDashboardSourceMappingCard(current, target.PsKey)
+	currentCard["mapping_id"] = dashboardSourceMappingID(target)
+	currentCard["pinned_defaults"] = map[string]any{"p13116": automatic}
+	currentCard["overrides"] = map[string]any{"p13116": calculated}
+	states := []haState{
+		{EntityID: automatic, RegistryUniqueID: automatic, State: "8", Attributes: map[string]any{"unit_of_measurement": "kWh"}},
+		{EntityID: calculated, RegistryUniqueID: calculated, State: "9", Attributes: map[string]any{"unit_of_measurement": "kWh"}},
+	}
+	traces := []dashboardMetricTrace{{Metric: "p13116", TargetPsKey: target.PsKey, Resolved: automatic}}
+	persisted := map[string]map[string]string{dashboardSourceMappingID(target): {"p13116": calculated}}
+	result, accepted := applyDashboardSourceMappings(config, current, persisted, []haDashboardTarget{target}, states, traces, "gosungrow", defaultDashboardLocaleBundle)
+	if accepted[dashboardSourceMappingID(target)]["p13116"] != calculated {
+		t.Fatalf("legacy manual override was not preserved: %#v", accepted)
+	}
+	card := findDashboardSourceMappingCard(result, dashboardSourceMappingID(target))
+	metric := card["metrics"].([]any)[0].(map[string]any)
+	if unsupported, _ := metric["unsupported_calculated"].(bool); !unsupported {
+		t.Fatalf("manual legacy source lacks blocking warning: %#v", metric)
+	}
+	candidates := card["candidates"].(map[string]any)["p13116"].([]any)
+	found := false
+	for _, raw := range candidates {
+		candidate := raw.(map[string]any)
+		if stringValue(candidate["entity_id"]) == calculated {
+			found = candidate["selectable"] == false && candidate["compatibility"] == "unsupported"
+		}
+	}
+	if !found {
+		t.Fatalf("manual legacy candidate was not blocked: %#v", candidates)
 	}
 }
 

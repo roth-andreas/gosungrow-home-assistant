@@ -19,6 +19,10 @@ dashboard:
   source_match_update: En säkrare automatisk källa är tillgänglig.
   source_match_unverified: Den aktuella automatiska källan kunde inte verifieras.
   source_adopted: Automatisk källa uppdaterad.
+  source_legacy_automatic: Äldre automatisk matchning — granskning krävs
+  source_unsupported_calculated: Beräknad källa som inte stöds
+  source_native_unavailable: Ursprunglig källa saknas
+  source_recommended_automatic: Rekommenderad automatisk källa
   source_unavailable_warning: Den valda entiteten är inte tillgänglig eller saknar numeriskt värde.
   source_stale_warning: Den valda entiteten har inte uppdaterats nyligen.
   source_physical_warning: Det valda värdet ({value}) överstiger solproduktionen ({reference}). Granska källan.

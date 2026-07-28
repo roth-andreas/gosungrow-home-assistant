@@ -1,11 +1,19 @@
 package getPsDetail
 
 import (
+	"errors"
 	"fmt"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/Common"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/valueTypes"
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+	_ "time/tzdata"
 )
 
 const Url = "/v1/powerStationService/getPsDetail"
@@ -30,7 +38,7 @@ type ResultData struct {
 	PlanEnergy   []valueTypes.Float `json:"plan_energy" PointUnitFrom:"PlanEnergyUnit" PointArrayFlatten:"true"`
 
 	BuildDate                     valueTypes.DateTime  `json:"build_date" PointNameDateFormat:"DateTimeLayout"`
-	DataLastUpdateTime            valueTypes.DateTime  `json:"data_last_update_time" PointNameDateFormat:"DateTimeLayout"`
+	DataLastUpdateTime            valueTypes.DateTime  `json:"data_last_update_time" PointNameDateFormat:"DateTimeFullLayout"`
 	ExpectInstallDate             valueTypes.DateTime  `json:"expect_install_date" PointNameDateFormat:"DateTimeLayout"`
 	InstallDate                   valueTypes.DateTime  `json:"install_date" PointNameDateFormat:"DateTimeLayout"`
 	RecordCreateTime              valueTypes.DateTime  `json:"recore_create_time" PointId:"record_create_time" PointNameDateFormat:"DateTimeLayout"`
@@ -265,7 +273,58 @@ func (e *ResultData) IsValid() error {
 }
 
 func (e *EndPoint) GetData() api.DataMap {
+	if err := normalizePlantDataLastUpdateTime(&e.Response.ResultData); err != nil {
+		plantTimestampWarning.Do(func() {
+			_, _ = fmt.Fprintf(os.Stderr, "Warning: GoSungrow could not apply the plant timezone to Data Last Update Time; preserving the upstream value: %s\n", err)
+		})
+	}
 	entries := api.NewDataMap()
 	entries.StructToDataMap(*e, e.Request.PsId.String(), GoStruct.NewEndPointPath(e.Request.PsId.String()))
 	return entries
+}
+
+var (
+	plantTimestampWarning sync.Once
+	plantGMTOffsetPattern = regexp.MustCompile(`(?i)^(?:gmt|utc)\s*([+-])\s*(\d{1,2})(?::?(\d{2}))?$`)
+)
+
+func normalizePlantDataLastUpdateTime(data *ResultData) error {
+	if data == nil || data.DataLastUpdateTime.IsZero() {
+		return nil
+	}
+	location, err := plantTimezoneLocation(data.Timezone.String())
+	if err != nil {
+		return err
+	}
+	source := data.DataLastUpdateTime.Time
+	wallClock := time.Date(source.Year(), source.Month(), source.Day(), source.Hour(), source.Minute(), source.Second(), source.Nanosecond(), location)
+	data.DataLastUpdateTime.SetValue(wallClock)
+	return nil
+}
+
+func plantTimezoneLocation(value string) (*time.Location, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, errors.New("plant timezone is empty")
+	}
+	if location, err := time.LoadLocation(value); err == nil {
+		return location, nil
+	}
+	match := plantGMTOffsetPattern.FindStringSubmatch(value)
+	if len(match) == 0 {
+		return nil, fmt.Errorf("unsupported plant timezone %q", value)
+	}
+	hours, _ := strconv.Atoi(match[2])
+	minutes := 0
+	if match[3] != "" {
+		minutes, _ = strconv.Atoi(match[3])
+	}
+	if hours > 23 || minutes > 59 {
+		return nil, fmt.Errorf("invalid plant timezone offset %q", value)
+	}
+	offset := (hours*60 + minutes) * 60
+	if match[1] == "-" {
+		offset = -offset
+	}
+	return time.FixedZone(value, offset), nil
 }
