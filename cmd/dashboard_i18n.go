@@ -45,6 +45,7 @@ var defaultDashboardLocaleBundle = dashboardLocaleBundle{
 		"source_unsupported_calculated": "Unsupported calculated source",
 		"source_native_unavailable":     "Native source unavailable",
 		"source_recommended_automatic":  "Recommended automatic source",
+		"source_recommendation_help":    "Select the highlighted source below, then choose Use this source.",
 		"source_readonly":               "Only Home Assistant administrators can change data sources.",
 		"source_unavailable_warning":    "The selected entity is unavailable or non-numeric.",
 		"source_stale_warning":          "The selected entity has not updated recently.",

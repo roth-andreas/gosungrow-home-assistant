@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.2.1
+
+- Highlight safer automatic source recommendations in the Data Sources dialog without changing the active source automatically.
+- Place the recommended replacement first and explain the two-step select-and-confirm action in English, German, and Swedish.
+
 ## 3.2.0.8
 
 - Match daily energy sources through canonical Sungrow point semantics and Home Assistant entity-registry unique IDs, independent of renamed or translated entity names.

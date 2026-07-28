@@ -958,6 +958,7 @@ func dashboardSourceMappingLabels(locale dashboardLocaleBundle) map[string]any {
 		"source_unsupported_calculated": localeText(locale, "source_unsupported_calculated", "Unsupported calculated source"),
 		"source_native_unavailable":     localeText(locale, "source_native_unavailable", "Native source unavailable"),
 		"source_recommended_automatic":  localeText(locale, "source_recommended_automatic", "Recommended automatic source"),
+		"source_recommendation_help":    localeText(locale, "source_recommendation_help", "Select the highlighted source below, then choose Use this source."),
 		"source_unavailable_warning":    localeText(locale, "source_unavailable_warning", "The selected entity is unavailable or non-numeric."),
 		"source_stale_warning":          localeText(locale, "source_stale_warning", "The selected entity has not updated recently."),
 		"source_physical_warning":       localeText(locale, "source_physical_warning", "Selected value ({value}) exceeds solar production ({reference}). Review this source."),

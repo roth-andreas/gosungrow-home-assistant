@@ -23,6 +23,7 @@ dashboard:
   source_unsupported_calculated: Beräknad källa som inte stöds
   source_native_unavailable: Ursprunglig källa saknas
   source_recommended_automatic: Rekommenderad automatisk källa
+  source_recommendation_help: Välj den markerade källan nedan och sedan Använd denna källa.
   source_unavailable_warning: Den valda entiteten är inte tillgänglig eller saknar numeriskt värde.
   source_stale_warning: Den valda entiteten har inte uppdaterats nyligen.
   source_physical_warning: Det valda värdet ({value}) överstiger solproduktionen ({reference}). Granska källan.

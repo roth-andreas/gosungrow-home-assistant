@@ -316,7 +316,8 @@ function mountSourcesCard(container, scenario, sourceState, language = "en") {
   const legacy = sourceState === "legacy";
   const nativeUnavailable = sourceState === "native_unavailable";
   const expanded = sourceState === "expanded";
-  const longPrefix = ["multi", "dialog", "expanded", "save_error"].includes(sourceState)
+  const recommendation = sourceState === "recommendation";
+  const longPrefix = ["multi", "dialog", "expanded", "recommendation", "save_error"].includes(sourceState)
     ? "GoSungrow 5072099_14_1_1 - SH6.0RT(COM1-001)_001_001 - "
     : "";
   const translations = {
@@ -359,6 +360,13 @@ function mountSourcesCard(container, scenario, sourceState, language = "en") {
     metric("p13147", "energy_summary", "mdi:download-network-outline", "Grid import today", ENTITY_IDS.dailyGridImport, 0.2, "kWh"),
   ];
   const directMetric = metrics.find((item) => item.key === "p13116");
+  if (recommendation) {
+    directMetric.needs_review = true;
+    directMetric.confidence = "low";
+    directMetric.reason = "Legacy automatic source";
+    directMetric.recommendation = `${ENTITY_IDS.dailyPvToLoad}_alternative`;
+    directMetric.recommendation_reason = "Canonical native daily source";
+  }
   if (legacy) {
     const legacyEntity = `${ENTITY_IDS.dailyPvToLoad}_calculated_legacy`;
     directMetric.default = legacyEntity;
@@ -385,10 +393,12 @@ function mountSourcesCard(container, scenario, sourceState, language = "en") {
   metrics.forEach((item) => delete item.candidates);
   const bindings = Object.fromEntries(metrics.map((item, index) => [item.key, [`/views/0/cards/${index}/entity`]]));
   const labels = { title: text.title, subtitle: text.subtitle, automatic: text.automatic, manual: text.manual, needs_review: text.review, unavailable: text.unavailable, configure: text.configure, recommended: text.recommended, other: text.other, search: text.search, use_source: text.use, reset: text.reset, cancel: text.cancel, saved: text.saved, readonly: text.readonly, source_legacy_automatic: text.legacy, source_unsupported_calculated: text.unsupported, source_native_unavailable: text.nativeUnavailable, source_recommended_automatic: text.recommendedAutomatic,
+    source_recommendation_help: language === "de" ? "Wähle die unten hervorgehobene Quelle und dann Diese Quelle verwenden." : language === "sv" ? "Välj den markerade källan nedan och sedan Använd denna källa." : "Select the highlighted source below, then choose Use this source.",
     source_unavailable_warning: language === "de" ? "Die ausgewählte Entität ist nicht verfügbar oder nicht numerisch." : language === "sv" ? "Den valda entiteten är inte tillgänglig eller saknar numeriskt värde." : "The selected entity is unavailable or non-numeric.",
     source_physical_warning: language === "de" ? "Der ausgewählte Wert ({value}) überschreitet die Solarerzeugung ({reference}). Bitte Quelle prüfen." : language === "sv" ? "Det valda värdet ({value}) överstiger solproduktionen ({reference}). Granska källan." : "Selected value ({value}) exceeds solar production ({reference}). Review this source.",
     source_save_error: language === "de" ? "Datenquelle konnte nicht gespeichert werden." : language === "sv" ? "Datakällan kunde inte sparas." : "Could not save the data source.", confidence_high: language === "de" ? "Hohe Zuverlässigkeit" : language === "sv" ? "Hög säkerhet" : "High confidence", confidence_medium: language === "de" ? "Mittlere Zuverlässigkeit" : language === "sv" ? "Medelhög säkerhet" : "Medium confidence", confidence_low: language === "de" ? "Niedrige Zuverlässigkeit" : language === "sv" ? "Låg säkerhet" : "Low confidence", confidence_manual: language === "de" ? "Vom Benutzer gewählt" : language === "sv" ? "Användarvald" : "User selected", groups: text.groups };
-  const config = { type: "custom:gosungrow-source-mapping-card-v1", schema_version: 1, mapping_id: "preview", dashboard_url_path: "gosungrow-flow", defaults, overrides, candidates, bindings, metrics, labels };
+  const recommendations = recommendation ? { p13116: `${ENTITY_IDS.dailyPvToLoad}_alternative` } : {};
+  const config = { type: "custom:gosungrow-source-mapping-card-v1", schema_version: 1, mapping_id: "preview", dashboard_url_path: "gosungrow-flow", defaults, overrides, recommendations, candidates, bindings, metrics, labels };
   card.setConfig(config);
   const hass = buildHass(scenario);
   hass.user = { is_admin: sourceState !== "readonly" };
@@ -405,7 +415,7 @@ function mountSourcesCard(container, scenario, sourceState, language = "en") {
   card.hass = hass;
   container.appendChild(card);
   if (sourceState === "saved") { card._notice = text.saved; card._render(); }
-  if (["dialog", "expanded", "save_error", "empty", "native_unavailable"].includes(sourceState)) {
+  if (["dialog", "expanded", "recommendation", "save_error", "empty", "native_unavailable"].includes(sourceState)) {
     card._activeMetric = card._metrics().find((item) => item.key === "p13116");
     card._pendingEntity = sourceState === "save_error" ? `${ENTITY_IDS.dailyPvToLoad}_alternative` : card._selected(card._activeMetric);
     if (sourceState === "expanded") card._expandedOther.add("p13116");

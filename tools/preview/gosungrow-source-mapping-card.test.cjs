@@ -96,6 +96,23 @@ test("legacy calculated sources are blocked and native-unavailable is explicit",
   assert.equal(card._warning({ key: "p13116", default: "", native_unavailable: true }), "Native source unavailable");
 });
 
+test("safer automatic recommendation is visibly highlighted and explained", () => {
+  const { config, metric, oldEntity, newEntity } = fixture();
+  config.candidates.p13112.find((candidate) => candidate.entity_id === newEntity).recommended = false;
+  const card = new MappingCard();
+  card.setConfig(config);
+  card._hass = { user: { is_admin: true }, states: { [oldEntity]: state(4), [newEntity]: state(5) } };
+  card._activeMetric = metric;
+  card._pendingEntity = oldEntity;
+  const dialog = card._dialog(metric);
+  assert.match(dialog, /class="recommendation-help"/);
+  assert.match(dialog, /Select the highlighted source below, then choose Use this source\./);
+  assert.match(dialog, new RegExp(`class="candidate recommended-update [^"]*"[^>]+data-select="${newEntity}"`));
+  assert.match(dialog, /class="recommendation-badge"/);
+  assert.ok(dialog.indexOf(`data-select="${newEntity}"`) < dialog.indexOf(`data-select="${oldEntity}"`), "recommended replacement should be listed first");
+  assert.match(dialog, new RegExp(`aria-label="Recommended automatic source; [^"]+; ${newEntity.replaceAll(".", "\\.")};`));
+});
+
 test("accepting a recommendation atomically promotes the pinned automatic source", async () => {
   const { config, dashboard, oldEntity, newEntity } = fixture();
   let stored = structuredClone(dashboard);
