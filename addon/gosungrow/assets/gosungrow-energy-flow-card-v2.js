@@ -825,6 +825,12 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         node_home: "Haus",
         node_battery: "Batterie",
       },
+      es: {
+        node_pv: "Solar",
+        node_grid: "Red",
+        node_home: "Casa",
+        node_battery: "Batería",
+      },
     };
   }
 

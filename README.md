@@ -68,7 +68,7 @@ Required:
 Optional:
 
 - `install_dashboard`
-- `dashboard_language` (`auto`, `en`, `de`, `sv`)
+- `dashboard_language` (`auto`, `en`, `de`, `sv`, `es`)
 - `debug`
 
 Everything else is handled internally by the app:

@@ -1,0 +1,100 @@
+dashboard:
+  view_overview: Vista general
+  view_aggregates: Acumulados
+  view_trends: Tendencias
+  view_data_sources: Fuentes de datos
+  source_title: Fuentes de datos
+  source_subtitle: Revisa los emparejamientos automáticos o selecciona una fuente personalizada para el dashboard.
+  source_automatic: Automático
+  source_manual: Manual
+  source_needs_review: Requiere revisión
+  source_configure: Configurar
+  source_recommended: Recomendada
+  source_other: Otras entidades compatibles
+  source_search: Buscar entidades
+  source_use: Usar esta fuente
+  source_reset: Restablecer a automático
+  source_cancel: Cancelar
+  source_saved: Fuente de datos guardada.
+  source_match_update: Hay disponible una fuente automática más precisa.
+  source_match_unverified: No se pudo verificar la fuente automática actual.
+  source_adopted: Fuente automática actualizada.
+  source_unavailable_warning: La entidad seleccionada no está disponible o no es numérica.
+  source_stale_warning: La entidad seleccionada no se ha actualizado recientemente.
+  source_physical_warning: El valor seleccionado ({value}) supera la producción solar ({reference}). Revisa esta fuente.
+  source_confirm_warning: ¿Usar esta fuente de todos modos?
+  source_stale: El dashboard ha cambiado; recarga e inténtalo de nuevo.
+  source_incompatible: Esta entidad ya no está disponible como fuente compatible.
+  source_save_error: No se pudo guardar la fuente de datos. Comprueba tus permisos de administrador y la conexión, e inténtalo de nuevo.
+  source_confidence_high: Alta confianza
+  source_confidence_medium: Confianza media
+  source_confidence_low: Baja confianza
+  source_confidence_manual: Seleccionada por el usuario
+  source_confidence_unknown: Confianza no disponible
+  source_compatible: Fuente compatible
+  source_readonly: Solo los administradores de Home Assistant pueden cambiar las fuentes de datos.
+  source_group_live: Potencia en tiempo real
+  source_group_today: Energía de hoy
+  source_group_battery: Batería
+  source_group_summary: Resumen de energía
+  source_metric_pv_power: Potencia solar
+  source_metric_load_power: Consumo del hogar
+  source_metric_grid_power: Potencia de la red
+  source_metric_battery_power: Potencia de la batería
+  source_metric_p13141: Estado de carga de la batería
+  source_metric_pv_to_load_power: Potencia solar a casa
+  source_metric_pv_to_battery_power: Potencia solar a batería
+  source_metric_pv_to_grid_power: Potencia solar a la red
+  source_metric_grid_to_load_power: Potencia de la red a casa
+  source_metric_battery_to_load_power: Potencia de la batería a casa
+  source_metric_p13112: Producción solar de hoy
+  source_metric_p13116: Consumo solar directo
+  source_metric_p13174: Energía solar a batería
+  source_metric_p13173: Exportación a la red hoy
+  source_metric_p13147: Importación de la red hoy
+  source_metric_p13199: Consumo del hogar hoy
+  source_metric_p13029: Descarga de batería hoy
+  heading_live_flow: Flujo en directo
+  heading_today: Hoy
+  heading_power_balance: Balance de potencia
+  heading_battery: Batería
+  heading_daily_energy: Energía diaria
+  heading_solar_allocation: Distribución solar
+  heading_load_sources: Fuentes de consumo
+  heading_grid_exchange: Intercambio con la red
+  heading_battery_flow: Flujo de batería
+  heading_battery_soc: Carga de batería (SOC)
+  heading_energy_summary: Resumen energético
+  name_pv_yield: Rendimiento FV
+  name_pv_to_load: FV a Consumo
+  name_pv_to_battery: FV a Batería
+  name_pv_to_grid: FV a Red
+  name_feed_in: Inyección a la red
+  name_grid_import: Importación de red
+  name_production: Producción
+  name_consumption: Consumo
+  name_to_grid: A la red
+  name_from_grid: De la red
+  name_to_battery: A la batería
+  name_from_battery: De la batería
+  name_grid_to_load: Red a Consumo
+  name_grid_net: Red neto
+  name_battery_soc: Carga de batería (SOC)
+  name_battery_power: Potencia de batería
+  name_charge: Carga
+  name_discharge: Descarga
+  period_day: Día
+  period_month: Mes
+  period_year: Año
+  unavailable: No disponible
+  statistics_unavailable: Estadísticas no disponibles
+  no_statistics: Sin estadísticas aún
+  name_pv: Solar
+  name_load: Consumo
+  name_grid: Red
+  name_battery: Batería
+flow_card:
+  node_pv: Solar
+  node_grid: Red
+  node_home: Casa
+  node_battery: Batería
