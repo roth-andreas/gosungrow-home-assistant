@@ -1,64 +1,69 @@
 ---
 name: plan-spec-change-implementation
-description: Implement an approved GoSungrow specification change from the current conversation, after the specs have been updated and confirmed. Use when the user invokes plan-spec-change-implementation or $plan-spec-change-implementation to make source, test, configuration, asset, and documentation changes strictly derived from specs/. Follow docs/go-conventions.md and stop with a proposed spec amendment if required behavior is missing or ambiguous.
+description: Apply the approved plan-spec-change packet from the current conversation, then implement its derived GoSungrow source and tests on one branch for one pull request. Use when the user invokes plan-spec-change-implementation or $plan-spec-change-implementation, or replies "do this" to a current approved plan. Follow docs/go-conventions.md and stop with a proposed specification amendment when required logic is missing or ambiguous.
 ---
 
-# Implement Spec Change
+# Apply And Implement An Approved Spec Change
 
-Treat `specs/` as the exclusive source of product logic. Translate an already approved and applied specification change into implementation and tests. Use programming judgment only for behavior-neutral mechanics.
+Treat `specs/` as the exclusive source of intentional product logic. Apply the approved normative delta first, then derive implementation and verification from it. Programming judgment is permitted only for behavior-neutral mechanics.
 
-## Preconditions
+## Approval and drift gate
 
-- Read `AGENTS.md` and the complete `docs/go-conventions.md` before inspecting or changing implementation.
-- Read `specs/README.md`, `specs/governance.md`, affected normative specifications, `specs/acceptance.md`, and relevant `specs/traceability.md` entries.
-- Identify the approved spec delta from the current conversation and the working tree or named commit. Prefer an uncommitted `specs/` diff; otherwise inspect the explicitly identified spec commit.
-- Require a concrete, already-applied specification delta. If the target delta is absent or ambiguous, ask the user to identify it or use `$plan-spec-change`; do not infer a feature from a general request.
-- Capture working-tree status and preserve every unrelated user change.
+- Require an approval packet produced by `$plan-spec-change` in the current conversation and an unambiguous user confirmation such as `do this`.
+- Read `AGENTS.md`, the complete `docs/go-conventions.md`, `specs/README.md`, `specs/governance.md`, `specs/completeness.md`, every affected normative file, relevant acceptance scenarios, and traceability.
+- Compare the packet's full base commit and each relevant spec SHA-256 fingerprint with the repository. Inspect `git status --short` and preserve unrelated changes.
+- Stop without writing if the approved plan is missing, ambiguous, materially changed by later instructions, based on a different commit, has fingerprint drift, or overlaps unrelated user changes. Report the drift and request a fresh `$plan-spec-change` plan.
+- Before writing, inspect all affected implementation paths and identify decisions the plan did not specify. Apply the specification-gap gate below.
+
+## One branch and one pull request
+
+- Specifications, acceptance changes, implementation, tests, traceability, and required documentation for one behavior change MUST remain on the same feature branch and be submitted in the same pull request.
+- If currently on `main` or `master`, create and switch to `spec-change/<approved-plan-slug>` before editing. Otherwise keep the current feature branch unless the user names another branch.
+- Do not create a spec-only commit intended to merge independently from its implementation. Commits may be split for review only when all remain in the same branch and pull request.
+- Do not push, open a pull request, merge, or commit unless the user explicitly requests that action.
 
 ## No invented logic
 
-- Map every externally observable branch, default, formula, validation, ordering rule, retry, side effect, error, compatibility behavior, and prohibited outcome to an affected normative requirement.
-- Do not add helpful fallbacks, new configuration, broader acceptance, stricter rejection, migrations, logging semantics, limits, or UI behavior unless specifications require them.
-- Do not copy undocumented behavior from existing source into the new implementation merely because it already exists nearby.
-- Allow ordinary implementation mechanics—types, helpers, data structures, interfaces, cleanup, and refactoring—only when they do not create product behavior and comply with `docs/go-conventions.md`.
-- Leave unrelated unspecified behavior unchanged.
-- Do not modify normative specifications during this skill. `specs/traceability.md` may be updated mechanically for new tests or moved implementation ownership, without adding product logic.
+- Map every externally observable branch, default, formula, validation, ordering rule, retry, side effect, error, compatibility behavior, and prohibited outcome to a normative requirement.
+- Do not add fallbacks, configuration, acceptance, rejection, migrations, limits, logging semantics, or UI behavior unless the specifications require them.
+- Do not promote undocumented nearby source behavior into the contract.
+- Allow types, helpers, data structures, interfaces, cleanup, and refactoring only when behavior-neutral and compliant with `docs/go-conventions.md`.
+- Leave unrelated behavior unchanged.
 
 ## Specification-gap gate
 
-Stop before choosing behavior when implementation exposes a missing or contradictory decision, including an unspecified default, precedence rule, input boundary, failure outcome, state transition, ordering rule, security constraint, compatibility rule, migration, or external side effect.
+Stop before choosing behavior when implementation exposes a missing or contradictory default, precedence rule, boundary, failure outcome, state transition, ordering rule, security constraint, compatibility rule, migration, or side effect.
 
-Report the gap with:
+Report:
 
-1. affected requirement IDs and specification file;
-2. the exact missing decision and why code cannot remain neutral;
-3. source or test evidence that exposed the gap, without treating it as authority;
-4. a precise proposed normative addition or replacement and acceptance scenario;
-5. alternatives when more than one product decision is valid.
+1. affected requirement IDs and files;
+2. the exact undecided behavior and why code cannot remain neutral;
+3. source or test evidence that exposed it, without treating source as authority;
+4. a precise proposed normative amendment and acceptance scenario;
+5. alternatives when multiple product decisions are valid.
 
-Do not edit the specification or implement the unresolved behavior. Ask the user to review the proposal with `$plan-spec-change`, apply the approved spec update, then invoke this skill again. Continue only independent work that cannot prejudice the unresolved decision.
+Do not edit the unresolved requirement or implement behavior depending on it. Ask the user to review a fresh `$plan-spec-change` packet. Preserve and report any independent work already completed.
 
 ## Implementation workflow
 
-1. Validate the starting specifications with `python scripts/check_specs.py`.
-2. List affected requirement IDs, acceptance scenarios, prohibited behaviors, and implementation owners from traceability.
-3. Inspect the complete affected call paths, callers, tests, fixtures, schemas, persistence, logging, cancellation, and compatibility boundaries.
-4. Design the smallest complete change. Avoid unrelated cleanup and preserve public contracts unless the specs explicitly change them.
-5. Add or update tests that prove the happy path, boundaries, specified failures, regression case, determinism, and security behavior relevant to the requirements.
-6. Implement only the accepted behavior. Follow all applicable rules in `docs/go-conventions.md`; use the repository's declared Go version and established language-specific conventions for non-Go files.
-7. Update user-facing non-normative documentation, examples, configuration, assets, version metadata, and `specs/traceability.md` only when required by the accepted specifications or repository governance.
-8. Format changed files and run focused tests during development.
-9. Run all mandatory validation from `docs/go-conventions.md` and `specs/README.md`, plus risk-specific race, vet, vulnerability, fuzz, build, frontend, or container checks when applicable.
-10. Review the final diff against every affected requirement and prohibited behavior. Confirm no behavior lacks a specification and no unrelated workspace file entered the change.
+1. Validate the starting repository with `python scripts/check_specs.py`.
+2. Create or confirm the feature branch, then apply the approved specification and acceptance edits exactly. Run the spec validator again.
+3. List affected requirement IDs, acceptance scenarios, prohibited behavior, and implementation owners.
+4. Inspect complete affected call paths, callers, tests, fixtures, schemas, persistence, logs, cancellation, configuration, and compatibility boundaries.
+5. Add or update tests for specified happy paths, boundaries, failures, regressions, determinism, and security behavior.
+6. Implement only the accepted behavior, following `docs/go-conventions.md` and the repository's declared Go version.
+7. Update traceability, inventory, user documentation, examples, configuration, assets, and version metadata only when required by the accepted contract.
+8. Format changed files and run focused tests while developing.
+9. Run every mandatory validator from `docs/go-conventions.md` and `specs/README.md`, plus applicable race, vet, vulnerability, fuzz, frontend, build, shell, and container checks.
+10. Review the complete branch diff against every affected requirement and prohibited outcome. Confirm the diff contains both the normative change and all derived artifacts, with no unrelated files.
 
 ## Completion
 
-Return a compact implementation report containing:
+Return:
 
+- branch name and the single-PR boundary;
 - implemented requirement IDs and acceptance scenarios;
-- changed source, test, and supporting files;
+- changed specification, source, test, and support files;
 - validation commands and results;
-- specification gaps found, or `No specification gaps found`;
-- environment limitations and remaining work, if any.
-
-Do not commit unless the user explicitly asks.
+- `No specification gaps found`, or the gap report;
+- environment limitations and remaining work.

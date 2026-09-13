@@ -12,8 +12,10 @@ on:
       - ".github/workflows/homeassistant-app.yml"
       - ".dockerignore"
       - "AGENTS.md"
+      - ".agents/skills/**"
+      - "docs/**"
       - "specs/**"
-      - "scripts/check_specs.py"
+      - "scripts/**"
       - "tools/preview/gosungrow-source-mapping-card.test.cjs"
       - "tools/test_energy_summary_card.mjs"
       - "addon/gosungrow/**"
@@ -29,8 +31,10 @@ on:
       - ".github/workflows/homeassistant-app.yml"
       - ".dockerignore"
       - "AGENTS.md"
+      - ".agents/skills/**"
+      - "docs/**"
       - "specs/**"
-      - "scripts/check_specs.py"
+      - "scripts/**"
       - "tools/preview/gosungrow-source-mapping-card.test.cjs"
       - "tools/test_energy_summary_card.mjs"
       - "addon/gosungrow/**"
@@ -53,6 +57,8 @@ jobs:
     steps:
       - name: Check out
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -66,6 +72,19 @@ jobs:
 
       - name: Validate normative specifications
         run: python scripts/check_specs.py
+
+      - name: Validate specification and implementation PR scope
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          args=(--base "${{ github.event.pull_request.base.sha }}")
+          if [[ "${{ contains(github.event.pull_request.labels.*.name, 'spec-docs-only') }}" == "true" ]]; then
+            args+=(--allow-spec-only)
+          fi
+          if [[ "${{ contains(github.event.pull_request.labels.*.name, 'behavior-neutral') }}" == "true" ]]; then
+            args+=(--allow-implementation-only)
+          fi
+          python scripts/check_spec_change_scope.py "${args[@]}"
 
       - name: Validate version alignment
         shell: bash

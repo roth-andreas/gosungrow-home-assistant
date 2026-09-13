@@ -45,6 +45,12 @@ Scope: Cross-subsystem executable examples
 - **REQ-ACC-023** — Dashboard failure logs warning and MQTT starts; missing credentials/host is fatal; panic output exits without login refresh.
 - **REQ-ACC-024** — Binary and app versions align, specs pass consistency validation, Go tests pass, shell parses, and amd64 image builds before publication.
 
+## Configuration and source-of-truth workflow
+
+- **REQ-ACC-025** — Given `GOSUNGROW_TIMESTAMP_OFFSET_MS=" 1500 "`, a request timestamp advances by 1500 milliseconds after the learned server offset; given an absent, empty, or invalid value, it advances by zero diagnostic milliseconds.
+- **REQ-ACC-026** — Given an approved plan packet followed by `do this`, spec and derived implementation changes are made on one feature branch for one pull request; given base-commit, fingerprint, scope, or overlapping-worktree drift, no plan-dependent write occurs until renewed approval.
+- **REQ-ACC-027** — Given a new tracked product file or repository-owned environment lookup, validation fails until the source inventory or configuration catalog classifies it.
+
 ## Prohibited behavior
 
 An acceptance test MUST NOT weaken its governing subsystem requirement. When an example and a subsystem requirement appear inconsistent, the more specific safety constraint wins and the inconsistency must be corrected.

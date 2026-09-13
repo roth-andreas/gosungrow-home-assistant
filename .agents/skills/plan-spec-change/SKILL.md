@@ -1,48 +1,46 @@
 ---
 name: plan-spec-change
-description: Read-only planning for proposed changes to GoSungrow's authoritative specifications. Use when the user invokes plan-spec-change or $plan-spec-change, or wants to review an exact specification-change plan before authorizing edits with a later "do this" message. Never modify files or inspect implementation source.
+description: Produce a drift-safe, read-only plan for changing GoSungrow's authoritative specifications. Use when the user invokes plan-spec-change or $plan-spec-change, or asks to review a specification change before replying "do this". Never modify files or inspect implementation source.
 ---
 
 # Plan Spec Change
 
-Treat `specs/` as the source of truth for all intentional program logic. Produce a reviewable specification-change plan only. Do not implement the plan, change specifications, or change program source.
+Treat `specs/` as the exclusive source of intentional product logic. Produce an exact plan for review; do not edit specifications or implementation.
 
 ## Read-only boundary
 
-- Use read-only operations exclusively. Never edit, create, delete, move, format, stage, commit, or otherwise mutate files or external state.
-- Read `AGENTS.md`, then `specs/README.md`, `specs/governance.md`, and relevant files under `specs/`.
-- Search only `specs/` for requirements, terminology, IDs, decisions, and traceability.
-- Read other non-source Markdown only when the user explicitly supplies or requests it.
-- Never inspect implementation source, tests, generated assets, configuration, manifests, workflows, build scripts, or runtime data.
-- If the plan would require implementation knowledge absent from the specifications, state the gap or ask one concise question. Do not inspect source to fill it.
-- Do not run validators, builds, tests, generators, or scripts during this planning phase.
+- Use read-only operations exclusively. Never edit, create, delete, move, format, stage, commit, switch branches, or mutate external state.
+- Read `AGENTS.md`, `specs/README.md`, `specs/governance.md`, `specs/completeness.md`, and relevant files under `specs/`.
+- Search only `specs/` for product requirements. Read other non-source Markdown only when explicitly requested.
+- Never inspect implementation, tests, configuration, manifests, workflows, scripts, generated assets, or runtime data.
+- Do not run validators, builds, tests, generators, or scripts.
+- Read-only Git commands are permitted only to capture the repository root, current branch, `HEAD`, status, and hashes of inspected specification files.
 
 ## Planning workflow
 
-1. Capture `git status --short` as a read-only baseline before inspection.
-2. Translate the request into observable behavior, constraints, defaults, state transitions, errors, compatibility rules, and prohibited behavior.
-3. Locate the owning normative documents and related requirements without modifying them.
-4. Preserve existing requirement IDs in the proposal. For new requirements, propose the next unused ID in the owning area; never propose reusing a removed ID.
-5. Specify each proposed addition, replacement, or removal precisely enough to apply without redesign. Include exact tables, formulas, ordering, defaults, and error behavior when relevant.
-6. Identify required acceptance-scenario changes and any affected cross-references, traceability entries, migration classification, or ADRs.
-7. Separate the specification phase from later implementation. Describe implementation expectations and acceptance behavior, but do not claim source or tests already comply.
-8. Identify assumptions, conflicts, open decisions, and explicit non-goals. Ask for clarification instead of choosing when alternatives materially change the contract.
-9. Compare final working-tree status with the baseline. If it differs, report the unexpected mutation; never conceal or repair it with another mutation.
+1. Capture the current branch, full `HEAD`, and `git status --short`.
+2. Translate the request into observable inputs, outputs, decisions, defaults, ordering, state transitions, errors, compatibility, security, migration, and prohibited behavior.
+3. Locate the owning normative requirements and acceptance scenarios. If the specifications lack context needed to choose behavior, ask one concise question; never inspect source to fill the gap.
+4. Preserve requirement IDs. Propose the next unused ID for additions; never reuse removed IDs.
+5. State exact additions, replacements, and removals, including precise tables, formulas, strings, precedence, boundaries, and failure behavior when relevant.
+6. Include required acceptance, traceability, inventory, ADR, documentation, and compatibility updates.
+7. Define explicit non-goals and an implementation envelope: what derived artifacts must change and what behavior must remain unchanged.
+8. Record a SHA-256 fingerprint for every inspected specification file so approval cannot be applied to silently changed inputs.
+9. Recheck branch, `HEAD`, and status. Report any drift; do not repair it.
 
-## Output format
+## Required output
 
-Return a compact plan with:
+Return a compact approval packet containing:
 
-- proposed behavioral outcome;
-- requirement IDs and exact changes by specification file;
-- acceptance scenarios to add or update;
-- compatibility, migration, and non-goal decisions;
+- plan title and stable kebab-case slug;
+- base branch and full base commit;
+- inspected spec files with SHA-256 fingerprints;
+- exact changes by file and requirement ID;
+- acceptance scenarios and prohibited outcomes;
+- compatibility, migration, non-goal, and implementation-envelope decisions;
 - assumptions or questions;
-- later implementation expectations;
-- confirmation prompt.
+- approval sentence.
 
-End with: `No files changed. Reply "do this" to authorize a separate write-enabled turn to apply exactly this specification plan.`
+End with: `No files changed. Reply "do this" to authorize $plan-spec-change-implementation to apply exactly this plan and its derived implementation on one feature branch for one pull request.`
 
-`do this` is a confirmation token for the subsequent write-enabled turn; it never grants this planning skill permission to write. If the user invokes this skill again while confirming, remain read-only.
-
-If relevant files change before confirmation, the write-enabled turn must report the drift and obtain renewed approval rather than silently applying a stale plan.
+`do this` never grants this planning skill write permission. If the user invokes this skill again while confirming, remain read-only. The implementation skill must stop and request renewed approval if the recorded commit, relevant spec fingerprints, requested scope, or material working-tree state has drifted.

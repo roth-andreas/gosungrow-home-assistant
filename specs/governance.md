@@ -15,6 +15,9 @@ Scope: All product and delivery behavior
 - **REQ-GOV-008** — User documentation MAY summarize requirements but MUST NOT redefine them inconsistently.
 - **REQ-GOV-009** — Tables and fenced examples in normative documents are normative when introduced with `MUST`; otherwise they are explanatory.
 - **REQ-GOV-010** — Normative specifications MUST contain no unresolved placeholder markers.
+- **REQ-GOV-011** — A behavior change's normative specifications, acceptance criteria, derived source, tests, traceability, and required documentation MUST be developed on one feature branch and submitted in one pull request. A normative-only pull request is permitted only for an explicitly labeled non-behavioral correction that requires no derived artifact change.
+- **REQ-GOV-012** — An approved specification plan MUST identify its base commit and inspected-spec fingerprints. Its implementation MUST stop for renewed approval when those inputs or the approved scope drift.
+- **REQ-GOV-013** — A specification change MUST satisfy the completeness review in `REQ-COMP-*` and keep the tracked source inventory classified.
 
 ## Specification style
 
@@ -25,3 +28,4 @@ Requirements describe observable results, constraints, algorithms needed for com
 - Treating code comments, old changelog entries, screenshots, preview fixtures, or undocumented quirks as higher authority than accepted specs.
 - Changing a requirement merely to make a failing implementation pass without deciding the intended behavior.
 - Storing credentials, tokens, private installations, or captured personal API payloads in this directory.
+- Merging an intentional behavior contract separately from the implementation that makes it true.

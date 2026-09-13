@@ -1,4 +1,4 @@
 interface:
   display_name: "Plan Spec Change"
-  short_description: "Review a read-only specification change plan"
-  default_prompt: "Use $plan-spec-change to propose an exact read-only specification change plan for my requested behavior."
+  short_description: "Review a drift-safe, read-only spec plan"
+  default_prompt: "Use $plan-spec-change to produce an exact read-only approval plan for my requested behavior."

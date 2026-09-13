@@ -13,7 +13,8 @@ Scope: Binary/container build, Home Assistant manifest, validation, and publishi
 - **REQ-REL-006** — Validation MUST run spec checks, build the binary, run all Go and dashboard-card JavaScript tests, validate shell syntax, and smoke-build the amd64 app image. CI uses Node.js 22 for the dependency-free card tests.
 - **REQ-REL-007** — Pushes to main/master/test branches, version tags, and relevant pull requests MUST validate. Non-PR successful validation publishes per-architecture images to GHCR with the manifest version; main/master and tags additionally receive `latest`.
 - **REQ-REL-008** — Repository manifest name is `GoSungrow Apps` and points to this repository. Public image naming MUST remain `ghcr.io/<owner>/gosungrow-addon-{arch}`.
-- **REQ-REL-009** — Specification, assistant contract, spec-checker, and dashboard-card test changes MUST trigger validation.
+- **REQ-REL-009** — Specification, assistant skill, contributor contract, engineering-documentation, validation-script, and dashboard-card test changes MUST trigger validation.
+- **REQ-REL-010** — Pull-request validation MUST reject normative-spec changes without derived artifacts and product implementation changes without normative-spec changes. Explicit `spec-docs-only` and `behavior-neutral` labels MAY waive the corresponding side only after reviewer confirmation that behavior does not change.
 
 ## Prohibited behavior
 

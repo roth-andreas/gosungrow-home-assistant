@@ -25,6 +25,8 @@ Every tracked runtime surface was reviewed. Normative destinations are listed in
 | Embedded data-URL card resource | intended deployment reliability | `REQ-DASH-017`–`019` |
 | Four dashboard locales | intended | `REQ-DASH-014`–`016`, `REQ-CARD-016`–`017` |
 | CSS, SVG coordinates, internal Go type names | replaceable implementation | deliberately not normative |
+| Repository-specific environment inputs | intended configuration contract | exhaustively classified by `REQ-CFG-*` |
+| Tracked implementation and automation files | derived surfaces | exhaustively classified in `source-inventory.md` |
 | Preview screenshots and `notgit/` | development/personal artifact | outside product scope |
 | Historical changelog behavior superseded by current code | historical | not normative unless present in specs |
 

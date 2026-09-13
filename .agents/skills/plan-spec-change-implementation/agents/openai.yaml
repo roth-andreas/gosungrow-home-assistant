@@ -1,4 +1,4 @@
 interface:
-  display_name: "Implement Spec Change"
-  short_description: "Implement approved specification changes"
-  default_prompt: "Use $plan-spec-change-implementation to implement the approved specification changes from this conversation."
+  display_name: "Apply and Implement Spec Change"
+  short_description: "Apply an approved spec plan and its code"
+  default_prompt: "Use $plan-spec-change-implementation to apply the approved plan from this conversation and implement it on one branch for one pull request."

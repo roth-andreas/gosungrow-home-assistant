@@ -23,6 +23,8 @@ The specification is authoritative; this map helps locate derived artifacts.
 | `REQ-XCUT-*` | recovery/client/file code across `iSolarCloud/`, `cmd/`, `cmdHassio/`, and `run.sh` |
 | `REQ-REL-*` | `go.mod`, `defaults/const.go`, `repository.yaml`, Dockerfile, app manifest, `.github/workflows/homeassistant-app.yml` |
 | `REQ-GOV-*` | `AGENTS.md`, `specs/`, `scripts/check_specs.py`, CI |
+| `REQ-COMP-*` | `specs/completeness.md`, `specs/source-inventory.md`, `scripts/check_specs.py`, contributor review |
+| `REQ-CFG-*` | CLI framework bindings, `iSolarCloud/api/web.go`, `cmd/cmd_ha_install_dashboard.go`, `addon/gosungrow/run.sh`, Dockerfile |
 
 ## Behavioral tests
 
@@ -31,6 +33,7 @@ The specification is authoritative; this map helps locate derived artifacts.
 | `cmd/cmd_api_test.go` | `REQ-API-002`, `007`–`009`; `REQ-XCUT-002`–`004` |
 | `iSolarCloud/recovery_test.go` | `REQ-API-007`–`009`, `028`–`029`; `REQ-XCUT-002`–`004` |
 | `iSolarCloud/api/web_timeout_test.go` | `REQ-API-001`, `016`; `REQ-ACC-003` |
+| `iSolarCloud/api/web_request_metadata_test.go` | `REQ-API-012`, `014`; `REQ-CFG-004`; `REQ-ACC-025` |
 | `iSolarCloud/api/struct_request_test.go` | `REQ-API-006`; `REQ-XCUT-009`–`010`; `REQ-ACC-004` |
 | `iSolarCloud/AppService/login/auth_test.go` | `REQ-API-004`–`006`; `REQ-ACC-001` |
 | `iSolarCloud/AppService/getPsList/funcs_test.go` | `REQ-DOM-002`–`003`; `REQ-API-022` |
@@ -61,7 +64,10 @@ The specification is authoritative; this map helps locate derived artifacts.
 | Verification | Requirements |
 |---|---|
 | `python scripts/check_specs.py` | `REQ-GOV-003`, `006`, `010`; `REQ-REL-006`, `009` |
-| `go test ./...` | all Go-owned behavioral requirements |
+| `go test ./...` plus the reviewed Go diff | `REQ-PROD-*`, `REQ-DOM-*`, `REQ-API-*`, `REQ-DATA-*`, `REQ-MQTT-*`, `REQ-HA-*`, `REQ-DASH-*`, `REQ-RES-*`, `REQ-SRC-*`, `REQ-CARD-*`, `REQ-CLI-*`, `REQ-XCUT-*`, and their `REQ-ACC-*` scenarios |
 | Both Node.js test files above | `REQ-SRC-017`–`025`, `REQ-CARD-*`, frontend acceptance requirements |
 | `bash -n addon/gosungrow/run.sh` | `REQ-ADDON-*` |
 | Docker smoke build | `REQ-REL-002`–`004`, `006` |
+| source/configuration inventory checks in `scripts/check_specs.py` | `REQ-COMP-005`–`009`, `REQ-CFG-004`, `REQ-ACC-027` |
+| pull-request coupling check in `scripts/check_spec_change_scope.py` | `REQ-GOV-004`, `011`–`012`; `REQ-ACC-026` |
+| reviewed implementation diff | requirements without a narrower automated artifact; `REQ-COMP-001`–`004`, `007`–`010` |

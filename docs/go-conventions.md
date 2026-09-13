@@ -92,7 +92,7 @@ For every task, perform this sequence. Do not start from the code alone.
 
   - Add or update tests with the implementation. A behavioral fix normally requires a
     regression test that fails before the fix and passes after it.
-  - Format changed Go files and run all mandatory validation in section 24.
+  - Format changed Go files and run all checks under “Required validation and definition of done.”
   - Review the diff, not just the final files. Confirm every changed line is intended.
   - Verify the implementation against each affected requirement ID and each relevant
     prohibited behavior, not merely against existing tests.
