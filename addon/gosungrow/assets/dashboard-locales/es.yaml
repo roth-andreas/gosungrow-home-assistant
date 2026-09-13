@@ -19,6 +19,11 @@ dashboard:
   source_match_update: Hay disponible una fuente automática más precisa.
   source_match_unverified: No se pudo verificar la fuente automática actual.
   source_adopted: Fuente automática actualizada.
+  source_legacy_automatic: Automática heredada — requiere revisión
+  source_unsupported_calculated: Fuente calculada no compatible
+  source_native_unavailable: Fuente nativa no disponible
+  source_recommended_automatic: Fuente automática recomendada
+  source_recommendation_help: Selecciona la fuente resaltada abajo y después elige «Usar esta fuente».
   source_unavailable_warning: La entidad seleccionada no está disponible o no es numérica.
   source_stale_warning: La entidad seleccionada no se ha actualizado recientemente.
   source_physical_warning: El valor seleccionado ({value}) supera la producción solar ({reference}). Revisa esta fuente.
