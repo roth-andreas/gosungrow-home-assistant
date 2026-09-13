@@ -1,0 +1,50 @@
+# Acceptance scenarios
+
+Status: Normative  
+Scope: Cross-subsystem executable examples
+
+## Authentication and transport
+
+- **REQ-ACC-001** — Given a missing token file, login proceeds to the network without a file error; given corrupt token JSON, the file is removed and login proceeds.
+- **REQ-ACC-002** — Given configured host/key rejection, login tries unique candidates in specified order; given `127.0.0.11:53`, it stops host rotation and returns for DNS backoff.
+- **REQ-ACC-003** — Given a timed-out HTTP request, a later request can succeed because requests use a bounded private client rather than corrupting the global client.
+- **REQ-ACC-004** — Given a common request with a token, debug string contains `<redacted>` and not the token.
+
+## Data
+
+- **REQ-ACC-005** — Numeric and composite plant IDs round-trip; `NULL`, `--`, and invalid composite placeholders do not become zero.
+- **REQ-ACC-006** — Given kVAr/MVAr/mVAr variants, reactive power publishes equivalent `var` values and `reactive_power` metadata; applying normalization twice changes nothing.
+- **REQ-ACC-007** — Given any missing operand in a virtual formula, dependent virtual points are absent while independent virtual points remain.
+- **REQ-ACC-008** — Given a plant-local timestamp, its wall-clock components remain and correct zone offset is attached; invalid timezone retains the original.
+
+## MQTT and Home Assistant
+
+- **REQ-ACC-009** — Given one plant with types 14, 11, and 22, realtime selects type 14; without 14 it selects 11; each additional plant gets its own batch.
+- **REQ-ACC-010** — Given Docker DNS loss after connection, MQTT remains connected and delays follow 15/30/60/120/300 seconds; success restores five minutes.
+- **REQ-ACC-011** — Given textual, numeric instant, numeric daily, and reactive-power values, discovery respectively has no measurement metadata, measurement, total/last-reset, and canonical reactive metadata.
+
+## Dashboard
+
+- **REQ-ACC-012** — Given multiple type-14 devices, each gets all prototype views with unique path/title; no valid keys yields a clear error.
+- **REQ-ACC-013** — Given a renamed entity with canonical registry unique ID, matching succeeds; conflicting direction/lifetime fails; multiple inverters prevent confident single-inverter production.
+- **REQ-ACC-014** — Given no battery capability, battery cards/entities are pruned only for that target. PV-to-battery energy alone does not establish a battery.
+- **REQ-ACC-015** — Given a manual override, reconciliation preserves it; if its entity disappears it remains selected/unavailable; reset restores automatic; two targets sharing a default remain isolated.
+- **REQ-ACC-016** — Given direct solar above production by more than tolerance, UI requires review/confirmation. Unsupported calculated direct solar cannot be newly selected.
+- **REQ-ACC-017** — Given a stale dashboard between preview and save, save aborts and local state remains unchanged. Given successful save, re-read verifies every binding before local update.
+- **REQ-ACC-018** — Given locale `de-DE`, lookup uses `de`; unknown locale uses English; every supported locale has parity.
+- **REQ-ACC-019** — Given source-only dashboard changes, structure hash remains stable; unrelated layout change is external modification and blocks non-forced replacement.
+
+## Frontend summaries
+
+- **REQ-ACC-020** — Fresh install with only live daily value displays one bucket for day/month/year. Current-day recorder rows are replaced, not added.
+- **REQ-ACC-021** — Month/year boundaries keep completed previous period totals and start current period from live day. Missing data yields empty chart.
+- **REQ-ACC-022** — Date labels follow Home Assistant preferences, relabel cached data without refetch, and expose matching keyboard/tooltip labels.
+
+## Add-on and release
+
+- **REQ-ACC-023** — Dashboard failure logs warning and MQTT starts; missing credentials/host is fatal; panic output exits without login refresh.
+- **REQ-ACC-024** — Binary and app versions align, specs pass consistency validation, Go tests pass, shell parses, and amd64 image builds before publication.
+
+## Prohibited behavior
+
+An acceptance test MUST NOT weaken its governing subsystem requirement. When an example and a subsystem requirement appear inconsistent, the more specific safety constraint wins and the inconsistency must be corrected.

@@ -2,6 +2,8 @@
 
 GoSungrow connects to Sungrow iSolarCloud, publishes MQTT discovery data for Home Assistant, and installs managed dashboards for live flow and trends.
 
+Exact program behavior is defined by the repository's `specs/` directory; this document is installation and operating guidance.
+
 ## Before You Install
 
 This app requires MQTT.

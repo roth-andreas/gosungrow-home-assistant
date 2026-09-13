@@ -12,5 +12,6 @@ logfile
 /%USERPROFILE%/
 .idea/
 tools/preview/output/
-agents.md
+__pycache__/
+*.pyc
 

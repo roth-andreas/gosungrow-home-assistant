@@ -2,6 +2,8 @@
 
 Custom Home Assistant app for Sungrow iSolarCloud.
 
+The authoritative behavioral contract for the program is [`specs/README.md`](specs/README.md). This README is user-facing guidance; changes to program behavior are specified there first.
+
 GoSungrow logs in to iSolarCloud, publishes entities to Home Assistant through MQTT discovery, and installs managed dashboards for live flow and trends.
 
 This repository is based on the original [MickMake/GoSungrow](https://github.com/MickMake/GoSungrow) project and is maintained by [Andreas Roth](https://github.com/roth-andreas) with a focused Home Assistant app deployment model.

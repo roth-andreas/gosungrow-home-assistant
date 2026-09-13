@@ -11,6 +11,11 @@ on:
     paths:
       - ".github/workflows/homeassistant-app.yml"
       - ".dockerignore"
+      - "AGENTS.md"
+      - "specs/**"
+      - "scripts/check_specs.py"
+      - "tools/preview/gosungrow-source-mapping-card.test.cjs"
+      - "tools/test_energy_summary_card.mjs"
       - "addon/gosungrow/**"
       - "cmd/**"
       - "cmdHassio/**"
@@ -23,6 +28,11 @@ on:
     paths:
       - ".github/workflows/homeassistant-app.yml"
       - ".dockerignore"
+      - "AGENTS.md"
+      - "specs/**"
+      - "scripts/check_specs.py"
+      - "tools/preview/gosungrow-source-mapping-card.test.cjs"
+      - "tools/test_energy_summary_card.mjs"
       - "addon/gosungrow/**"
       - "cmd/**"
       - "cmdHassio/**"
@@ -49,6 +59,14 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate normative specifications
+        run: python scripts/check_specs.py
+
       - name: Validate version alignment
         shell: bash
         run: |
@@ -73,6 +91,11 @@ jobs:
         env:
           CGO_ENABLED: 0
         run: go test ./...
+
+      - name: Run dashboard card tests
+        run: |
+          node tools/preview/gosungrow-source-mapping-card.test.cjs
+          node tools/test_energy_summary_card.mjs
 
       - name: Validate app startup script
         shell: bash
