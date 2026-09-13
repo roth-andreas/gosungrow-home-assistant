@@ -1,0 +1,4 @@
+interface:
+  display_name: "Plan Spec Change"
+  short_description: "Review a read-only specification change plan"
+  default_prompt: "Use $plan-spec-change to propose an exact read-only specification change plan for my requested behavior."
