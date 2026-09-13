@@ -1,0 +1,4 @@
+interface:
+  display_name: "Change Specs"
+  short_description: "Edit authoritative specs without source changes"
+  default_prompt: "Use $change-specs to update the repository specification for this requested behavior without implementing it."
