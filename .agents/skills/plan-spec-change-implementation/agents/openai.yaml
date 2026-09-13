@@ -1,0 +1,4 @@
+interface:
+  display_name: "Implement Spec Change"
+  short_description: "Implement approved specification changes"
+  default_prompt: "Use $plan-spec-change-implementation to implement the approved specification changes from this conversation."
