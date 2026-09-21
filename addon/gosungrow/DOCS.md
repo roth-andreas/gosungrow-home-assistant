@@ -81,7 +81,9 @@ Non-administrator users can inspect the selected sources but cannot modify them.
 
 ## Troubleshooting DNS Errors
 
-If the log contains `lookup gateway.isolarcloud.eu on 127.0.0.11:53: no such host` or `server misbehaving`, Docker's internal DNS resolver cannot resolve iSolarCloud. The request did not reach Sungrow, so changing iSolarCloud credentials will not help.
+When GoSungrow classifies the startup failure as Docker DNS, Docker's internal resolver cannot resolve the first iSolarCloud gateway. The request did not reach Sungrow, so changing iSolarCloud credentials will not help.
+
+A failed regional-gateway search may also contain a later `127.0.0.11:53` message. In that case, GoSungrow keeps the earlier login or gateway failure, reports the first failure and terminal stop reason, and uses normal remote recovery instead of claiming a general Docker-DNS outage. Check the complete ordered summary to distinguish credentials or regional-server selection from a direct DNS failure.
 
 After MQTT has initialized, GoSungrow keeps MQTT connected and retries iSolarCloud after 15, 30, 60, 120, and then every 300 seconds. Existing Home Assistant entities retain their last published values. Normal syncing resumes automatically when DNS recovers. If DNS is already unavailable during startup, the app wrapper keeps retrying initialization with a capped delay.
 

@@ -49,6 +49,7 @@ COPY --from=builder /out/GoSungrow /usr/local/bin/GoSungrow
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 COPY addon/gosungrow/run.sh /run.sh
+COPY addon/gosungrow/recovery_policy.sh /usr/local/lib/gosungrow/recovery_policy.sh
 COPY addon/gosungrow/assets /opt/gosungrow/assets
 
 RUN chmod a+x /run.sh

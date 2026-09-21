@@ -31,7 +31,8 @@ The specification is authoritative; this map helps locate derived artifacts.
 | Test artifact | Governing requirements |
 |---|---|
 | `cmd/cmd_api_test.go` | `REQ-API-002`, `007`–`009`; `REQ-XCUT-002`–`004` |
-| `iSolarCloud/recovery_test.go` | `REQ-API-007`–`009`, `028`–`029`; `REQ-XCUT-002`–`004` |
+| `cmd/failure_class_test.go` | `REQ-ADDON-008`–`011`; `REQ-XCUT-019`; `REQ-ACC-028` |
+| `iSolarCloud/recovery_test.go` | `REQ-API-007`–`009`, `028`–`029`; `REQ-XCUT-002`–`004`, `017`, `019`; `REQ-ACC-002`, `029` |
 | `iSolarCloud/api/web_timeout_test.go` | `REQ-API-001`, `016`; `REQ-ACC-003` |
 | `iSolarCloud/api/web_request_metadata_test.go` | `REQ-API-012`, `014`; `REQ-CFG-004`; `REQ-ACC-025` |
 | `iSolarCloud/api/struct_request_test.go` | `REQ-API-006`; `REQ-XCUT-009`–`010`; `REQ-ACC-004` |
@@ -58,6 +59,7 @@ The specification is authoritative; this map helps locate derived artifacts.
 | `cmd/dashboard_i18n_test.go` | `REQ-DASH-014`–`016`; `REQ-ACC-018` |
 | `tools/preview/gosungrow-source-mapping-card.test.cjs` | `REQ-SRC-017`–`025`; `REQ-CARD-001`–`002` |
 | `tools/test_energy_summary_card.mjs` | `REQ-CARD-008`–`017`; `REQ-ACC-020`–`022` |
+| `addon/gosungrow/recovery_policy_test.sh` | `REQ-ADDON-008`–`011`; `REQ-XCUT-019`; `REQ-ACC-028` |
 
 ## Non-test verification
 

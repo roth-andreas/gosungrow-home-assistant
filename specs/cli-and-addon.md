@@ -37,9 +37,10 @@ Scope: Commands, flags, app options, configuration precedence, startup, and rest
 
 - **REQ-ADDON-006** — The wrapper MUST run `mqtt run` while teeing each attempt to a temporary log and preserving the binary exit code.
 - **REQ-ADDON-007** — Panic/runtime-fatal output is non-recoverable and MUST exit without refreshing login so the underlying error remains visible.
-- **REQ-ADDON-008** — Token/login-required, HTTP 5xx, gateway, DNS/network, connection, deadline, and I/O timeout messages are recoverable. Non-Docker-DNS recovery refreshes login and restarts after `min(attempt×3,30)` seconds.
-- **REQ-ADDON-009** — Startup failures involving `127.0.0.11:53` MUST NOT refresh login and retry after 15, 30, 60, 120, then 300 seconds. Temporary log files MUST be removed between attempts.
+- **REQ-ADDON-008** — A recoverable-remote failure classification MUST refresh login and restart after `min(attempt×3,30)` seconds. This class covers token/login-required, HTTP 5xx, gateway, DNS/network, connection, deadline, and I/O timeout failures except a directly classified Docker-DNS failure.
+- **REQ-ADDON-009** — A Docker-DNS failure classification MUST NOT refresh login and MUST retry after 15, 30, 60, 120, then 300 seconds. A nested diagnostic mentioning `127.0.0.11:53` MUST NOT select this policy unless the stable failure classification is Docker DNS. Temporary log files MUST be removed between attempts.
 - **REQ-ADDON-010** — Any unclassified nonzero exit MUST be returned without indefinite retry.
+- **REQ-ADDON-011** — A normal binary error exit MUST provide the wrapper a stable classification distinguishing recoverable remote, Docker DNS, and non-recoverable failure. The wrapper MUST select recovery from that classification rather than human-readable log substrings. A missing or unknown classification is unclassified under `REQ-ADDON-010`; panic/runtime-fatal detection remains governed by `REQ-ADDON-007`.
 
 ## Prohibited behavior
 

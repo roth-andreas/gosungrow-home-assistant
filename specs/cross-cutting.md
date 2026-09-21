@@ -33,11 +33,13 @@ Scope: Error taxonomy, retry eligibility, files, secrets, determinism, and compa
 
 ## Logging
 
-- **REQ-XCUT-017** — Logs MUST identify lifecycle step, retry attempt/delay, sync cycle and endpoint, target selection, and actionable failure category. Repeated Docker-DNS remediation guidance SHOULD be emitted once per outage.
+- **REQ-XCUT-017** — Logs MUST identify lifecycle step, retry attempt/delay, sync cycle and endpoint, target selection, and actionable failure category. Multi-stage failure diagnostics MUST also identify the first retained failure, terminal stop reason, and selected recovery action. Repeated Docker-DNS remediation guidance SHOULD be emitted once per outage.
 - **REQ-XCUT-018** — Successful recovery MUST log outage duration and resumption of the normal schedule.
+- **REQ-XCUT-019** — Failure classification MUST remain separate from rendered error text across nested recovery and process boundaries. A later fallback failure MUST NOT replace earlier causal evidence or change the selected recovery action merely because its message contains text associated with another failure category.
 
 ## Prohibited behavior
 
 - Retrying all errors indiscriminately.
+- Selecting recovery behavior by searching aggregated human-readable error text.
 - Mutating persisted state before an external save has been verified.
 - Depending on nondeterministic map order for selection or hashes.

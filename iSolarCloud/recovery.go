@@ -23,6 +23,55 @@ type LoginAttemptFailure struct {
 	Err     error
 }
 
+// FailureClass is the stable recovery category carried across process boundaries.
+type FailureClass string
+
+const (
+	// FailureClassRecoverableRemote selects login refresh and normal remote retry.
+	FailureClassRecoverableRemote FailureClass = "recoverable_remote"
+	// FailureClassDockerDNS selects Docker resolver backoff without login refresh.
+	FailureClassDockerDNS FailureClass = "docker_dns"
+	// FailureClassNonRecoverable stops the app wrapper retry loop.
+	FailureClassNonRecoverable FailureClass = "non_recoverable"
+)
+
+type classifiedFailure interface {
+	FailureClass() FailureClass
+}
+
+type loginAttemptSequenceError struct {
+	class   FailureClass
+	message string
+	cause   error
+}
+
+type endpointFailure struct {
+	api.EndPoint
+	err error
+}
+
+var _ api.EndPoint = endpointFailure{}
+
+func (e endpointFailure) GetError() error {
+	return e.err
+}
+
+func (e endpointFailure) IsError() bool {
+	return e.err != nil
+}
+
+func (e *loginAttemptSequenceError) Error() string {
+	return e.message
+}
+
+func (e *loginAttemptSequenceError) Unwrap() error {
+	return e.cause
+}
+
+func (e *loginAttemptSequenceError) FailureClass() FailureClass {
+	return e.class
+}
+
 func NormalizeLoginAppKey(appKey string) string {
 	appKey = strings.TrimSpace(appKey)
 	if appKey == "" || appKey == LegacyLoginAppKey {
@@ -69,7 +118,7 @@ func BuildLoginAttempts(host string, appKey string) []LoginAttempt {
 	return candidates
 }
 
-func ShouldRecoverGatewayError(err error) bool {
+func hasRecoverableGatewayMessage(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -95,7 +144,7 @@ func ShouldRecoverGatewayError(err error) bool {
 		strings.Contains(msg, "i/o timeout")
 }
 
-func IsDockerDNSError(err error) bool {
+func hasDockerDNSMessage(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -107,13 +156,44 @@ func IsDockerDNSError(err error) bool {
 			strings.Contains(msg, "server misbehaving"))
 }
 
+// ClassifyFailure returns the stable recovery category for err.
+func ClassifyFailure(err error) FailureClass {
+	if err == nil {
+		return ""
+	}
+
+	var classified classifiedFailure
+	if errors.As(err, &classified) {
+		return classified.FailureClass()
+	}
+	if hasDockerDNSMessage(err) {
+		return FailureClassDockerDNS
+	}
+	if hasRecoverableGatewayMessage(err) {
+		return FailureClassRecoverableRemote
+	}
+	return FailureClassNonRecoverable
+}
+
+func ShouldRecoverGatewayError(err error) bool {
+	class := ClassifyFailure(err)
+	return class == FailureClassRecoverableRemote || class == FailureClassDockerDNS
+}
+
+func IsDockerDNSError(err error) bool {
+	return ClassifyFailure(err) == FailureClassDockerDNS
+}
+
 func ShouldTryNextLoginAttempt(err error) bool {
 	return ShouldRecoverGatewayError(err) && !IsDockerDNSError(err)
 }
 
-func SummarizeLoginAttemptFailures(failures []LoginAttemptFailure) error {
+func SummarizeLoginAttemptFailures(failures []LoginAttemptFailure, secrets ...string) error {
 	if len(failures) == 0 {
 		return nil
+	}
+	if len(failures) == 1 {
+		return failures[0].Err
 	}
 
 	type hostSummary struct {
@@ -138,7 +218,7 @@ func SummarizeLoginAttemptFailures(failures []LoginAttemptFailure) error {
 
 		msg := ""
 		if failure.Err != nil {
-			msg = strings.TrimSpace(failure.Err.Error())
+			msg = redactFailureMessage(strings.TrimSpace(failure.Err.Error()), secrets)
 		}
 		if msg == "" {
 			msg = "unknown error"
@@ -155,6 +235,31 @@ func SummarizeLoginAttemptFailures(failures []LoginAttemptFailure) error {
 		}
 	}
 
+	terminalFailure := failures[len(failures)-1]
+	terminalHost := strings.TrimSpace(terminalFailure.Attempt.Host)
+	if terminalHost == "" {
+		terminalHost = "<unknown-host>"
+	}
+	terminalMessage := "unknown error"
+	if terminalFailure.Err != nil && strings.TrimSpace(terminalFailure.Err.Error()) != "" {
+		terminalMessage = redactFailureMessage(strings.TrimSpace(terminalFailure.Err.Error()), secrets)
+	}
+	terminalSummary := summaries[terminalHost]
+	terminalRecorded := false
+	for _, message := range terminalSummary.Messages {
+		if message == terminalMessage {
+			terminalRecorded = true
+			break
+		}
+	}
+	if !terminalRecorded {
+		if len(terminalSummary.Messages) < 2 {
+			terminalSummary.Messages = append(terminalSummary.Messages, terminalMessage)
+		} else {
+			terminalSummary.Messages[len(terminalSummary.Messages)-1] = terminalMessage
+		}
+	}
+
 	parts := make([]string, 0, len(order))
 	for _, host := range order {
 		summary := summaries[host]
@@ -165,7 +270,53 @@ func SummarizeLoginAttemptFailures(failures []LoginAttemptFailure) error {
 		parts = append(parts, host+" ("+strconv.Itoa(summary.Attempts)+" attempts): "+message)
 	}
 
-	return errors.New("all login recovery attempts failed: " + strings.Join(parts, "; "))
+	first := failures[0]
+	terminal := terminalFailure
+	class := ClassifyFailure(terminal.Err)
+	if class == FailureClassDockerDNS {
+		class = FailureClassRecoverableRemote
+	}
+	message := "login candidate sequence failed: first failure: " + formatLoginAttemptFailure(first, secrets) +
+		"; terminal stop reason: " + formatLoginAttemptFailure(terminal, secrets) +
+		"; attempts by host: " + strings.Join(parts, "; ")
+
+	return &loginAttemptSequenceError{
+		class:   class,
+		message: message,
+		cause:   terminal.Err,
+	}
+}
+
+func formatLoginAttemptFailure(failure LoginAttemptFailure, secrets []string) string {
+	host := strings.TrimSpace(failure.Attempt.Host)
+	if host == "" {
+		host = "<unknown-host>"
+	}
+	message := "unknown error"
+	if failure.Err != nil && strings.TrimSpace(failure.Err.Error()) != "" {
+		message = redactFailureMessage(strings.TrimSpace(failure.Err.Error()), secrets)
+	}
+	return host + ": " + message
+}
+
+func redactFailureMessage(message string, secrets []string) string {
+	for _, secret := range secrets {
+		if secret != "" {
+			message = strings.ReplaceAll(message, secret, "<redacted>")
+		}
+	}
+	return message
+}
+
+// FinalizeLoginAttemptFailures preserves a single failure and summarizes a sequence.
+func FinalizeLoginAttemptFailures(failures []LoginAttemptFailure, fallback error, secrets ...string) error {
+	if len(failures) == 0 {
+		return fallback
+	}
+	if len(failures) == 1 {
+		return failures[0].Err
+	}
+	return SummarizeLoginAttemptFailures(failures, secrets...)
 }
 
 func (sg *SunGrow) recoverGatewaySession(force bool) error {
@@ -185,9 +336,6 @@ func (sg *SunGrow) recoverGatewaySession(force bool) error {
 	auth.Force = force
 	attempts := BuildLoginAttempts(sg.ApiRoot.ServerUrl.String(), auth.AppKey)
 
-	var firstRetriableErr error
-	var lastErr error
-	exhaustedRetriable := true
 	failures := make([]LoginAttemptFailure, 0, len(attempts))
 
 	sg.recovering = true
@@ -203,14 +351,16 @@ func (sg *SunGrow) recoverGatewaySession(force bool) error {
 		replacement := NewSunGro(attempt.Host, cacheDir)
 		if replacement.Error != nil {
 			sg.Error = replacement.Error
-			return replacement.Error
+			failures = append(failures, LoginAttemptFailure{Attempt: attempt, Err: replacement.Error})
+			break
 		}
 		replacement.Directory = sg.Directory
 		replacement.OutputType = sg.OutputType
 		replacement.SaveAsFile = sg.SaveAsFile
 		if err := replacement.Init(); err != nil {
 			sg.Error = err
-			return err
+			failures = append(failures, LoginAttemptFailure{Attempt: attempt, Err: err})
+			break
 		}
 
 		sg.ApiRoot = replacement.ApiRoot
@@ -224,33 +374,17 @@ func (sg *SunGrow) recoverGatewaySession(force bool) error {
 			sg.Error = nil
 			return nil
 		} else {
-			lastErr = err
 			failures = append(failures, LoginAttemptFailure{
 				Attempt: attempt,
 				Err:     err,
 			})
 			if !ShouldTryNextLoginAttempt(err) {
-				exhaustedRetriable = false
 				break
-			}
-			if firstRetriableErr == nil {
-				firstRetriableErr = err
 			}
 		}
 	}
 
-	if exhaustedRetriable && firstRetriableErr != nil {
-		if summaryErr := SummarizeLoginAttemptFailures(failures); summaryErr != nil {
-			sg.Error = summaryErr
-			return summaryErr
-		}
-		sg.Error = firstRetriableErr
-		return firstRetriableErr
-	}
-	if lastErr != nil {
-		sg.Error = lastErr
-		return lastErr
-	}
+	sg.Error = FinalizeLoginAttemptFailures(failures, sg.Error, auth.UserAccount, auth.UserPassword, sg.GetToken())
 	return sg.Error
 }
 
@@ -287,7 +421,7 @@ func (sg *SunGrow) callEndpointWithRecovery(endpoint api.EndPoint) api.EndPoint 
 	}
 
 	if err := sg.recoverGatewaySession(true); err != nil {
-		return endpoint.SetError("%s", err)
+		return endpointFailure{EndPoint: endpoint, err: err}
 	}
 
 	retry := sg.rebuildEndpointForCurrentGateway(endpoint)

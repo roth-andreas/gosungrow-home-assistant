@@ -6,7 +6,7 @@ Scope: Cross-subsystem executable examples
 ## Authentication and transport
 
 - **REQ-ACC-001** — Given a missing token file, login proceeds to the network without a file error; given corrupt token JSON, the file is removed and login proceeds.
-- **REQ-ACC-002** — Given configured host/key rejection, login tries unique candidates in specified order; given `127.0.0.11:53`, it stops host rotation and returns for DNS backoff.
+- **REQ-ACC-002** — Given configured host/key rejection, login tries unique candidates in specified order. Given `127.0.0.11:53` on the first candidate, it stops host rotation and returns for DNS backoff. Given an earlier authentication/gateway failure followed by `127.0.0.11:53` on a later candidate, it stops rotation, preserves both failures, and remains classified as a recoverable remote login sequence rather than a general Docker-DNS outage.
 - **REQ-ACC-003** — Given a timed-out HTTP request, a later request can succeed because requests use a bounded private client rather than corrupting the global client.
 - **REQ-ACC-004** — Given a common request with a token, debug string contains `<redacted>` and not the token.
 
@@ -50,6 +50,11 @@ Scope: Cross-subsystem executable examples
 - **REQ-ACC-025** — Given `GOSUNGROW_TIMESTAMP_OFFSET_MS=" 1500 "`, a request timestamp advances by 1500 milliseconds after the learned server offset; given an absent, empty, or invalid value, it advances by zero diagnostic milliseconds.
 - **REQ-ACC-026** — Given an approved plan packet followed by `do this`, spec and derived implementation changes are made on one feature branch for one pull request; given base-commit, fingerprint, scope, or overlapping-worktree drift, no plan-dependent write occurs until renewed approval.
 - **REQ-ACC-027** — Given a new tracked product file or repository-owned environment lookup, validation fails until the source inventory or configuration catalog classifies it.
+
+## Failure diagnostics
+
+- **REQ-ACC-028** — Given a stable recoverable-remote classification whose human-readable diagnostic contains Docker-DNS text, the app wrapper uses normal remote recovery; given a stable Docker-DNS classification whose text does not contain resolver keywords, it uses DNS backoff. Human-readable wording alone never selects recovery.
+- **REQ-ACC-029** — Given a failed multi-candidate login sequence, diagnostics list hosts in attempt order, identify the first failure and terminal stop reason, retain at most two distinct messages per host, and contain no user credentials or session tokens.
 
 ## Prohibited behavior
 

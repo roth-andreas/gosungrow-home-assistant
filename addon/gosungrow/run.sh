@@ -6,6 +6,8 @@ readonly DEFAULT_APPKEY="B0455FBE7AA0328DB57B59AA729F05D8"
 readonly DEFAULT_DASHBOARD_URL_PATH="gosungrow-flow"
 readonly DEFAULT_DASHBOARD_TITLE="GoSungrow Flow"
 
+source /usr/local/lib/gosungrow/recovery_policy.sh
+
 optional_config() {
   local value
   value="$(bashio::config "$1")"
@@ -129,6 +131,9 @@ run_mqtt_with_login_retry() {
   local rc
   local attempt
   local mqtt_args
+  local failure_class
+  local retry_policy
+  local retry_delay
 
   mqtt_args=(
     mqtt run
@@ -157,9 +162,11 @@ run_mqtt_with_login_retry() {
       return "$rc"
     fi
 
-    if grep -qiE 'er_token_login_invalid|need to login again|API httpResponse is 5[0-9]{2}|internal server error|bad gateway|service unavailable|gateway timeout|no such host|temporary failure in name resolution|server misbehaving|network is unreachable|connection refused|context deadline exceeded|i/o timeout' "$log_file"; then
-      attempt=$((attempt + 1))
-      if grep -qiE '127\.0\.0\.11:53' "$log_file"; then
+    failure_class="$(gosungrow_failure_class_from_log "$log_file")"
+    retry_policy="$(gosungrow_retry_policy "$failure_class")"
+    case "$retry_policy" in
+      docker_dns)
+        attempt=$((attempt + 1))
         case "$attempt" in
           1) retry_delay=15 ;;
           2) retry_delay=30 ;;
@@ -168,18 +175,21 @@ run_mqtt_with_login_retry() {
           *) retry_delay=300 ;;
         esac
         bashio::log.warning "Docker DNS is unavailable before GoSungrow finished MQTT initialization. Retrying in ${retry_delay}s (attempt ${attempt})."
-      else
+        ;;
+      recoverable_remote)
+        attempt=$((attempt + 1))
         retry_delay=$(( attempt < 10 ? attempt * 3 : 30 ))
         bashio::log.warning "Recoverable GoSungrow runtime error. Refreshing login and restarting mqtt run (attempt ${attempt})."
         GoSungrow api login >/dev/null || true
-      fi
-      rm -f "$log_file"
-      sleep "$retry_delay"
-      continue
-    fi
+        ;;
+      *)
+        rm -f "$log_file"
+        return "$rc"
+        ;;
+    esac
 
     rm -f "$log_file"
-    return "$rc"
+    sleep "$retry_delay"
   done
 }
 

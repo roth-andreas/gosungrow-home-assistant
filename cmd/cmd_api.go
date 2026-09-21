@@ -174,9 +174,6 @@ func (c *CmdApi) ApiLogin(force bool) error {
 		candidates := buildLoginAttempts(c.Url, c.AppKey)
 
 		cacheDir := c.SunGrow.ApiRoot.GetCacheDir()
-		var firstRetriableErr error
-		var lastErr error
-		exhaustedRetriable := true
 		failures := make([]iSolarCloud.LoginAttemptFailure, 0, len(candidates))
 		for idx, attempt := range candidates {
 			if idx > 0 && c.SunGrow != nil {
@@ -185,10 +182,12 @@ func (c *CmdApi) ApiLogin(force bool) error {
 			c.SunGrow = iSolarCloud.NewSunGro(attempt.Host, cacheDir)
 			if c.SunGrow.Error != nil {
 				c.Error = c.SunGrow.Error
+				failures = append(failures, iSolarCloud.LoginAttemptFailure{Attempt: attempt, Err: c.Error})
 				break
 			}
 			c.Error = c.SunGrow.Init()
 			if c.Error != nil {
+				failures = append(failures, iSolarCloud.LoginAttemptFailure{Attempt: attempt, Err: c.Error})
 				break
 			}
 
@@ -205,29 +204,16 @@ func (c *CmdApi) ApiLogin(force bool) error {
 				c.AppKey = attempt.AppKey
 				break
 			}
-			lastErr = c.Error
 			failures = append(failures, iSolarCloud.LoginAttemptFailure{
 				Attempt: attempt,
 				Err:     c.Error,
 			})
 			if !shouldTryNextLoginAttempt(c.Error) {
-				exhaustedRetriable = false
 				break
-			}
-			if firstRetriableErr == nil {
-				firstRetriableErr = c.Error
 			}
 		}
 		if c.Error != nil {
-			if exhaustedRetriable && firstRetriableErr != nil {
-				if summaryErr := iSolarCloud.SummarizeLoginAttemptFailures(failures); summaryErr != nil {
-					c.Error = summaryErr
-				} else {
-					c.Error = firstRetriableErr
-				}
-			} else if lastErr != nil {
-				c.Error = lastErr
-			}
+			c.Error = iSolarCloud.FinalizeLoginAttemptFailures(failures, c.Error, c.Username, c.Password, c.ApiToken)
 		}
 		if c.Error != nil {
 			break

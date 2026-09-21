@@ -114,12 +114,79 @@ func TestSummarizeLoginAttemptFailuresGroupsByHost(t *testing.T) {
 
 	msg := err.Error()
 	for _, expected := range []string{
-		"all login recovery attempts failed:",
+		"login candidate sequence failed:",
+		"first failure: https://gateway.isolarcloud.eu: dial tcp: lookup gateway.isolarcloud.eu on 127.0.0.11:53: server misbehaving",
+		"terminal stop reason: https://augateway.isolarcloud.com: dial tcp: lookup augateway.isolarcloud.com on 127.0.0.11:53: no such host",
 		"https://gateway.isolarcloud.eu (2 attempts): dial tcp: lookup gateway.isolarcloud.eu on 127.0.0.11:53: server misbehaving",
 		"https://augateway.isolarcloud.com (1 attempts): dial tcp: lookup augateway.isolarcloud.com on 127.0.0.11:53: no such host",
 	} {
 		if !strings.Contains(msg, expected) {
 			t.Fatalf("expected summary to contain %q, got %q", expected, msg)
 		}
+	}
+	if got := ClassifyFailure(err); got != FailureClassRecoverableRemote {
+		t.Fatalf("ClassifyFailure(summary) = %q, want %q", got, FailureClassRecoverableRemote)
+	}
+	if IsDockerDNSError(err) {
+		t.Fatal("later Docker DNS text must not classify the login sequence as a Docker DNS outage")
+	}
+}
+
+func TestFinalizeLoginAttemptFailuresPreservesSingleDockerDNSFailure(t *testing.T) {
+	dnsErr := errors.New("dial tcp: lookup augateway.isolarcloud.com on 127.0.0.11:53: no such host")
+	err := FinalizeLoginAttemptFailures([]LoginAttemptFailure{
+		{
+			Attempt: LoginAttempt{Host: "https://augateway.isolarcloud.com", AppKey: DefaultApiAppKey},
+			Err:     dnsErr,
+		},
+	}, errors.New("unused fallback"))
+
+	if !errors.Is(err, dnsErr) {
+		t.Fatalf("FinalizeLoginAttemptFailures() = %v, want original DNS error", err)
+	}
+	if got := ClassifyFailure(err); got != FailureClassDockerDNS {
+		t.Fatalf("ClassifyFailure(single failure) = %q, want %q", got, FailureClassDockerDNS)
+	}
+}
+
+func TestSummarizeLoginAttemptFailuresBoundsDistinctMessagesPerHost(t *testing.T) {
+	username := "person@example.test"
+	password := "correct-horse-battery-staple"
+	token := "12345_secret-token"
+	err := SummarizeLoginAttemptFailures([]LoginAttemptFailure{
+		{Attempt: LoginAttempt{Host: "https://gateway.example"}, Err: errors.New("first for " + username)},
+		{Attempt: LoginAttempt{Host: "https://gateway.example"}, Err: errors.New("middle")},
+		{Attempt: LoginAttempt{Host: "https://gateway.example"}, Err: errors.New("terminal with " + password + " and " + token)},
+	}, username, password, token)
+	if err == nil {
+		t.Fatal("expected summarized error")
+	}
+
+	msg := err.Error()
+	if !strings.Contains(msg, "https://gateway.example (3 attempts): first for <redacted> | terminal with <redacted> and <redacted>") {
+		t.Fatalf("expected bounded ordered messages, got %q", msg)
+	}
+	if strings.Contains(msg, "middle") {
+		t.Fatalf("middle distinct per-host message must be omitted in favor of the terminal reason, got %q", msg)
+	}
+	for _, secret := range []string{username, password, token} {
+		if strings.Contains(msg, secret) {
+			t.Fatalf("summary contains secret %q: %q", secret, msg)
+		}
+	}
+}
+
+func TestEndpointFailurePreservesStableClassification(t *testing.T) {
+	sequenceErr := SummarizeLoginAttemptFailures([]LoginAttemptFailure{
+		{Attempt: LoginAttempt{Host: "https://gateway.example"}, Err: errors.New("login rejected by gateway")},
+		{Attempt: LoginAttempt{Host: "https://fallback.example"}, Err: errors.New("lookup fallback.example on 127.0.0.11:53: no such host")},
+	})
+	endpointErr := endpointFailure{err: sequenceErr}
+
+	if !endpointErr.IsError() {
+		t.Fatal("endpoint failure must report an error")
+	}
+	if got := ClassifyFailure(endpointErr.GetError()); got != FailureClassRecoverableRemote {
+		t.Fatalf("ClassifyFailure(endpoint error) = %q, want %q", got, FailureClassRecoverableRemote)
 	}
 }

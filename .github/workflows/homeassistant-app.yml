@@ -118,7 +118,9 @@ jobs:
 
       - name: Validate app startup script
         shell: bash
-        run: bash -n addon/gosungrow/run.sh
+        run: |
+          bash -n addon/gosungrow/run.sh addon/gosungrow/recovery_policy.sh addon/gosungrow/recovery_policy_test.sh
+          bash addon/gosungrow/recovery_policy_test.sh
 
       - name: Build app image (amd64 smoke test)
         run: |
