@@ -113,6 +113,10 @@ func (config *EntityConfig) FixConfig() {
 			config.DeviceClass = SetDefault(config.DeviceClass, "power")
 			config.Icon = SetDefault(config.Icon, "mdi:check-circle-outline")
 
+		case config.Units == "kWp":
+			config.DeviceClass = ""
+			config.Icon = SetDefault(config.Icon, "mdi:lightning-bolt")
+
 		case config.Value.TypeValue == "Power":
 			fallthrough
 		case config.Units == "MW":

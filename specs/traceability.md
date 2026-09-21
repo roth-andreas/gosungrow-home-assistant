@@ -48,7 +48,7 @@ The specification is authoritative; this map helps locate derived artifacts.
 | `iSolarCloud/api/GoStruct/valueTypes/uv_test.go` | `REQ-DATA-004`–`006`; `REQ-HA-012`; `REQ-ACC-006` |
 | `iSolarCloud/api/GoStruct/output/file_test.go` | `REQ-XCUT-005`–`007` |
 | `cmdHassio/options_test.go` | `REQ-MQTT-019`–`020` |
-| `cmdHassio/struct_entity_test.go` | `REQ-HA-008`–`014`; `REQ-ACC-011` |
+| `cmdHassio/struct_entity_test.go` | `REQ-HA-008`–`014`, `019`; `REQ-ACC-011`, `030` |
 | `cmd/cmd_mqtt_test.go` | `REQ-MQTT-005`–`020`; `REQ-DATA-018`–`020`; `REQ-ACC-009`–`010` |
 | `cmd/cmd_ha_install_dashboard_test.go` | `REQ-DASH-001`–`030`; `REQ-ACC-012`, `018`–`019` |
 | `cmd/dashboard_test_helpers_test.go` | shared fixtures for `REQ-DASH-*`, `REQ-RES-*`, and `REQ-SRC-*` tests |

@@ -1,6 +1,7 @@
 package cmdHassio
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api"
@@ -49,6 +50,45 @@ func TestFixConfigKeepsMeasurementMetadataForNumericSensors(t *testing.T) {
 	}
 	if config.DeviceClass != "power" {
 		t.Fatalf("expected power device class, got %q", config.DeviceClass)
+	}
+}
+
+func TestFixConfigOmitsPowerDeviceClassForPeakPower(t *testing.T) {
+	value := valueTypes.SetUnitValueFloat("Wp", "Power", 1234)
+	config := EntityConfig{
+		Units:       value.Unit(),
+		Value:       &value,
+		Point:       &api.Point{UpdateFreq: GoStruct.UpdateFreqInstant},
+		DeviceClass: "power",
+	}
+
+	config.FixConfig()
+
+	if value.Value() != 1.234 {
+		t.Fatalf("peak power value = %v, want 1.234", value.Value())
+	}
+	if config.Units != "kWp" {
+		t.Fatalf("peak power unit = %q, want kWp", config.Units)
+	}
+	if config.DeviceClass != "" {
+		t.Fatalf("peak power device class = %q, want empty", config.DeviceClass)
+	}
+	if config.StateClass != "measurement" {
+		t.Fatalf("peak power state class = %q, want measurement", config.StateClass)
+	}
+	if config.Icon != "mdi:lightning-bolt" {
+		t.Fatalf("peak power icon = %q, want mdi:lightning-bolt", config.Icon)
+	}
+
+	sensor := Sensor{
+		UnitOfMeasurement: String(config.Units),
+		DeviceClass:       DeviceClass(config.DeviceClass),
+		StateClass:        String(config.StateClass),
+		Icon:              Icon(config.Icon),
+	}
+	payload := sensor.Json()
+	if strings.Contains(payload, `"device_class"`) {
+		t.Fatalf("peak power discovery payload contains device_class: %s", payload)
 	}
 }
 

@@ -22,6 +22,7 @@ Scope: Cross-subsystem executable examples
 - **REQ-ACC-009** — Given one plant with types 14, 11, and 22, realtime selects type 14; without 14 it selects 11; each additional plant gets its own batch.
 - **REQ-ACC-010** — Given Docker DNS loss after connection, MQTT remains connected and delays follow 15/30/60/120/300 seconds; success restores five minutes.
 - **REQ-ACC-011** — Given textual, numeric instant, numeric daily, and reactive-power values, discovery respectively has no measurement metadata, measurement, total/last-reset, and canonical reactive metadata.
+- **REQ-ACC-030** — Given a numeric `Wp` value, normalization and discovery publish the scaled value in `kWp` with frequency-derived state metadata and `mdi:lightning-bolt`, but without `device_class`; given an otherwise equivalent `kW` value, discovery continues to publish device class `power`.
 
 ## Dashboard
 

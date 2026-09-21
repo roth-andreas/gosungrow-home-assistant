@@ -28,7 +28,8 @@ Scope: MQTT discovery payloads, IDs, device hierarchy, metadata, and state paylo
 | Value/unit | Device class | Default icon |
 |---|---|---|
 | boolean | `power` | `mdi:check-circle-outline` |
-| W/kW/MW or power | `power` | `mdi:lightning-bolt` |
+| W/kW/MW or unitless power | `power` | `mdi:lightning-bolt` |
+| kWp | none | `mdi:lightning-bolt` |
 | Wh/kWh/MWh or energy | `energy` | `mdi:transmission-tower` |
 | var/kvar | `reactive_power` | `mdi:lightning-bolt` |
 | VA | `apparent_power` | `mdi:lightning-bolt` |
@@ -48,6 +49,7 @@ Scope: MQTT discovery payloads, IDs, device hierarchy, metadata, and state paylo
 - **REQ-HA-014** — Boot and instant/5/15/30-minute numeric points use state class `measurement`. Daily/monthly/yearly/total numeric points use `total` and a `last_reset` datetime template.
 - **REQ-HA-015** — Friendly name MUST be `group - description` when both differ, otherwise the non-empty one, then point ID, then endpoint path. Duplicate group/description text MUST appear once.
 - **REQ-HA-016** — Missing point metadata MAY be filled from device-point attributes: unit first, then description/group, then value type. Existing normalized metadata MUST not be overwritten.
+- **REQ-HA-019** — A numeric peak-power sensor normalized to `kWp` MUST retain the `kWp` unit and its frequency-derived state metadata, MUST omit `device_class`, and MUST use `mdi:lightning-bolt`. Standard `W`, `kW`, and `MW` power sensors MUST continue to use device class `power`.
 
 ## Select entities
 
@@ -58,4 +60,5 @@ Scope: MQTT discovery payloads, IDs, device hierarchy, metadata, and state paylo
 
 - Applying `state_class=measurement` to textual sensors.
 - Publishing a unit that disagrees with the normalized state value.
+- Publishing a `device_class` together with a unit that Home Assistant does not accept for that class.
 - Using display names as unique identity.
