@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.3.0
+
+- Preserve causal failure diagnostics across retries and fallback paths so the most useful root error remains visible.
+- Aggregate canonical plant PV output consistently and correct Home Assistant metadata for peak-power sensors.
+- Install versioned dashboard assets transactionally, verify the active resource before cleanup, and retain the previous working asset on failure.
+- Exercise managed dashboard installation and browser rendering against a pinned Home Assistant Core release in CI.
+
 ## 3.2.1
 
 - Highlight safer automatic source recommendations in the Data Sources dialog without changing the active source automatically.
