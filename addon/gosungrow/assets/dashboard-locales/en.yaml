@@ -1,4 +1,5 @@
 dashboard:
+  native_fallback_source_notice: Enhanced dashboard cards are temporarily unavailable. Live data remains available, but source editing may be unavailable until automatic recovery completes.
   view_overview: Overview
   view_aggregates: Aggregates
   view_trends: Trends

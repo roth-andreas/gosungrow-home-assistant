@@ -53,6 +53,10 @@ On a healthy setup, the app:
 
 No Home Assistant restart is required for the managed dashboards.
 
+The dashboard cards are served locally from a content-addressed `/local/gosungrow/` module. GoSungrow verifies the exact file through Home Assistant before referencing it and keeps the previous verified version for rollback. A browser that was already open during first installation may need one ordinary page reload; a hard refresh is not required.
+
+If the enhanced card module cannot be activated on a fresh installation, GoSungrow installs a native Home Assistant dashboard automatically. Live MQTT-backed metrics remain usable while flow visualization and source editing are temporarily reduced. A later reconciliation promotes the dashboard to enhanced mode without a Home Assistant restart.
+
 ## Correcting Dashboard Data Sources
 
 GoSungrow continues to choose dashboard sensors automatically. If a Sungrow model exposes different point names or meanings, a Home Assistant administrator can open the managed dashboard's **Data Sources** view and override an individual dashboard metric.
@@ -97,6 +101,10 @@ Suggested checks:
 4. Restart Home Assistant OS or the Docker host if its embedded resolver remains unhealthy. Restarting only GoSungrow may coincide with recovery, but it cannot repair Docker DNS.
 
 Do not configure a fixed iSolarCloud IP address. The HTTPS certificate and Sungrow's routing depend on the hostname.
+
+## Troubleshooting Dashboard Cards
+
+Dashboard lifecycle logs report the asset phase, short canonical URL, response status and MIME type, resource action, dashboard mode, rollback, and cleanup result. If the dashboard remains in native fallback mode, verify that Home Assistant can serve `/local/gosungrow/` JavaScript with status 200 and a JavaScript content type. Do not add a CDN or data-URL resource manually; GoSungrow will retry activation during reconciliation.
 
 ## Troubleshooting Startup JSON Errors
 

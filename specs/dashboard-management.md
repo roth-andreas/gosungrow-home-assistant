@@ -33,16 +33,16 @@ Scope: Target discovery, template rendering, Home Assistant websocket operations
 
 ## Asset and websocket contract
 
-- **REQ-DASH-017** — The bundled card file MUST be written to `www/gosungrow/` under each unique available candidate config root: configured directory, `/homeassistant`, `/config`. At least one write must succeed.
-- **REQ-DASH-018** — The registered JavaScript resource MUST be a `module` whose URL is an embedded base64 JavaScript data URL with a fragment containing the first 12 hexadecimal SHA-256 characters. Filesystem copies are still written for inspection and fallback delivery.
-- **REQ-DASH-019** — Existing managed card resources, including stale versions/data URLs, MUST be updated rather than duplicated. Unrelated resources MUST remain untouched.
+- **REQ-DASH-017** — The installer MUST calculate the bundled card's full SHA-256 hash and atomically stage identical bytes under every writable unique candidate config root (configured directory, `/homeassistant`, `/config`) at `www/gosungrow/gosungrow-dashboard-cards.<sha12>.js`, where `<sha12>` is the first 12 lowercase hexadecimal hash characters. Every successful write MUST be re-read and match the full hash, and at least one canonical write MUST succeed.
+- **REQ-DASH-018** — The registered JavaScript resource MUST have type `module` and canonical URL `/local/gosungrow/gosungrow-dashboard-cards.<sha12>.js`. Before activation, a Home Assistant HTTP request for that exact URL MUST return status 200, a JavaScript MIME type, and bytes matching the full expected hash. Newly registered data URLs, mutable local URLs, and CDN URLs are prohibited.
+- **REQ-DASH-019** — Legacy GoSungrow data URLs, CDN URLs, unversioned local URLs, and content-addressed local URLs MUST all be recognized as managed resources and migrated to exactly one canonical resource without duplicating it or changing unrelated resources. After successful activation, each candidate root MUST retain the active and immediately previous verified content-addressed bundles and remove only older unreferenced managed bundles.
 - **REQ-DASH-020** — Websocket connection uses bearer token, 15-second handshake/write timeout, 30-second reads, monotonically increasing request IDs, and ignores unrelated response messages until the matching result arrives.
-- **REQ-DASH-021** — Supported Home Assistant operations are dashboard list/create/update, Lovelace config read/save, resource list/create/update, states, entity registry, preferred-language calls. Structured websocket error code/message MUST be preserved.
+- **REQ-DASH-021** — Supported Home Assistant operations are dashboard list/create/update/delete, Lovelace config read/save, resource list/create/update/delete/reload, states, entity registry, and preferred-language calls. Structured websocket error code/message MUST be preserved.
 - **REQ-DASH-022** — State list MUST discard empty IDs and deduplicate case-insensitively. Registry metadata MUST enrich matching states by case-insensitive entity ID; registry failure degrades to conservative fallback instead of aborting install.
 
 ## Ownership and persistence
 
-- **REQ-DASH-023** — State file is `dashboard_state.json` beside `GOSUNGROW_CONFIG`, or the OS temporary directory when that variable is absent; it stores URL path, full config hash, structure hash, target keys, accepted overrides, and UTC update timestamp with mode `0600`.
+- **REQ-DASH-023** — State file is `dashboard_state.json` beside `GOSUNGROW_CONFIG`, or the OS temporary directory when that variable is absent; it stores URL path, full config hash, structure hash, target keys, accepted overrides, asset mode (`enhanced` or `native-fallback`), active asset URL and full hash, previous asset URL and full hash, and UTC update timestamp with mode `0600`. Legacy state without asset fields MUST remain readable and MUST be migrated on the next successful reconciliation.
 - **REQ-DASH-024** — Canonical JSON hashing MUST preserve array order, sort object keys, encode primitives as JSON, and use full SHA-256 hex.
 - **REQ-DASH-025** — A dashboard is managed only when persisted state names the same URL path. A non-storage dashboard at the path MUST be rejected.
 - **REQ-DASH-026** — An unmanaged existing dashboard or an externally modified managed dashboard MUST be rejected unless force update is true.
@@ -53,9 +53,15 @@ Scope: Target discovery, template rendering, Home Assistant websocket operations
 
 - **REQ-DASH-029** — Installation MUST report context, state-load result, GoSungrow-state count, reference/remap/unresolved counts, battery detection, save decision/reason, targets and selection, relevant warnings, and unresolved references.
 - **REQ-DASH-030** — Debug mode additionally reports bounded candidate traces. Diagnostics MAY include entity IDs/current values but MUST exclude credentials and tokens.
+- **REQ-DASH-031** — Enhanced dashboard delivery MUST be one transaction: build the complete desired dashboard and verify ownership before mutation; stage and hash the asset; verify its Home Assistant HTTP response; create or update the managed resource; re-read and verify its exact URL and type; save and re-read the dashboard; then persist local state. If any step after resource mutation fails, the installer MUST restore the prior managed resource registration and dashboard configuration. A failed upgrade of an existing working installation MUST leave its prior resource, dashboard, and state usable.
+- **REQ-DASH-032** — On a fresh installation where custom-card activation fails but Home Assistant dashboard storage remains available, the installer MUST save a native fallback rather than custom-card references. The fallback MUST preserve targets and view paths, present the ten resolved live metrics in canonical domain order through native cards, present available current-period summary entities through native cards, replace source mapping with a localized informational card that editing may be unavailable, and contain no `custom:gosungrow-*` type. Later reconciliation MUST automatically promote the dashboard to enhanced mode without losing target or source-selection decisions.
+- **REQ-DASH-033** — After the first managed-resource registration or a managed-resource URL replacement, the installer MUST use Home Assistant's storage-resource mutation and re-read path so new browser sessions receive the new URL. If the active Home Assistant resource mode exposes a resource-reload service, the installer MUST request it; it MUST NOT call the YAML-only reload service when storage mode does not expose it. A browser opened before registration MAY require one ordinary reload; content-addressed URLs MUST make a hard refresh unnecessary. The installer MUST NOT forcibly navigate or reload connected browsers.
+- **REQ-DASH-034** — Asset lifecycle diagnostics MUST use bounded structured fields covering phase, expected hash, canonical URL, HTTP status and MIME type, resource action, dashboard mode, rollback result, and cleanup result. They MUST NOT print JavaScript bodies, base64-encoded assets, credentials, or tokens.
 
 ## Prohibited behavior
 
 - Cross-plant source assignment on multi-target dashboards.
 - Treating a missing manual entity as permission to choose a replacement.
 - Overwriting user structure without force permission.
+- Saving `custom:gosungrow-*` references before their exact resource has been verified and activated.
+- Deleting the last verified working managed bundle or changing unrelated Lovelace resources.

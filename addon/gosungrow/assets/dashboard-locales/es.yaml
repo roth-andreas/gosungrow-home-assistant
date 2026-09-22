@@ -1,4 +1,5 @@
 dashboard:
+  native_fallback_source_notice: Las tarjetas avanzadas no estan disponibles temporalmente. Los datos en directo siguen visibles; la edicion de fuentes puede no estar disponible hasta la recuperacion automatica.
   view_overview: Vista general
   view_aggregates: Acumulados
   view_trends: Tendencias

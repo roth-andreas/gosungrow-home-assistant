@@ -3,7 +3,9 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -230,6 +232,11 @@ func TestDashboardStateRoundTripAndCanonicalHash(t *testing.T) {
 		DashboardHash:          "abc123",
 		DashboardStructureHash: "structure123",
 		TargetPsKeys:           []string{"5072099_14_1_1"},
+		AssetMode:              dashboardAssetModeEnhanced,
+		AssetURL:               "/local/gosungrow/gosungrow-dashboard-cards.abc123abc123.js",
+		AssetHash:              strings.Repeat("a", 64),
+		PreviousAssetURL:       "/local/gosungrow/gosungrow-dashboard-cards.def456def456.js",
+		PreviousAssetHash:      strings.Repeat("d", 64),
 		UpdatedAt:              "2026-03-19T12:00:00Z",
 	}
 	if err := saveDashboardState(statePath, state); err != nil {
@@ -240,7 +247,7 @@ func TestDashboardStateRoundTripAndCanonicalHash(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadDashboardState: %v", err)
 	}
-	if loaded == nil || loaded.DashboardURLPath != state.DashboardURLPath || loaded.DashboardHash != state.DashboardHash || loaded.DashboardStructureHash != state.DashboardStructureHash {
+	if loaded == nil || loaded.DashboardURLPath != state.DashboardURLPath || loaded.DashboardHash != state.DashboardHash || loaded.DashboardStructureHash != state.DashboardStructureHash || loaded.AssetMode != state.AssetMode || loaded.AssetHash != state.AssetHash || loaded.PreviousAssetHash != state.PreviousAssetHash {
 		t.Fatalf("unexpected loaded state: %#v", loaded)
 	}
 
@@ -257,10 +264,25 @@ func TestDashboardStateRoundTripAndCanonicalHash(t *testing.T) {
 	}
 }
 
+func TestLoadDashboardStateAcceptsLegacyStateWithoutAssetFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), dashboardStateFileName)
+	legacy := []byte(`{"dashboard_url_path":"gosungrow-flow","dashboard_hash":"legacy","updated_at":"2026-01-01T00:00:00Z"}`)
+	if err := os.WriteFile(path, legacy, 0600); err != nil {
+		t.Fatal(err)
+	}
+	state, err := loadDashboardState(path)
+	if err != nil {
+		t.Fatalf("loadDashboardState: %v", err)
+	}
+	if state.DashboardURLPath != "gosungrow-flow" || state.DashboardHash != "legacy" || state.AssetMode != "" || state.AssetURL != "" || state.AssetHash != "" {
+		t.Fatalf("unexpected migrated legacy state: %#v", state)
+	}
+}
+
 func TestInstallDashboardCardAssetWritesVersionedResource(t *testing.T) {
 	assetDir := t.TempDir()
 	configDir := t.TempDir()
-	cardSource := filepath.Join(assetDir, dashboardCardFileName)
+	cardSource := filepath.Join(assetDir, dashboardCardSourceFile)
 	cardBody := []byte("console.log('gosungrow card');")
 
 	if err := os.WriteFile(cardSource, cardBody, 0600); err != nil {
@@ -272,17 +294,16 @@ func TestInstallDashboardCardAssetWritesVersionedResource(t *testing.T) {
 		t.Fatalf("installDashboardCardAsset: %v", err)
 	}
 
-	if !strings.HasPrefix(resourceURL, "data:text/javascript;base64,") {
-		t.Fatalf("unexpected resource URL: %q", resourceURL)
+	expectedHash := fmt.Sprintf("%x", sha256.Sum256(cardBody))
+	if version != expectedHash {
+		t.Fatalf("unexpected full asset hash: got %q want %q", version, expectedHash)
 	}
-	if !strings.Contains(resourceURL, "#v=") {
-		t.Fatalf("expected version fragment in resource URL: %q", resourceURL)
-	}
-	if strings.TrimSpace(version) == "" {
-		t.Fatal("expected non-empty asset version")
+	expectedURL := "/local/gosungrow/gosungrow-dashboard-cards." + expectedHash[:12] + ".js"
+	if resourceURL != expectedURL {
+		t.Fatalf("unexpected resource URL: got %q want %q", resourceURL, expectedURL)
 	}
 
-	targetPath := filepath.Join(configDir, "www", dashboardCardResourceDir, dashboardCardFileName)
+	targetPath := filepath.Join(configDir, "www", dashboardCardResourceDir, "gosungrow-dashboard-cards."+expectedHash[:12]+".js")
 	targetBody, err := os.ReadFile(targetPath)
 	if err != nil {
 		t.Fatalf("read installed card: %v", err)
@@ -302,9 +323,135 @@ func TestUniqueNonEmptyStrings(t *testing.T) {
 	}
 }
 
+func TestVerifyDashboardCardAssetRequiresExactResponse(t *testing.T) {
+	body := []byte("customElements.define('x-test', class extends HTMLElement {});")
+	expectedHash := fmt.Sprintf("%x", sha256.Sum256(body))
+	tests := []struct {
+		name        string
+		status      int
+		contentType string
+		body        []byte
+		wantError   string
+	}{
+		{name: "verified", status: http.StatusOK, contentType: "text/javascript; charset=utf-8", body: body},
+		{name: "status", status: http.StatusNotFound, contentType: "text/javascript", body: body, wantError: "HTTP 404"},
+		{name: "mime", status: http.StatusOK, contentType: "text/plain", body: body, wantError: "non-JavaScript MIME"},
+		{name: "hash", status: http.StatusOK, contentType: "application/javascript", body: []byte("different"), wantError: "hash mismatch"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/local/gosungrow/gosungrow-dashboard-cards.0123456789ab.js" {
+					t.Fatalf("unexpected path %q", r.URL.Path)
+				}
+				if got := r.Header.Get("Authorization"); got != "Bearer supervisor-token" {
+					t.Fatalf("unexpected authorization header %q", got)
+				}
+				w.Header().Set("Content-Type", tt.contentType)
+				w.WriteHeader(tt.status)
+				_, _ = w.Write(tt.body)
+			}))
+			defer server.Close()
+
+			wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/websocket"
+			verification, err := verifyDashboardCardAsset(context.Background(), wsURL, "supervisor-token", "/local/gosungrow/gosungrow-dashboard-cards.0123456789ab.js", expectedHash)
+			if tt.wantError == "" {
+				if err != nil {
+					t.Fatalf("verifyDashboardCardAsset: %v", err)
+				}
+				if verification.StatusCode != http.StatusOK || verification.MIMEType != "text/javascript" {
+					t.Fatalf("unexpected verification: %#v", verification)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantError, err)
+			}
+		})
+	}
+}
+
+func TestNativeDashboardFallbackRemovesCustomCardsAndKeepsCanonicalOrder(t *testing.T) {
+	config := map[string]any{
+		"views": []any{
+			map[string]any{"path": "overview", "cards": []any{map[string]any{
+				"type": dashboardEnergyFlowCardType,
+				"entities": map[string]any{
+					"battery_soc": "sensor.soc", "grid_power": "sensor.grid", "solar_power": "sensor.pv",
+					"load_power": "sensor.load", "battery_power": "sensor.battery", "pv_to_load_power": "sensor.pv_load",
+					"pv_to_battery_power": "sensor.pv_battery", "pv_to_grid_power": "sensor.pv_grid",
+					"grid_to_load_power": "sensor.grid_load", "battery_to_load_power": "sensor.battery_load",
+				},
+			}}},
+			map[string]any{"path": "aggregates", "cards": []any{map[string]any{
+				"type": "custom:gosungrow-energy-summary-card-v1", "entities": map[string]any{"production": "sensor.production", "consumption": "sensor.consumption"},
+			}}},
+			map[string]any{"path": "data-sources", "cards": []any{map[string]any{"type": dashboardSourceMappingCardType}}},
+		},
+	}
+
+	fallback, err := nativeDashboardFallback(config, defaultDashboardLocaleBundle)
+	if err != nil {
+		t.Fatalf("nativeDashboardFallback: %v", err)
+	}
+	if dashboardConfigContainsCustomGoSungrow(fallback) {
+		t.Fatalf("fallback contains custom cards: %#v", fallback)
+	}
+	views := fallback["views"].([]any)
+	flow := views[0].(map[string]any)["cards"].([]any)[0].(map[string]any)
+	rows := flow["entities"].([]any)
+	want := []string{"sensor.pv", "sensor.load", "sensor.grid", "sensor.battery", "sensor.pv_load", "sensor.pv_battery", "sensor.pv_grid", "sensor.grid_load", "sensor.battery_load", "sensor.soc"}
+	if len(rows) != len(want) {
+		t.Fatalf("unexpected fallback row count: %#v", rows)
+	}
+	for index, entity := range want {
+		if got := rows[index].(map[string]any)["entity"]; got != entity {
+			t.Fatalf("row %d: got %v want %s", index, got, entity)
+		}
+	}
+	if got := views[2].(map[string]any)["cards"].([]any)[0].(map[string]any)["type"]; got != "markdown" {
+		t.Fatalf("source mapping was not replaced with native informational card: %v", got)
+	}
+}
+
+func TestCleanupDashboardAssetFilesRetainsActiveAndPrevious(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "www", dashboardCardResourceDir)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	active := strings.Repeat("a", 64)
+	previous := strings.Repeat("b", 64)
+	for _, name := range []string{
+		"gosungrow-dashboard-cards." + active[:12] + ".js",
+		"gosungrow-dashboard-cards." + previous[:12] + ".js",
+		"gosungrow-dashboard-cards.cccccccccccc.js",
+		dashboardCardSourceFile,
+		"unrelated.js",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(name), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := cleanupDashboardAssetFiles(root, active, previous); err != nil {
+		t.Fatalf("cleanupDashboardAssetFiles: %v", err)
+	}
+	for _, name := range []string{"gosungrow-dashboard-cards." + active[:12] + ".js", "gosungrow-dashboard-cards." + previous[:12] + ".js", "unrelated.js"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Fatalf("expected %s to remain: %v", name, err)
+		}
+	}
+	for _, name := range []string{"gosungrow-dashboard-cards.cccccccccccc.js", dashboardCardSourceFile} {
+		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+			t.Fatalf("expected %s to be removed, got %v", name, err)
+		}
+	}
+}
+
 func TestHAWSClientDashboardCalls(t *testing.T) {
 	upgrader := websocket.Upgrader{}
 	sawResourceUpdate := false
+	sawResourceReload := false
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer supervisor-token" {
@@ -351,7 +498,7 @@ func TestHAWSClientDashboardCalls(t *testing.T) {
 					"url_path": "gosungrow-flow",
 					"title":    "GoSungrow Flow",
 				}}
-			case "lovelace/resources":
+			case "lovelace/resources/list":
 				response["result"] = []map[string]any{{
 					"id":   "resource-id",
 					"url":  "data:text/javascript;base64,Zm9v#v=old",
@@ -372,6 +519,12 @@ func TestHAWSClientDashboardCalls(t *testing.T) {
 				response["result"] = map[string]any{
 					"title": "GoSungrow Flow",
 					"views": []any{},
+				}
+			case "get_services":
+				response["result"] = map[string]any{"lovelace": map[string]any{"reload_resources": map[string]any{}}}
+			case "call_service":
+				if request["domain"] == "lovelace" && request["service"] == "reload_resources" {
+					sawResourceReload = true
 				}
 			default:
 				response["result"] = map[string]any{}
@@ -422,11 +575,24 @@ func TestHAWSClientDashboardCalls(t *testing.T) {
 	if err := client.SaveConfig(ctx, "gosungrow-flow", map[string]any{"title": "GoSungrow Flow", "views": []any{}}); err != nil {
 		t.Fatalf("SaveConfig: %v", err)
 	}
-	if err := client.EnsureResource(ctx, "/local/gosungrow/gosungrow-energy-flow-card-v2.js?v=new", dashboardCardResourceType); err != nil {
+	if err := client.EnsureResource(ctx, "/local/gosungrow/gosungrow-dashboard-cards.0123456789ab.js", dashboardCardResourceType); err != nil {
 		t.Fatalf("EnsureResource: %v", err)
 	}
 	if !sawResourceUpdate {
 		t.Fatal("expected EnsureResource to update the existing managed dashboard card resource")
+	}
+	reloaded, err := client.ReloadResourcesIfSupported(ctx)
+	if err != nil || !reloaded || !sawResourceReload {
+		t.Fatalf("expected supported resource reload request, reloaded=%t saw=%t err=%v", reloaded, sawResourceReload, err)
+	}
+}
+
+func TestDashboardReloadServiceSupportIsModeAware(t *testing.T) {
+	if dashboardReloadServiceSupported(map[string]map[string]json.RawMessage{"lovelace": {}}) {
+		t.Fatal("storage mode without a reload service must not request the YAML-only action")
+	}
+	if !dashboardReloadServiceSupported(map[string]map[string]json.RawMessage{"lovelace": {"reload_resources": json.RawMessage(`{}`)}}) {
+		t.Fatal("exposed reload service was not detected")
 	}
 }
 
@@ -486,7 +652,7 @@ func TestHAWSClientEnsureResourceUpdatesStaleManagedCardURLs(t *testing.T) {
 					}
 
 					switch request["type"] {
-					case "lovelace/resources":
+					case "lovelace/resources/list":
 						response["result"] = []map[string]any{{
 							"id":   "resource-id",
 							"url":  tt.existingURL,
@@ -519,7 +685,7 @@ func TestHAWSClientEnsureResourceUpdatesStaleManagedCardURLs(t *testing.T) {
 			}
 			defer client.Close()
 
-			newURL := "/local/gosungrow/gosungrow-energy-flow-card-v2.js?v=new"
+			newURL := "/local/gosungrow/gosungrow-dashboard-cards.0123456789ab.js"
 			if err := client.EnsureResource(ctx, newURL, dashboardCardResourceType); err != nil {
 				t.Fatalf("EnsureResource: %v", err)
 			}
@@ -530,6 +696,109 @@ func TestHAWSClientEnsureResourceUpdatesStaleManagedCardURLs(t *testing.T) {
 				t.Fatalf("unexpected updated URL: got %q want %q", updatedURL, newURL)
 			}
 		})
+	}
+}
+
+func TestManagedResourceActivationCleanupAndRollback(t *testing.T) {
+	upgrader := websocket.Upgrader{}
+	resources := []haResourceMetadata{
+		{ID: "managed-primary", URL: "https://cdn.example/gosungrow-energy-flow-card-v2.js", ResourceType: dashboardCardResourceType},
+		{ID: "managed-duplicate", URL: "data:text/javascript;base64,Zm9v#v=old", ResourceType: dashboardCardResourceType},
+		{ID: "unrelated", URL: "/local/community/other-card.js", ResourceType: dashboardCardResourceType},
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Fatalf("upgrade websocket: %v", err)
+		}
+		defer conn.Close()
+		_ = conn.WriteJSON(map[string]any{"type": "auth_required"})
+		var auth map[string]any
+		if err := conn.ReadJSON(&auth); err != nil {
+			return
+		}
+		_ = conn.WriteJSON(map[string]any{"type": "auth_ok"})
+		for {
+			var request map[string]any
+			if err := conn.ReadJSON(&request); err != nil {
+				return
+			}
+			response := map[string]any{"id": request["id"], "type": "result", "success": true, "result": map[string]any{}}
+			switch request["type"] {
+			case "lovelace/resources/list":
+				response["result"] = resources
+			case "lovelace/resources/update":
+				id := fmt.Sprint(request["resource_id"])
+				for index := range resources {
+					if fmt.Sprint(resources[index].ID) == id {
+						resources[index].URL = fmt.Sprint(request["url"])
+						resources[index].ResourceType = fmt.Sprint(request["res_type"])
+					}
+				}
+			case "lovelace/resources/delete":
+				id := fmt.Sprint(request["resource_id"])
+				kept := resources[:0]
+				for _, resource := range resources {
+					if fmt.Sprint(resource.ID) != id {
+						kept = append(kept, resource)
+					}
+				}
+				resources = kept
+			case "lovelace/resources/create":
+				resources = append(resources, haResourceMetadata{ID: fmt.Sprintf("created-%d", len(resources)), URL: fmt.Sprint(request["url"]), ResourceType: fmt.Sprint(request["res_type"])})
+			}
+			if err := conn.WriteJSON(response); err != nil {
+				return
+			}
+		}
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	client, err := newHAWSClient(ctx, "ws"+strings.TrimPrefix(server.URL, "http"), "supervisor-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	canonicalURL := "/local/gosungrow/gosungrow-dashboard-cards.0123456789ab.js"
+	change, err := client.ActivateManagedResource(ctx, canonicalURL)
+	if err != nil {
+		t.Fatalf("ActivateManagedResource: %v", err)
+	}
+	if change.Action != "updated" || len(change.Before) != 2 || change.Canonical.URL != canonicalURL {
+		t.Fatalf("unexpected resource change: %#v", change)
+	}
+	if err := client.RemoveDuplicateManagedResources(ctx, change.Canonical.ID); err != nil {
+		t.Fatalf("RemoveDuplicateManagedResources: %v", err)
+	}
+	if len(resources) != 2 || resources[0].URL != canonicalURL || resources[1].ID != "unrelated" {
+		t.Fatalf("unexpected resources after cleanup: %#v", resources)
+	}
+	if err := client.RestoreManagedResources(ctx, change.Before); err != nil {
+		t.Fatalf("RestoreManagedResources: %v", err)
+	}
+	managed := managedDashboardResources(resources)
+	if len(managed) != 2 || managed[0].URL != change.Before[0].URL || managed[1].URL != change.Before[1].URL {
+		t.Fatalf("managed resource snapshot was not restored: %#v", resources)
+	}
+	if len(resources) != 3 {
+		t.Fatalf("unrelated resource changed during rollback: %#v", resources)
+	}
+}
+
+func TestMatchesManagedDashboardCardResourceMigrationForms(t *testing.T) {
+	for _, value := range []string{
+		"data:text/javascript;base64,Zm9v#v=old",
+		"/local/gosungrow/gosungrow-energy-flow-card-v2.js",
+		"https://cdn.example/assets/gosungrow-energy-flow-card-v2.js?v=1",
+		"/local/gosungrow/gosungrow-dashboard-cards.0123456789ab.js",
+	} {
+		if !matchesManagedDashboardCardResource(value) {
+			t.Fatalf("expected managed resource match for %q", value)
+		}
+	}
+	if matchesManagedDashboardCardResource("/local/community/unrelated-gosungrow-card.js") {
+		t.Fatal("unrelated resource was classified as managed")
 	}
 }
 
@@ -640,6 +909,15 @@ func TestWriteDashboardInstallDiagnosticsIncludesSummaryAndUnresolvedRefs(t *tes
 	var buf bytes.Buffer
 	writeDashboardInstallDiagnostics(&buf, dashboardInstallDiagnostics{
 		DiagnosticContext:    "Reconciling after MQTT startup (1)",
+		AssetPhase:           "committed",
+		AssetHash:            strings.Repeat("a", 64),
+		AssetURL:             "/local/gosungrow/gosungrow-dashboard-cards.aaaaaaaaaaaa.js",
+		AssetHTTPStatus:      http.StatusOK,
+		AssetMIMEType:        "text/javascript",
+		ResourceAction:       "updated",
+		DashboardMode:        dashboardAssetModeEnhanced,
+		RollbackResult:       "not required",
+		CleanupResult:        "complete",
 		HAStatesLoaded:       1284,
 		GoSungrowStatesFound: 42,
 		DashboardRefsFound:   23,
@@ -735,6 +1013,7 @@ func TestWriteDashboardInstallDiagnosticsIncludesSummaryAndUnresolvedRefs(t *tes
 	for _, expected := range []string{
 		"Dashboard diagnostics:",
 		"- context: Reconciling after MQTT startup (1)",
+		"- asset: phase=committed hash=" + strings.Repeat("a", 64) + " url=/local/gosungrow/gosungrow-dashboard-cards.aaaaaaaaaaaa.js http_status=200 mime=text/javascript resource_action=updated dashboard_mode=enhanced rollback=not required cleanup=complete",
 		"- HA states loaded: 1284",
 		"- GoSungrow states found: 42",
 		"- dashboard entity refs found: 23",

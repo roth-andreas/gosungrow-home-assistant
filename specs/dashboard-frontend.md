@@ -31,6 +31,7 @@ Scope: Live flow, aggregate statistics, formatting, localization, interaction, a
 
 - **REQ-CARD-016** — Explicit card labels override built-in labels. Runtime locale lookup order is full Home Assistant/browser locale, base language, then English.
 - **REQ-CARD-017** — The frontend MUST support the same `en`, `de`, `sv`, `es` semantics as server-generated labels and preserve English fallback.
+- **REQ-CARD-018** — The delivered dashboard module MUST be self-contained with no third-party runtime imports. Evaluation MUST synchronously register the energy-flow, energy-summary, and source-mapping custom elements and their `window.customCards` metadata. Re-evaluation or upgrade MUST tolerate earlier compatible element and metadata registrations without throwing or duplicating entries.
 
 ## Prohibited behavior
 

@@ -32,13 +32,15 @@ const sandbox = {
   URLSearchParams,
   customElements: {
     define: (name, elementClass) => registry.set(name, elementClass),
+    get: (name) => registry.get(name),
   },
   navigator: { language: "en-US" },
   window: { customCards: [], confirm: () => true, location: { reload: () => {} } },
 };
 
 vm.createContext(sandbox);
-vm.runInContext(fs.readFileSync(assetPath, "utf8"), sandbox, { filename: assetPath });
+const bundleSource = fs.readFileSync(assetPath, "utf8");
+vm.runInContext(bundleSource, sandbox, { filename: assetPath });
 
 const SummaryCard = registry.get("gosungrow-energy-summary-card-v1");
 const SourceCard = registry.get("gosungrow-source-mapping-card-v1");
@@ -52,6 +54,21 @@ const metricEntities = {
   to_battery: "sensor.gosungrow_daily_to_battery",
   from_battery: "sensor.gosungrow_daily_from_battery",
 };
+
+test("bundle registration is synchronous and idempotent across compatible upgrades", () => {
+  assert.deepEqual([...registry.keys()].sort(), [
+    "gosungrow-energy-flow-card-v2",
+    "gosungrow-energy-summary-card-v1",
+    "gosungrow-source-mapping-card-v1",
+  ]);
+  assert.deepEqual(sandbox.window.customCards.map((entry) => entry.type).sort(), [...registry.keys()].sort());
+
+  const upgradeSandbox = { ...sandbox };
+  vm.createContext(upgradeSandbox);
+  vm.runInContext(bundleSource, upgradeSandbox, { filename: assetPath });
+  assert.equal(registry.size, 3);
+  assert.equal(sandbox.window.customCards.length, 3);
+});
 
 function createCard(now, liveValue) {
   const card = new SummaryCard();

@@ -1,0 +1,22 @@
+default_config:
+
+homeassistant:
+  name: GoSungrow Browser Test
+  latitude: 0
+  longitude: 0
+  elevation: 0
+  unit_system: metric
+  time_zone: UTC
+  country: DE
+  currency: EUR
+  auth_providers:
+    - type: trusted_networks
+      trusted_networks:
+        - 127.0.0.1
+        - ::1
+        - 172.16.0.0/12
+      allow_bypass_login: true
+    - type: homeassistant
+
+lovelace:
+  mode: storage

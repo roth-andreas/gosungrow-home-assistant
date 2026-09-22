@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud"
+	gosungrowoutput "github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/output"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -32,7 +32,8 @@ const (
 	defaultDashboardIcon       = "mdi:solar-power"
 	dashboardTemplateFile      = "home-assistant-sungrow-flow.yaml"
 	dashboardStateFileName     = "dashboard_state.json"
-	dashboardCardFileName      = "gosungrow-energy-flow-card-v2.js"
+	dashboardCardSourceFile    = "gosungrow-energy-flow-card-v2.js"
+	dashboardCardFilePrefix    = "gosungrow-dashboard-cards."
 	dashboardCardResourceDir   = "gosungrow"
 	dashboardCardResourceType  = "module"
 )
@@ -70,6 +71,11 @@ type haDashboardState struct {
 	DashboardStructureHash string                       `json:"dashboard_structure_hash,omitempty"`
 	TargetPsKeys           []string                     `json:"target_ps_keys,omitempty"`
 	SourceOverrides        map[string]map[string]string `json:"source_overrides,omitempty"`
+	AssetMode              string                       `json:"asset_mode,omitempty"`
+	AssetURL               string                       `json:"asset_url,omitempty"`
+	AssetHash              string                       `json:"asset_hash,omitempty"`
+	PreviousAssetURL       string                       `json:"previous_asset_url,omitempty"`
+	PreviousAssetHash      string                       `json:"previous_asset_hash,omitempty"`
 	UpdatedAt              string                       `json:"updated_at"`
 }
 
@@ -122,6 +128,15 @@ type dashboardInstallDiagnostics struct {
 	TargetDiagnostics     []dashboardTargetDiagnostics
 	DashboardSaved        bool
 	DashboardSaveReason   string
+	AssetPhase            string
+	AssetHash             string
+	AssetURL              string
+	AssetHTTPStatus       int
+	AssetMIMEType         string
+	ResourceAction        string
+	DashboardMode         string
+	RollbackResult        string
+	CleanupResult         string
 }
 
 type dashboardTargetDiagnostics struct {
@@ -254,14 +269,6 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		return fmt.Errorf("no Sungrow ESS devices were discovered")
 	}
 
-	templatePath := filepath.Join(opts.AssetDir, dashboardTemplateFile)
-
-	resourceURL, _, err := installDashboardCardAsset(opts.AssetDir, opts.HomeAssistantDir)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("Managed GoSungrow custom card resource ready at %s. If Home Assistant still shows \"Custom element not found\", hard-refresh the browser or reload the Home Assistant frontend.\n", resourceURL)
-
 	statePath := dashboardStatePath()
 	state, err := loadDashboardState(statePath)
 	if err != nil {
@@ -295,6 +302,7 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		currentConfig = nil
 	}
 
+	templatePath := filepath.Join(opts.AssetDir, dashboardTemplateFile)
 	config, err := renderDashboardConfig(templatePath, opts.DashboardTitle, targets, localeBundle)
 	if err != nil {
 		return err
@@ -341,19 +349,6 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	}
 	config, sourceOverrides := applyDashboardSourceMappings(config, currentConfig, persistedOverrides, targets, states, remapReport.Traces, opts.DashboardURLPath, localeBundle)
 
-	desiredHash, err := hashCanonicalJSON(config)
-	if err != nil {
-		return err
-	}
-	desiredStructureHash, err := hashDashboardStructure(config)
-	if err != nil {
-		return err
-	}
-
-	if err := client.EnsureResource(ctx, resourceURL, dashboardCardResourceType); err != nil {
-		return err
-	}
-
 	metadata, err := client.ListDashboards(ctx)
 	if err != nil {
 		return err
@@ -392,19 +387,108 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		return fmt.Errorf("dashboard %q was modified outside GoSungrow; set dashboard_force_update to true to replace it", opts.DashboardURLPath)
 	}
 
+	// Ownership and the complete desired dashboard are established before any
+	// filesystem, resource-registry, or dashboard mutation.
+	resourceURL, assetHash, err := installDashboardCardAsset(opts.AssetDir, opts.HomeAssistantDir)
+	if err != nil {
+		fmt.Printf("Dashboard asset lifecycle: phase=stage-failed hash=none url=none http_status=0 mime=unknown resource_action=none dashboard_mode=unknown rollback=not-required cleanup=not-run error=%q\n", err.Error())
+		return err
+	}
+	assetCommitted := false
+	defer func() {
+		if assetCommitted {
+			return
+		}
+		if state != nil && strings.EqualFold(state.AssetHash, assetHash) {
+			diagnostics.CleanupResult = "retained active version"
+		} else if cleanupErr := removeDashboardAssetVersion(opts.HomeAssistantDir, assetHash); cleanupErr != nil {
+			diagnostics.CleanupResult = "failed: " + cleanupErr.Error()
+		} else {
+			diagnostics.CleanupResult = "failed activation cleaned"
+		}
+		printDashboardInstallDiagnostics(diagnostics)
+	}()
+	diagnostics.AssetPhase = "staged"
+	diagnostics.AssetURL = resourceURL
+	diagnostics.AssetHash = assetHash
+
+	assetVerification, activationErr := verifyDashboardCardAsset(ctx, opts.HomeAssistantWSURL, opts.SupervisorToken, resourceURL, assetHash)
+	diagnostics.AssetHTTPStatus = assetVerification.StatusCode
+	diagnostics.AssetMIMEType = assetVerification.MIMEType
+	if activationErr == nil {
+		diagnostics.AssetPhase = "http-verified"
+	}
+
+	var resourceChange *dashboardResourceChange
+	if activationErr == nil {
+		resourceChange, activationErr = client.ActivateManagedResource(ctx, resourceURL)
+		if resourceChange != nil {
+			diagnostics.ResourceAction = resourceChange.Action
+		}
+		if activationErr == nil && resourceChange.Action != "unchanged" {
+			var reloadRequested bool
+			reloadRequested, activationErr = client.ReloadResourcesIfSupported(ctx)
+			if activationErr == nil && reloadRequested {
+				diagnostics.ResourceAction += "+reload-requested"
+			}
+		}
+		if activationErr == nil {
+			diagnostics.AssetPhase = "resource-verified"
+		}
+	}
+
+	existingWorking := exists && managedByState && currentConfig != nil
+	if activationErr != nil {
+		if resourceChange != nil {
+			if rollbackErr := client.RestoreManagedResources(ctx, resourceChange.Before); rollbackErr != nil {
+				diagnostics.RollbackResult = "failed: " + rollbackErr.Error()
+				return fmt.Errorf("activate dashboard asset: %w; resource rollback failed: %v", activationErr, rollbackErr)
+			}
+			diagnostics.RollbackResult = "resource restored"
+		}
+		if existingWorking {
+			return fmt.Errorf("activate dashboard asset while preserving the existing dashboard: %w", activationErr)
+		}
+
+		fallbackConfig, fallbackErr := nativeDashboardFallback(config, localeBundle)
+		if fallbackErr != nil {
+			return fmt.Errorf("activate dashboard asset: %w; build native fallback: %v", activationErr, fallbackErr)
+		}
+		if dashboardConfigContainsCustomGoSungrow(fallbackConfig) {
+			return fmt.Errorf("native dashboard fallback still contains GoSungrow custom-card references")
+		}
+		config = fallbackConfig
+		diagnostics.DashboardMode = dashboardAssetModeFallback
+		diagnostics.AssetPhase = "native-fallback"
+		fmt.Printf("Managed dashboard asset activation failed; installing the native fallback: %v\n", activationErr)
+	} else {
+		diagnostics.DashboardMode = dashboardAssetModeEnhanced
+	}
+
+	dashboardCreated := false
 	if exists {
 		if err := client.UpdateDashboard(ctx, existing.ID, opts); err != nil {
 			wsErr, ok := err.(*haWSCallError)
 			if !(ok && wsErr.IsCode("not_found")) {
-				return err
+				return rollbackDashboardInstall(ctx, client, opts.DashboardURLPath, false, currentConfig, resourceChange, fmt.Errorf("update dashboard metadata: %w", err), &diagnostics)
 			}
 			exists = false
 		}
 	}
 	if !exists {
 		if err := client.CreateDashboard(ctx, opts); err != nil {
-			return err
+			return rollbackDashboardInstall(ctx, client, opts.DashboardURLPath, false, currentConfig, resourceChange, fmt.Errorf("create managed dashboard: %w", err), &diagnostics)
 		}
+		dashboardCreated = true
+	}
+
+	desiredHash, err := hashCanonicalJSON(config)
+	if err != nil {
+		return rollbackDashboardInstall(ctx, client, opts.DashboardURLPath, dashboardCreated, currentConfig, resourceChange, err, &diagnostics)
+	}
+	desiredStructureHash, err := hashDashboardStructure(config)
+	if err != nil {
+		return rollbackDashboardInstall(ctx, client, opts.DashboardURLPath, dashboardCreated, currentConfig, resourceChange, err, &diagnostics)
 	}
 
 	shouldSaveConfig := currentHash != desiredHash || currentConfig == nil || opts.ForceUpdate
@@ -412,8 +496,31 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	diagnostics.DashboardSaveReason = dashboardSaveReason(shouldSaveConfig, currentConfig == nil, currentHash != desiredHash, opts.ForceUpdate)
 	if shouldSaveConfig {
 		if err := client.SaveConfig(ctx, opts.DashboardURLPath, config); err != nil {
-			return err
+			return rollbackDashboardInstall(ctx, client, opts.DashboardURLPath, dashboardCreated, currentConfig, resourceChange, fmt.Errorf("save managed dashboard: %w", err), &diagnostics)
 		}
+	}
+	verifiedConfig, err := client.GetConfig(ctx, opts.DashboardURLPath)
+	if err != nil {
+		return rollbackDashboardInstall(ctx, client, opts.DashboardURLPath, dashboardCreated, currentConfig, resourceChange, fmt.Errorf("re-read managed dashboard: %w", err), &diagnostics)
+	}
+	verifiedHash, err := hashCanonicalJSON(verifiedConfig)
+	if err != nil || verifiedHash != desiredHash {
+		if err == nil {
+			err = fmt.Errorf("saved dashboard hash mismatch: got %s want %s", verifiedHash, desiredHash)
+		}
+		return rollbackDashboardInstall(ctx, client, opts.DashboardURLPath, dashboardCreated, currentConfig, resourceChange, err, &diagnostics)
+	}
+
+	if resourceChange != nil && diagnostics.DashboardMode == dashboardAssetModeEnhanced {
+		if err := client.RemoveDuplicateManagedResources(ctx, resourceChange.Canonical.ID); err != nil {
+			return rollbackDashboardInstall(ctx, client, opts.DashboardURLPath, dashboardCreated, currentConfig, resourceChange, fmt.Errorf("clean duplicate managed resources: %w", err), &diagnostics)
+		}
+	}
+
+	previousAssetURL, previousAssetHash := previousDashboardAsset(state, resourceURL, assetHash, diagnostics.DashboardMode)
+	activeURL, activeHash := resourceURL, assetHash
+	if diagnostics.DashboardMode == dashboardAssetModeFallback {
+		activeURL, activeHash = "", ""
 	}
 
 	if err := saveDashboardState(statePath, &haDashboardState{
@@ -422,10 +529,23 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		DashboardStructureHash: desiredStructureHash,
 		TargetPsKeys:           targetPSKeys(targets),
 		SourceOverrides:        sourceOverrides,
+		AssetMode:              diagnostics.DashboardMode,
+		AssetURL:               activeURL,
+		AssetHash:              activeHash,
+		PreviousAssetURL:       previousAssetURL,
+		PreviousAssetHash:      previousAssetHash,
 		UpdatedAt:              time.Now().UTC().Format(time.RFC3339),
 	}); err != nil {
+		return rollbackDashboardInstall(ctx, client, opts.DashboardURLPath, dashboardCreated, currentConfig, resourceChange, fmt.Errorf("persist managed dashboard state: %w", err), &diagnostics)
+	}
+	diagnostics.AssetPhase = "committed"
+	diagnostics.RollbackResult = dashboardDiagnosticDefault(diagnostics.RollbackResult, "not required")
+	if err := cleanupDashboardAssetFiles(opts.HomeAssistantDir, activeHash, previousAssetHash); err != nil {
+		diagnostics.CleanupResult = "failed: " + err.Error()
 		return err
 	}
+	diagnostics.CleanupResult = "complete"
+	assetCommitted = true
 
 	viewCount := 0
 	if views, ok := config["views"].([]any); ok {
@@ -435,8 +555,49 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		viewCount = len(targets)
 	}
 	printDashboardInstallDiagnostics(diagnostics)
-	fmt.Printf("Managed GoSungrow dashboard ready at /%s with %d view(s).\n", opts.DashboardURLPath, viewCount)
+	fmt.Printf("Managed GoSungrow dashboard ready at /%s with %d view(s) in %s mode.\n", opts.DashboardURLPath, viewCount, diagnostics.DashboardMode)
 	return nil
+}
+
+func previousDashboardAsset(state *haDashboardState, nextURL, nextHash, mode string) (string, string) {
+	if state == nil {
+		return "", ""
+	}
+	if mode != dashboardAssetModeEnhanced || state.AssetURL == "" || state.AssetHash == "" || state.AssetURL == nextURL || state.AssetHash == nextHash {
+		return state.PreviousAssetURL, state.PreviousAssetHash
+	}
+	return state.AssetURL, state.AssetHash
+}
+
+func rollbackDashboardInstall(ctx context.Context, client *haWSClient, urlPath string, dashboardCreated bool, currentConfig map[string]any, resourceChange *dashboardResourceChange, cause error, diagnostics *dashboardInstallDiagnostics) error {
+	var rollbackErrors []string
+	if dashboardCreated {
+		if err := client.DeleteDashboard(ctx, urlPath); err != nil {
+			rollbackErrors = append(rollbackErrors, "dashboard delete: "+err.Error())
+		}
+	} else if currentConfig != nil {
+		if err := client.SaveConfig(ctx, urlPath, currentConfig); err != nil {
+			rollbackErrors = append(rollbackErrors, "dashboard restore: "+err.Error())
+		}
+	}
+	if resourceChange != nil {
+		if err := client.RestoreManagedResources(ctx, resourceChange.Before); err != nil {
+			rollbackErrors = append(rollbackErrors, "resource restore: "+err.Error())
+		}
+	}
+	if len(rollbackErrors) == 0 {
+		diagnostics.RollbackResult = "complete"
+		return cause
+	}
+	diagnostics.RollbackResult = "failed: " + strings.Join(rollbackErrors, "; ")
+	return fmt.Errorf("%w; rollback failed: %s", cause, strings.Join(rollbackErrors, "; "))
+}
+
+func dashboardDiagnosticDefault(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
 }
 
 func (c *CmdHa) discoverDashboardTargets(args []string) ([]haDashboardTarget, error) {
@@ -639,13 +800,16 @@ func renderDashboardConfig(templatePath string, dashboardTitle string, targets [
 }
 
 func installDashboardCardAsset(assetDir string, homeAssistantDir string) (string, string, error) {
-	sourcePath := filepath.Join(assetDir, dashboardCardFileName)
+	sourcePath := filepath.Join(assetDir, dashboardCardSourceFile)
 	data, err := os.ReadFile(sourcePath)
 	if err != nil {
 		return "", "", err
 	}
 
 	candidates := uniqueNonEmptyStrings([]string{homeAssistantDir, "/homeassistant", "/config"})
+	sum := sha256.Sum256(data)
+	fullHash := hex.EncodeToString(sum[:])
+	fileName := dashboardCardFilePrefix + fullHash[:12] + ".js"
 	var lastErr error
 	var wrote bool
 	for _, dir := range candidates {
@@ -655,8 +819,17 @@ func installDashboardCardAsset(assetDir string, homeAssistantDir string) (string
 			continue
 		}
 
-		targetPath := filepath.Join(targetDir, dashboardCardFileName)
-		if err := os.WriteFile(targetPath, data, 0644); err != nil {
+		targetPath := filepath.Join(targetDir, fileName)
+		if err := gosungrowoutput.PlainFileWrite(targetPath, data, 0644); err != nil {
+			lastErr = err
+			continue
+		}
+		written, err := os.ReadFile(targetPath)
+		if err != nil || sha256.Sum256(written) != sum {
+			if err == nil {
+				err = fmt.Errorf("staged dashboard asset hash mismatch")
+			}
+			_ = os.Remove(targetPath)
 			lastErr = err
 			continue
 		}
@@ -670,10 +843,7 @@ func installDashboardCardAsset(assetDir string, homeAssistantDir string) (string
 		return "", "", lastErr
 	}
 
-	sum := sha256.Sum256(data)
-	version := hex.EncodeToString(sum[:6])
-	encoded := base64.StdEncoding.EncodeToString(data)
-	return fmt.Sprintf("data:text/javascript;base64,%s#v=%s", encoded, version), version, nil
+	return fmt.Sprintf("/local/%s/%s", dashboardCardResourceDir, fileName), fullHash, nil
 }
 
 func uniqueNonEmptyStrings(values []string) []string {
@@ -938,6 +1108,17 @@ func printDashboardInstallDiagnostics(diagnostics dashboardInstallDiagnostics) {
 func writeDashboardInstallDiagnostics(w io.Writer, diagnostics dashboardInstallDiagnostics) {
 	fmt.Fprintln(w, "Dashboard diagnostics:")
 	fmt.Fprintf(w, "- context: %s\n", dashboardDiagnosticContext(diagnostics.DiagnosticContext))
+	fmt.Fprintf(w, "- asset: phase=%s hash=%s url=%s http_status=%d mime=%s resource_action=%s dashboard_mode=%s rollback=%s cleanup=%s\n",
+		dashboardDiagnosticDefault(diagnostics.AssetPhase, "not-started"),
+		dashboardDiagnosticDefault(diagnostics.AssetHash, "none"),
+		dashboardDiagnosticDefault(diagnostics.AssetURL, "none"),
+		diagnostics.AssetHTTPStatus,
+		dashboardDiagnosticDefault(diagnostics.AssetMIMEType, "unknown"),
+		dashboardDiagnosticDefault(diagnostics.ResourceAction, "none"),
+		dashboardDiagnosticDefault(diagnostics.DashboardMode, "unknown"),
+		dashboardDiagnosticDefault(diagnostics.RollbackResult, "not-required"),
+		dashboardDiagnosticDefault(diagnostics.CleanupResult, "not-run"),
+	)
 	if diagnostics.HAStatesLoadError != "" {
 		fmt.Fprintf(w, "- HA states loaded: failed (%s)\n", diagnostics.HAStatesLoadError)
 	} else {
@@ -1099,7 +1280,7 @@ func saveDashboardState(path string, state *haDashboardState) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0600)
+	return gosungrowoutput.PlainFileWrite(path, data, 0600)
 }
 
 func deepCopyJSONValue(value any) (any, error) {
@@ -1342,7 +1523,7 @@ func (c *haWSClient) ListDashboards(_ context.Context) ([]haDashboardMetadata, e
 
 func (c *haWSClient) ListResources(_ context.Context) ([]haResourceMetadata, error) {
 	var resources []haResourceMetadata
-	if err := c.call(map[string]any{"type": "lovelace/resources"}, &resources); err != nil {
+	if err := c.call(map[string]any{"type": "lovelace/resources/list"}, &resources); err != nil {
 		return nil, err
 	}
 	return resources, nil
@@ -1469,7 +1650,11 @@ func matchesManagedDashboardCardResource(url string) bool {
 	if base == "data:text/javascript;base64," {
 		return true
 	}
-	return strings.Contains(base, "/"+dashboardCardResourceDir+"/"+dashboardCardFileName) || strings.Contains(base, dashboardCardFileName)
+	lower := strings.ToLower(base)
+	if index := strings.LastIndex(lower, "/"); index >= 0 {
+		lower = lower[index+1:]
+	}
+	return lower == dashboardCardSourceFile || managedDashboardBundlePattern.MatchString(lower)
 }
 
 func (c *haWSClient) CreateDashboard(_ context.Context, opts haDashboardInstallOptions) error {
@@ -1492,6 +1677,23 @@ func (c *haWSClient) UpdateDashboard(_ context.Context, dashboardID string, opts
 		"show_in_sidebar": opts.ShowInSidebar,
 		"require_admin":   opts.RequireAdmin,
 	}, nil)
+}
+
+func (c *haWSClient) DeleteDashboard(ctx context.Context, urlPath string) error {
+	dashboards, err := c.ListDashboards(ctx)
+	if err != nil {
+		return err
+	}
+	for _, dashboard := range dashboards {
+		if dashboard.URLPath != urlPath || strings.TrimSpace(dashboard.ID) == "" {
+			continue
+		}
+		return c.call(map[string]any{
+			"type":         "lovelace/dashboards/delete",
+			"dashboard_id": dashboard.ID,
+		}, nil)
+	}
+	return nil
 }
 
 func (c *haWSClient) GetConfig(_ context.Context, urlPath string) (map[string]any, error) {

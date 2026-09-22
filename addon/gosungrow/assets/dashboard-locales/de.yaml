@@ -1,4 +1,5 @@
 dashboard:
+  native_fallback_source_notice: Erweiterte Dashboard-Karten sind voruebergehend nicht verfuegbar. Live-Daten bleiben sichtbar; die Quellenauswahl kann bis zur automatischen Wiederherstellung nicht verfuegbar sein.
   view_overview: "\u00dcbersicht"
   view_aggregates: Aggregate
   view_trends: Trends

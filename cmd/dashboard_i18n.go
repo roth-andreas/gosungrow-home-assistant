@@ -27,6 +27,7 @@ var defaultDashboardLocaleBundle = dashboardLocaleBundle{
 		"view_data_sources":             "Data Sources",
 		"source_title":                  "Data Sources",
 		"source_subtitle":               "Review automatic matches or choose a dashboard override.",
+		"native_fallback_source_notice": "Enhanced dashboard cards are temporarily unavailable. Live data remains available, but source editing may be unavailable until automatic recovery completes.",
 		"source_automatic":              "Automatic",
 		"source_manual":                 "Manual",
 		"source_needs_review":           "Needs review",

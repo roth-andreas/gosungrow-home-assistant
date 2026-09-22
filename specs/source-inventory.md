@@ -32,6 +32,7 @@ The patterns are repository-relative and are checked by `scripts/check_specs.py`
 | `tools/preview/*.html` | local preview shell | `REQ-CARD-*`, `REQ-SRC-*` |
 | `tools/preview/*.cjs` | frontend verification | `REQ-CARD-*`, `REQ-SRC-*` |
 | `tools/*.mjs` | frontend verification | `REQ-CARD-*` |
+| `tools/ha-e2e/**` | pinned Home Assistant browser integration fixtures and verification | `REQ-CARD-*`, `REQ-DASH-*`, `REQ-REL-*`, `REQ-ACC-*` |
 | `.github/workflows/*.yml` | validation and publishing | `REQ-REL-*`, `REQ-GOV-*` |
 | `.github/assets/**` | user-facing illustrative screenshots | `REQ-GOV-008`; informative only |
 | `.agents/skills/**` | assistant change-control workflow | `REQ-GOV-*`, `REQ-COMP-*` |

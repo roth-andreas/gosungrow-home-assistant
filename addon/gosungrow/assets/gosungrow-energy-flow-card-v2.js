@@ -2294,23 +2294,29 @@ class GoSungrowSourceMappingCard extends HTMLElement {
   `; }
 }
 
-customElements.define("gosungrow-energy-flow-card-v2", GoSungrowEnergyFlowCard);
-customElements.define("gosungrow-energy-summary-card-v1", GoSungrowEnergySummaryCard);
-customElements.define("gosungrow-source-mapping-card-v1", GoSungrowSourceMappingCard);
+const goSungrowElements = [
+  ["gosungrow-energy-flow-card-v2", GoSungrowEnergyFlowCard],
+  ["gosungrow-energy-summary-card-v1", GoSungrowEnergySummaryCard],
+  ["gosungrow-source-mapping-card-v1", GoSungrowSourceMappingCard],
+];
+for (const [name, constructor] of goSungrowElements) {
+  if (!customElements.get(name)) customElements.define(name, constructor);
+}
 
 window.customCards = window.customCards || [];
-window.customCards.push({
+const goSungrowCardMetadata = [{
   type: "gosungrow-energy-flow-card-v2",
   name: "GoSungrow Energy Flow Card v2",
   description: "Custom Sungrow energy flow card with Energy dashboard-inspired layout.",
-});
-window.customCards.push({
+}, {
   type: "gosungrow-source-mapping-card-v1",
   name: "GoSungrow Data Sources",
   description: "Review automatic dashboard matches and choose persistent source overrides.",
-});
-window.customCards.push({
+}, {
   type: "gosungrow-energy-summary-card-v1",
   name: "GoSungrow Energy Summary Card",
   description: "Day, month, and year energy aggregates for GoSungrow sensors.",
-});
+}];
+for (const metadata of goSungrowCardMetadata) {
+  if (!window.customCards.some((entry) => entry && entry.type === metadata.type)) window.customCards.push(metadata);
+}

@@ -15,7 +15,7 @@ Scope: Error taxonomy, retry eligibility, files, secrets, determinism, and compa
 - **REQ-XCUT-005** — JSON/config/cache writes that replace existing data MUST write a temporary sibling, set requested mode, sync, close, then rename. Temporary files MUST be cleaned on failure; Windows MAY remove the old destination immediately before rename.
 - **REQ-XCUT-006** — Parent directories MUST be created with `0755`; normal cached JSON uses the implementation default mode and dashboard state uses `0600`.
 - **REQ-XCUT-007** — Removing a nonexistent cache file succeeds. An `unexpected end of JSON input` or JSON syntax error is corruption eligible for cache removal/refetch.
-- **REQ-XCUT-008** — Runtime state inside the app MUST live under `/data/.GoSungrow`; assets are read from `/opt/gosungrow/assets`; Home Assistant public card copies live under a config root's `www/gosungrow`.
+- **REQ-XCUT-008** — Runtime state inside the app MUST live under `/data/.GoSungrow`; assets are read from `/opt/gosungrow/assets`; Home Assistant public assets MUST live only under a config root's `www/gosungrow` and use content-addressed immutable names. Staging remnants and unactivated failed versions MUST be cleaned safely without removing the last verified working version.
 
 ## Security and privacy
 
@@ -36,6 +36,7 @@ Scope: Error taxonomy, retry eligibility, files, secrets, determinism, and compa
 - **REQ-XCUT-017** — Logs MUST identify lifecycle step, retry attempt/delay, sync cycle and endpoint, target selection, and actionable failure category. Multi-stage failure diagnostics MUST also identify the first retained failure, terminal stop reason, and selected recovery action. Repeated Docker-DNS remediation guidance SHOULD be emitted once per outage.
 - **REQ-XCUT-018** — Successful recovery MUST log outage duration and resumption of the normal schedule.
 - **REQ-XCUT-019** — Failure classification MUST remain separate from rendered error text across nested recovery and process boundaries. A later fallback failure MUST NOT replace earlier causal evidence or change the selected recovery action merely because its message contains text associated with another failure category.
+- **REQ-XCUT-020** — Resource delivery and rollback diagnostics MUST be bounded and structured around lifecycle metadata. JavaScript bodies, encoded asset URLs, credentials, and tokens MUST never be logged.
 
 ## Prohibited behavior
 

@@ -18,6 +18,7 @@ GoSungrow is primarily a Home Assistant app. It authenticates to Sungrow iSolarC
 - **REQ-PROD-007** — Multiple plants and multiple selected targets MUST remain isolated by stable Sungrow identifiers.
 - **REQ-PROD-008** — The system SHOULD prefer conservative absence or an explicit review state over silently assigning semantically ambiguous energy data.
 - **REQ-PROD-009** — All externally visible output MUST be deterministic for identical inputs, except timestamps, random transport material, network ordering normalized by the specification, and explicitly live Home Assistant values.
+- **REQ-PROD-010** — The managed dashboard MUST retain a resource-independent usable native mode when browser enhancements cannot be activated. Custom-card delivery failure MUST affect only enhanced presentation and dashboard source editing; it MUST NOT interrupt MQTT publication, native live metrics, dashboard reconciliation, or require a Home Assistant restart.
 
 ## Component responsibilities
 

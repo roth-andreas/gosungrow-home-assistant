@@ -36,6 +36,10 @@ Scope: Cross-subsystem executable examples
 - **REQ-ACC-017** — Given a stale dashboard between preview and save, save aborts and local state remains unchanged. Given successful save, re-read verifies every binding before local update.
 - **REQ-ACC-018** — Given locale `de-DE`, lookup uses `de`; unknown locale uses English; every supported locale has parity.
 - **REQ-ACC-019** — Given source-only dashboard changes, structure hash remains stable; unrelated layout change is external modification and blocks non-forced replacement.
+- **REQ-ACC-033** — Given a fresh installation, the installer stages a hashed local module, verifies its Home Assistant HTTP response and resource registration, and the three custom elements load after at most one ordinary browser reload; no data URL or CDN URL is registered.
+- **REQ-ACC-034** — Given an existing working installation and a forced failure at each staging, verification, resource mutation, resource re-read, dashboard save, dashboard re-read, or state-persistence boundary, the prior resource and dashboard remain usable. Given success, exactly one canonical managed resource remains and only the active and immediately previous verified bundles are retained.
+- **REQ-ACC-035** — Given a fresh installation whose asset cannot be activated, the saved dashboard uses native cards and no `custom:gosungrow-*` references. Given a later healthy reconciliation, it promotes to enhanced mode without losing targets or source-selection decisions.
+- **REQ-ACC-036** — Given the pinned real Home Assistant browser fixture, opening the managed dashboard without a hard refresh loads the registered module, defines all three GoSungrow elements, and displays no configuration-error card.
 
 ## Frontend summaries
 
@@ -62,3 +66,5 @@ Scope: Cross-subsystem executable examples
 ## Prohibited behavior
 
 An acceptance test MUST NOT weaken its governing subsystem requirement. When an example and a subsystem requirement appear inconsistent, the more specific safety constraint wins and the inconsistency must be corrected.
+
+Acceptance behavior MUST NOT log JavaScript bundle contents, store custom-card references before activation succeeds, delete the last verified working bundle, mutate unrelated Lovelace resources, or require HACS, a CDN, or a Home Assistant restart.

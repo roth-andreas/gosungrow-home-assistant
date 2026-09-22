@@ -12,6 +12,8 @@ logfile
 /%USERPROFILE%/
 .idea/
 tools/preview/output/
+tools/preview/screenshots/
 __pycache__/
 *.pyc
+node_modules/
 

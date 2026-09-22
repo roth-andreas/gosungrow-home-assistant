@@ -18,6 +18,7 @@ on:
       - "scripts/**"
       - "tools/preview/gosungrow-source-mapping-card.test.cjs"
       - "tools/test_energy_summary_card.mjs"
+      - "tools/ha-e2e/**"
       - "addon/gosungrow/**"
       - "cmd/**"
       - "cmdHassio/**"
@@ -37,6 +38,7 @@ on:
       - "scripts/**"
       - "tools/preview/gosungrow-source-mapping-card.test.cjs"
       - "tools/test_energy_summary_card.mjs"
+      - "tools/ha-e2e/**"
       - "addon/gosungrow/**"
       - "cmd/**"
       - "cmdHassio/**"
@@ -115,6 +117,33 @@ jobs:
         run: |
           node tools/preview/gosungrow-source-mapping-card.test.cjs
           node tools/test_energy_summary_card.mjs
+
+      - name: Install browser smoke dependencies
+        run: |
+          npm ci --prefix tools/ha-e2e
+          tools/ha-e2e/node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Run dashboard smoke against pinned Home Assistant Core
+        shell: bash
+        env:
+          HA_CORE_IMAGE: ghcr.io/home-assistant/home-assistant:2026.9.3
+        run: |
+          fixture="$RUNNER_TEMP/gosungrow-ha-e2e"
+          mkdir -p "$fixture/www/gosungrow"
+          cp tools/ha-e2e/configuration.yaml "$fixture/configuration.yaml"
+          asset="addon/gosungrow/assets/gosungrow-energy-flow-card-v2.js"
+          asset_hash="$(sha256sum "$asset" | awk '{print $1}')"
+          asset_name="gosungrow-dashboard-cards.${asset_hash:0:12}.js"
+          cp "$asset" "$fixture/www/gosungrow/$asset_name"
+          docker run -d --name gosungrow-ha-e2e \
+            -p 8123:8123 \
+            -v "$fixture:/config" \
+            "$HA_CORE_IMAGE"
+          trap 'docker logs gosungrow-ha-e2e || true; docker rm -f gosungrow-ha-e2e >/dev/null 2>&1 || true' EXIT
+          HA_E2E_URL=http://127.0.0.1:8123 \
+          HA_E2E_RESOURCE_URL="/local/gosungrow/$asset_name" \
+          HA_E2E_RESOURCE_HASH="$asset_hash" \
+            node tools/ha-e2e/dashboard_resource_smoke.mjs
 
       - name: Validate app startup script
         shell: bash

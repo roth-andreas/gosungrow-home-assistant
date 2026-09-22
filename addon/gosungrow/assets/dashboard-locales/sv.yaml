@@ -1,4 +1,5 @@
 dashboard:
+  native_fallback_source_notice: De avancerade panelkorten ar tillfalligt otillgangliga. Livedata visas fortfarande; kallredigering kan saknas tills automatisk aterstallning ar klar.
   view_overview: "\u00d6versikt"
   view_aggregates: Aggregat
   view_trends: Trender
