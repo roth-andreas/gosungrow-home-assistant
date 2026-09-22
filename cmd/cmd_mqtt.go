@@ -64,6 +64,10 @@ var mqttApiLogin = func(force bool) error {
 	return cmds.Api.ApiLogin(force)
 }
 
+var mqttLoadPlantTrees = func() (iSolarCloud.PsTrees, error) {
+	return cmds.Api.SunGrow.PsTreeMenu()
+}
+
 //goland:noinspection GoNameStartsWithPackageName
 type CmdMqtt struct {
 	CmdDefault
@@ -88,6 +92,7 @@ type CmdMqtt struct {
 	now                 func() time.Time
 	syncCycle           uint64
 	currentSyncEndpoint string
+	plantTopologies     map[string]iSolarCloud.PlantTopology
 }
 
 func NewCmdMqtt(logLevel string) *CmdMqtt {
@@ -109,6 +114,7 @@ func NewCmdMqtt(logLevel string) *CmdMqtt {
 			optionSleepDelay:    time.Second * 40, // Takes up to 40 seconds for data to come in.
 			optionFetchSchedule: time.Minute * 5,
 			previous:            make(map[string]*api.DataEntries, 0),
+			plantTopologies:     make(map[string]iSolarCloud.PlantTopology),
 			now:                 time.Now,
 		}
 	}
@@ -236,6 +242,7 @@ func (c *CmdMqtt) MqttArgs(_ *cobra.Command, _ []string) error {
 		c.log.Info("Found SunGrow %d devices\n", len(c.Client.SungrowDevices))
 		c.log.Info("SunGrow device types: %s\n", formatSungrowDeviceTypeSummary(c.Client.SungrowDevices))
 		c.logRealtimePsKeySelections(c.Client.SungrowDevices)
+		c.refreshPlantTopologies()
 		c.Client.DeviceName = DefaultServiceName
 		_, c.Error = c.Client.SetDeviceConfig(
 			c.Client.DeviceName, c.Client.DeviceName,
@@ -432,6 +439,7 @@ func (c *CmdMqtt) Cron() error {
 			if c.Error != nil {
 				break
 			}
+			c.refreshPlantTopologies()
 
 			c.Error = c.collectAndPublish(newDay)
 			failureEndpoint = c.currentSyncEndpoint
@@ -500,7 +508,16 @@ func (c *CmdMqtt) collectAndPublishBatch(batch mqttEndpointBatch, newDay bool) e
 		return err
 	}
 
-	for _, result := range data.Results {
+	resultKeys := make([]string, 0, len(data.Results))
+	for key := range data.Results {
+		resultKeys = append(resultKeys, key)
+	}
+	sort.Strings(resultKeys)
+	for _, key := range resultKeys {
+		result := data.Results[key]
+		if stringSliceContains(batch.Endpoints, "queryDeviceList") {
+			c.addCanonicalPlantPVPower(&result.Response.Data)
+		}
 		if err := c.Update(result.EndPointName.String(), result.Response.Data, newDay); err != nil {
 			return err
 		}
@@ -508,6 +525,57 @@ func (c *CmdMqtt) collectAndPublishBatch(batch mqttEndpointBatch, newDay bool) e
 	c.log.Info("Sync cycle %d: completed %s.\n", c.syncCycle, c.currentSyncEndpoint)
 
 	return nil
+}
+
+func (c *CmdMqtt) refreshPlantTopologies() {
+	trees, err := mqttLoadPlantTrees()
+	topologies := iSolarCloud.BuildPlantTopologies(trees)
+	plantIDs := mqttPlantIDs(c.Client.SungrowDevices)
+	for _, psID := range plantIDs {
+		topology, ok := topologies[psID]
+		if !ok {
+			topology = iSolarCloud.PlantTopology{PsID: psID, Complete: false, Reason: "plant topology unavailable"}
+			topologies[psID] = topology
+		}
+		if err != nil || !topology.Complete {
+			reason := topology.Reason
+			if reason == "" && err != nil {
+				reason = err.Error()
+			}
+			c.log.Info("Plant PV aggregation warning: ps_id=%s topology unavailable: %s\n", psID, reason)
+		}
+	}
+	c.plantTopologies = topologies
+}
+
+func mqttPlantIDs(devices getDeviceList.Devices) []string {
+	seen := make(map[string]bool)
+	for _, device := range devices {
+		psID := strings.TrimSpace(device.PsId.String())
+		if psID != "" {
+			seen[psID] = true
+		}
+	}
+	plantIDs := make([]string, 0, len(seen))
+	for psID := range seen {
+		plantIDs = append(plantIDs, psID)
+	}
+	sort.Strings(plantIDs)
+	return plantIDs
+}
+
+func (c *CmdMqtt) addCanonicalPlantPVPower(data *api.DataMap) {
+	plantIDs := make([]string, 0, len(c.plantTopologies))
+	for psID := range c.plantTopologies {
+		plantIDs = append(plantIDs, psID)
+	}
+	sort.Strings(plantIDs)
+	for _, psID := range plantIDs {
+		result := iSolarCloud.AddCanonicalPlantPVPower(data, c.plantTopologies[psID])
+		if result.Added {
+			c.log.Debug("Plant PV aggregate: ps_id=%s source=%s contributors=%d\n", psID, result.Source, result.Contributors)
+		}
+	}
 }
 
 func (c *CmdMqtt) getRealtimePsKeyTargets() []realtimePsKeyTarget {

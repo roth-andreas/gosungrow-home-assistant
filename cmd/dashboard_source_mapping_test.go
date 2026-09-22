@@ -88,6 +88,45 @@ func TestDashboardSourceMappingPinsExistingChoiceAndOffersSemanticUpgrade(t *tes
 	}
 }
 
+func TestDashboardSourceMappingOffersCanonicalPlantPVUpgrade(t *testing.T) {
+	target := haDashboardTarget{PsID: "100", PsKey: "100_55_1_1", PlantDevices: []dashboardPlantDevice{
+		{PsKey: "100_55_1_1", DeviceType: 55}, {PsKey: "100_55_1_2", DeviceType: 55},
+	}}
+	oldEntity := "sensor.gosungrow_100_55_1_1_microinverter1_total_dc_power"
+	plantEntity := "sensor.gosungrow_virtual_100_pv_power"
+	placeholder := "sensor.gosungrow_template_pv_power"
+	makeConfig := func() map[string]any {
+		return map[string]any{"views": []any{
+			map[string]any{"path": "overview", "cards": []any{map[string]any{"type": "tile", "entity": placeholder}}},
+			map[string]any{"path": "data-sources", "cards": []any{map[string]any{"type": dashboardSourceMappingCardType, "schema_version": 1, "mapping_id": target.PsKey}}},
+		}}
+	}
+	states := []haState{
+		dashboardTestState(oldEntity, "1", "kW"),
+		dashboardTestState(plantEntity, "3", "kW"),
+	}
+	trace := []dashboardMetricTrace{{Metric: "pv_power", TargetPsKey: target.PsKey, Placeholder: placeholder, Resolved: oldEntity}}
+	mappingID := dashboardSourceMappingID(target)
+	current := map[string]any{"views": []any{map[string]any{"cards": []any{map[string]any{
+		"type": dashboardSourceMappingCardType, "schema_version": 1, "mapping_id": mappingID,
+		"defaults": map[string]any{"pv_power": oldEntity}, "pinned_defaults": map[string]any{"pv_power": oldEntity},
+	}}}}}
+
+	existing, _ := applyDashboardSourceMappings(makeConfig(), current, nil, []haDashboardTarget{target}, states, trace, "gosungrow", defaultDashboardLocaleBundle)
+	card := findDashboardSourceMappingCard(existing, mappingID)
+	if got := anyMapToStringMap(card["defaults"])["pv_power"]; got != oldEntity {
+		t.Fatalf("pinned source = %q, want %q", got, oldEntity)
+	}
+	if got := anyMapToStringMap(card["recommendations"])["pv_power"]; got != plantEntity {
+		t.Fatalf("plant recommendation = %q, want %q", got, plantEntity)
+	}
+
+	fresh, _ := applyDashboardSourceMappings(makeConfig(), nil, nil, []haDashboardTarget{target}, states, trace, "gosungrow", defaultDashboardLocaleBundle)
+	if got := fresh["views"].([]any)[0].(map[string]any)["cards"].([]any)[0].(map[string]any)["entity"]; got != plantEntity {
+		t.Fatalf("fresh pv source = %v, want %q", got, plantEntity)
+	}
+}
+
 func TestDashboardSourceMappingSeparatesMetricsThatPreviouslySharedEntity(t *testing.T) {
 	target, states := issue19SemanticFixture()
 	exportPlaceholder := "sensor.gosungrow_template_grid_export_today"

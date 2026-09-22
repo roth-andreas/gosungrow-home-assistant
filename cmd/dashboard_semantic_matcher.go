@@ -111,6 +111,15 @@ func dashboardSemanticRecommendation(target haDashboardTarget, metric string, st
 	if !ok {
 		return dashboardSemanticMatch{}
 	}
+	if strings.EqualFold(metric, "pv_power") {
+		entity := "sensor.gosungrow_virtual_" + strings.ToLower(strings.TrimSpace(target.PsID)) + "_pv_power"
+		for _, state := range states {
+			if strings.EqualFold(strings.TrimSpace(state.EntityID), entity) && dashboardMetricStateRejectionReason(state, dashboardMetricProfileFor(metric)) == "" {
+				candidate := dashboardMetricCandidate{Entity: state.EntityID, Metric: metric, Score: 9999, State: state.State, Unit: dashboardStateUnit(state), Source: "plant-aggregate", Reason: "Canonical plant PV aggregate", Scope: "plant", Compatibility: "compatible"}
+				return dashboardSemanticMatch{Entity: state.EntityID, Score: 9999, Reason: candidate.Reason, Confident: true, Candidates: []dashboardMetricCandidate{candidate}}
+			}
+		}
+	}
 	if len(contract.sources) > 0 {
 		return dashboardCanonicalRecommendation(target, metric, contract, states, singleTarget)
 	}
@@ -191,6 +200,9 @@ func dashboardLegacySemanticRecommendation(target haDashboardTarget, metric stri
 		return dashboardSemanticMatch{}
 	}
 	confident := len(values) == 1 || values[0].Score-values[1].Score >= 20 || dashboardEquivalentDuplicate(values[0], values[1])
+	if strings.EqualFold(metric, "pv_power") && dashboardDistinctProducerCandidates(target, values) > 1 {
+		confident = false
+	}
 	return dashboardSemanticMatch{Entity: values[0].Entity, Score: values[0].Score, Confident: confident, Candidates: values, Reason: "Semantic match: compatible device role, direction and measurement period"}
 }
 

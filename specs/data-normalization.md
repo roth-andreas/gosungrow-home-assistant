@@ -19,7 +19,7 @@ Scope: Typed JSON values, reflection-to-point conversion, metadata, formulas, an
 - **REQ-DATA-009** — `PointIgnore` fields and invalid aggregate children MUST not be published as standalone points. Arrays marked flatten MUST become one value; data-table fields retain row structure for human output.
 - **REQ-DATA-010** — Update frequencies are exactly `instant`, `5mins`, `15mins`, `30mins`, `boot`, `daily`, `monthly`, `yearly`, and `total`.
 - **REQ-DATA-011** — Query-device point data MUST be copied into a `virtual.<ps_key>` namespace, falling back to `virtual.<ps_id>` only when the key is empty. Each copied point keeps source ID/name/unit/timestamp/group and gets the selected target as device.
-- **REQ-DATA-012** — Virtual builders run only for Energy Storage System devices (`device_type=14`). A missing source point MUST skip only dependent virtual points and MUST NOT panic or create a zero-valued substitute.
+- **REQ-DATA-012** — Device-target virtual builders run only for Energy Storage System devices (`device_type=14`). Canonical plant `pv_power` aggregation is a separate per-plant virtual operation permitted for every plant with a usable `ps_id`. A missing source point MUST skip only dependent virtual points and MUST NOT panic or create a zero-valued substitute.
 - **REQ-DATA-013** — An `*_active` virtual is a Boolean created from its source point: `true` exactly when the source's first value is nonzero, otherwise `false`; its unit becomes `--` and value type becomes `Bool`. Copied non-active source values retain their source semantics.
 
 ## Virtual power formulas
@@ -88,8 +88,18 @@ All formulas use values in compatible normalized units.
 - **REQ-DATA-019** — When an existing endpoint selection file lacks a default endpoint or required include, defaults MUST be merged in without removing user excludes or includes.
 - **REQ-DATA-020** — Only valid points, allowed by endpoint include/exclude patterns, with valid values MAY reach entity publication.
 
+## Canonical plant PV power
+
+- **REQ-DATA-021** — A canonical plant PV result MUST be emitted at `virtual.<ps_id>.pv_power` with name `Plant PV Power`, unit `kW`, update frequency `5mins`, precision three, and the oldest timestamp among selected contributors.
+- **REQ-DATA-022** — Native candidates are non-virtual plant-scoped points with identifiers `p83076`, `p83076_map`, `p83033`, `p83002`, `plant_power`, `pv_power`, and `solar_power`, in that order. The first valid power-compatible candidate MUST win, and no device value may be added to it.
+- **REQ-DATA-023** — Without a native total, producer leaves are non-plant devices whose discovered point metadata contains an AC candidate or DC candidate. AC precedence per device is inverter-context `p24`, `inverter_ac_power`, `total_active_power`, then `active_power`; DC precedence is `total_dc_power`, then `dc_power`. Using the complete plant topology from `REQ-API-031`, a producer leaf is a producer device whose UUID is not referenced as `UpUUID` by another producer candidate. Select at most one point per device. Use AC only when every producer leaf has a valid AC value; otherwise use DC only when every producer leaf has a valid DC value.
+- **REQ-DATA-024** — Every selected contributor MUST be finite, belong to the same plant and successful collection snapshot, and have a unit convertible from `W`, `kW`, or `MW` to `kW`. An absent `ps_id`, empty producer set, incomplete topology, missing contributor, incompatible unit, mixed measurement basis, or invalid value MUST omit the aggregate rather than create zero or a partial total. Native plant totals do not require topology.
+
 ## Prohibited behavior
 
 - Creating dependent virtual data when a source point is absent.
 - Treating the legacy calculated direct-solar aliases as verified native `p13116`.
 - Converting unknown unit spellings by case-insensitive prefix guessing.
+- Mixing AC and DC contributors in plant `pv_power`.
+- Summing a native or parent aggregate together with its producer leaves.
+- Publishing a partial producer sum as complete plant production.

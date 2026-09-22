@@ -67,6 +67,8 @@ GoSungrow continues to choose dashboard sensors automatically. If a Sungrow mode
 - Overrides are stored in the managed dashboard and preserved when GoSungrow updates it. A missing manually selected entity remains visible as unavailable instead of silently changing back.
 - Installations with multiple plants or targets are isolated: changing one target cannot rewrite another target that happens to share a plant-level sensor.
 
+For multi-inverter and microinverter plants, GoSungrow publishes a stable `sensor.gosungrow_virtual_<plant-id>_pv_power` entity when it can use a native plant total or build a complete sum from compatible producer readings. AC and DC readings are never mixed, and incomplete device topology does not produce a partial total. New dashboards select this entity automatically. Existing manual selections remain unchanged; an older pinned automatic device source is marked for review and offered the plant aggregate as the preferred replacement.
+
 Non-administrator users can inspect the selected sources but cannot modify them.
 
 ## Notes

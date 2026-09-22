@@ -46,6 +46,7 @@ Scope: Identifiers, devices, measurements, periods, and energy meanings
 - **REQ-DOM-013** — A single inverter value MUST NOT silently represent plant production when multiple inverter-like devices make it incomplete.
 - **REQ-DOM-014** — Physical validation MUST flag direct solar consumption materially above solar production, using relative tolerance `5%` and absolute tolerance `0.1` in the entities' compatible energy unit.
 - **REQ-DOM-015** — The live flow card's displayed battery node uses the presentation convention discharge positive and charge negative, derived from directional flows. The published legacy `battery_power` virtual point retains the opposite sign convention specified in [data-normalization.md](data-normalization.md); consumers MUST NOT silently assume the two conventions are identical.
+- **REQ-DOM-016** — Plant-scoped `pv_power` MUST represent one canonical total for the plant. Its measurement basis is, in order, a native plant total, a complete AC producer-leaf aggregate, or a complete DC producer-leaf aggregate. Contributors MUST use one basis consistently; a device-scoped value MUST NOT represent the plant total when multiple producer devices make it incomplete.
 
 ## Device-type catalog
 

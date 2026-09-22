@@ -33,6 +33,7 @@ The specification is authoritative; this map helps locate derived artifacts.
 | `cmd/cmd_api_test.go` | `REQ-API-002`, `007`–`009`; `REQ-XCUT-002`–`004` |
 | `cmd/failure_class_test.go` | `REQ-ADDON-008`–`011`; `REQ-XCUT-019`; `REQ-ACC-028` |
 | `iSolarCloud/recovery_test.go` | `REQ-API-007`–`009`, `028`–`029`; `REQ-XCUT-002`–`004`, `017`, `019`; `REQ-ACC-002`, `029` |
+| `iSolarCloud/highlevel_ps_test.go` | `REQ-API-022`–`024`, `031`; `REQ-ACC-032` |
 | `iSolarCloud/api/web_timeout_test.go` | `REQ-API-001`, `016`; `REQ-ACC-003` |
 | `iSolarCloud/api/web_request_metadata_test.go` | `REQ-API-012`, `014`; `REQ-CFG-004`; `REQ-ACC-025` |
 | `iSolarCloud/api/struct_request_test.go` | `REQ-API-006`; `REQ-XCUT-009`–`010`; `REQ-ACC-004` |
@@ -41,6 +42,7 @@ The specification is authoritative; this map helps locate derived artifacts.
 | `iSolarCloud/AppService/getDeviceList/data_test.go` | `REQ-DOM-002`–`003` |
 | `iSolarCloud/AppService/queryDeviceRealTimeDataByPsKeys/data_test.go` | `REQ-API-021`; `REQ-DOM-002`–`003` |
 | `iSolarCloud/AppService/queryDeviceList/data_test.go` | `REQ-DATA-011`–`017`; `REQ-ACC-007` |
+| `iSolarCloud/plant_pv_power_test.go` | `REQ-DOM-013`, `016`; `REQ-DATA-021`–`024`; `REQ-MQTT-021`; `REQ-ACC-031` |
 | `iSolarCloud/AppService/getPsDetail/timezone_test.go` | `REQ-DATA-007`; `REQ-ACC-008` |
 | `iSolarCloud/api/GoStruct/valueTypes/integers_test.go` | `REQ-DATA-001`–`003`; `REQ-ACC-005` |
 | `iSolarCloud/api/GoStruct/valueTypes/psid_test.go` | `REQ-DOM-002`–`003`; `REQ-ACC-005` |
@@ -49,13 +51,13 @@ The specification is authoritative; this map helps locate derived artifacts.
 | `iSolarCloud/api/GoStruct/output/file_test.go` | `REQ-XCUT-005`–`007` |
 | `cmdHassio/options_test.go` | `REQ-MQTT-019`–`020` |
 | `cmdHassio/struct_entity_test.go` | `REQ-HA-008`–`014`, `019`; `REQ-ACC-011`, `030` |
-| `cmd/cmd_mqtt_test.go` | `REQ-MQTT-005`–`020`; `REQ-DATA-018`–`020`; `REQ-ACC-009`–`010` |
+| `cmd/cmd_mqtt_test.go` | `REQ-MQTT-005`–`022`; `REQ-DATA-018`–`020`; `REQ-ACC-009`–`010`, `032` |
 | `cmd/cmd_ha_install_dashboard_test.go` | `REQ-DASH-001`–`030`; `REQ-ACC-012`, `018`–`019` |
 | `cmd/dashboard_test_helpers_test.go` | shared fixtures for `REQ-DASH-*`, `REQ-RES-*`, and `REQ-SRC-*` tests |
-| `cmd/dashboard_entity_resolver_test.go` | `REQ-RES-001`–`009`; `REQ-ACC-013` |
+| `cmd/dashboard_entity_resolver_test.go` | `REQ-RES-001`–`009`, `016`–`018`; `REQ-ACC-013`, `031` |
 | `cmd/dashboard_semantic_matcher_test.go` | `REQ-RES-010`–`015`; `REQ-ACC-013` |
 | `cmd/dashboard_capability_pruner_test.go` | `REQ-DASH-011`–`013`; `REQ-ACC-014` |
-| `cmd/dashboard_source_mapping_test.go` | `REQ-SRC-001`–`016`, `REQ-DASH-027`; `REQ-ACC-015`–`017`, `019` |
+| `cmd/dashboard_source_mapping_test.go` | `REQ-SRC-001`–`016`, `026`, `REQ-DASH-027`; `REQ-ACC-015`–`017`, `019`, `031` |
 | `cmd/dashboard_i18n_test.go` | `REQ-DASH-014`–`016`; `REQ-ACC-018` |
 | `tools/preview/gosungrow-source-mapping-card.test.cjs` | `REQ-SRC-017`–`025`; `REQ-CARD-001`–`002` |
 | `tools/test_energy_summary_card.mjs` | `REQ-CARD-008`–`017`; `REQ-ACC-020`–`022` |

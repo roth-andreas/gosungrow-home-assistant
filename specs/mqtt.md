@@ -44,6 +44,8 @@ Scope: Broker connection, startup discovery, synchronization, selection, options
 
 - **REQ-MQTT-019** — Option matching is case-insensitive but stored/published values MUST use the configured canonical spelling. Unknown values remain unmodified for compatibility.
 - **REQ-MQTT-020** — `loglevel`, `fetchschedule`, and `sleepdelay` messages MUST update runtime behavior after successful parsing. `servicestate` is currently informational and MUST NOT claim to restart or stop the process.
+- **REQ-MQTT-021** — Each successful synchronization MAY publish at most one canonical plant `pv_power` discovery/state pair per plant through the normal retained MQTT pipeline. A new state MUST be published only after successful aggregation; an omitted aggregate MUST NOT publish a fabricated or partial numeric replacement. A previously retained state may remain and becomes stale under the 30-minute live-source rule.
+- **REQ-MQTT-022** — Plant topology acquisition failure or invalid topology MUST be nonfatal, suppress only device-derived PV aggregation for the affected plant, and emit at most one warning per plant per topology refresh attempt. Other plants, entities, and synchronization MUST continue. A usable native plant total remains publishable without topology. Token-triggered device rediscovery MUST also refresh topology.
 
 ## Prohibited behavior
 

@@ -56,6 +56,7 @@ For almost everyone, the only app settings you need are:
 ## What You Get
 
 - MQTT-discovered Sungrow entities in Home Assistant
+- one stable plant-level live PV entity that uses a native plant total or a complete AC/DC sum across producer devices
 - a managed `Overview` dashboard for live flow and daily summary
 - a managed `Trends` dashboard for deeper energy analysis
 - support for `aarch64` and `amd64`
@@ -87,6 +88,7 @@ The app documentation is in `addon/gosungrow/DOCS.md`.
 
 - This is not a native Home Assistant integration. MQTT must be working before the app starts.
 - The app manages its own dashboard automatically.
+- Multi-inverter plants use `sensor.gosungrow_virtual_<plant-id>_pv_power` when GoSungrow can establish a complete, single-basis plant total. Existing manual dashboard sources remain unchanged and pinned automatic sources receive a reviewable recommendation.
 - If you are updating from an older version with more options, open the app configuration once and save it to clear legacy fields.
 - The repository also includes `examples/home-assistant-energy-cards.yaml` if you want to build a dashboard around Home Assistant's official Energy cards.
 

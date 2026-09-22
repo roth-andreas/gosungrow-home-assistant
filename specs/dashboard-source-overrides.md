@@ -62,6 +62,7 @@ Scope: Mapping-card schema, candidates, validation, persistence, binding, and br
 - **REQ-SRC-023** — Status priority is unavailable, needs review, manual, automatic. Warnings use live state for unavailable/non-numeric, freshness, unverified/recommended match, unsupported calculation, and physical direct-solar consistency.
 - **REQ-SRC-024** — Candidate search is case-insensitive across friendly name, entity ID, device, point, source, and reason. Shared friendly-name prefixes MAY be visually shortened, but title/ARIA identity MUST preserve full name and entity ID.
 - **REQ-SRC-025** — Dialog MUST support Escape close, keyboard focus trapping/restoration, minimum touch targets, scroll/focus preservation during live rerender, and mobile bottom-sheet layout.
+- **REQ-SRC-026** — A fresh or unpinned dashboard MUST adopt canonical plant `pv_power` automatically. An existing manual override MUST remain unchanged. An existing pinned automatic device source MUST remain selected, be marked for review, and receive the canonical plant aggregate as its preferred recommendation; accepting it uses the verified transaction in `REQ-SRC-019`–`REQ-SRC-022` and adopts it as the new pinned default.
 
 ## Prohibited behavior
 

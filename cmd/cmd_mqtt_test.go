@@ -6,10 +6,31 @@ import (
 	"testing"
 	"time"
 
+	"github.com/roth-andreas/gosungrow-home-assistant/cmdHassio"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/getDeviceList"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/valueTypes"
 )
+
+func TestRefreshPlantTopologiesKeepsFailureNonfatal(t *testing.T) {
+	originalLoader := mqttLoadPlantTrees
+	defer func() { mqttLoadPlantTrees = originalLoader }()
+	mqttLoadPlantTrees = func() (iSolarCloud.PsTrees, error) {
+		return nil, errors.New("tree unavailable")
+	}
+
+	c := NewCmdMqtt("")
+	c.Client = &cmdHassio.Mqtt{SungrowDevices: getDeviceList.Devices{
+		testDeviceListDevice("100", "100_55_1_1", 55),
+	}}
+	c.refreshPlantTopologies()
+
+	topology, ok := c.plantTopologies["100"]
+	if !ok || topology.Complete || topology.Reason != "plant topology unavailable" {
+		t.Fatalf("topology after nonfatal failure = %#v", topology)
+	}
+}
 
 func TestNormalizeEntityMeasurementKeepsReactivePowerMetadataAligned(t *testing.T) {
 	tests := []struct {

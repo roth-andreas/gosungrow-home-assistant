@@ -740,3 +740,35 @@ func TestRemapDashboardEntitiesSkipsUnknownStatesAndWrongUnits(t *testing.T) {
 		t.Fatalf("expected grid_to_load_power to remap to kW candidate, got %v", got)
 	}
 }
+
+func TestDashboardEntityResolverPrefersCanonicalPlantPVPower(t *testing.T) {
+	target := haDashboardTarget{PsID: "100", PsKey: "100_14_1_1"}
+	states := []haState{
+		dashboardTestState("sensor.gosungrow_virtual_100_14_1_1_pv_power", "1", "kW"),
+		dashboardTestState("sensor.gosungrow_virtual_100_pv_power", "3", "kW"),
+	}
+
+	got := resolveDashboardMetricEntity(target, "pv_power", states, dashboardStateByEntityID(states), true)
+	if got != "sensor.gosungrow_virtual_100_pv_power" {
+		t.Fatalf("resolved pv_power = %q, want canonical plant aggregate", got)
+	}
+}
+
+func TestDashboardEntityResolverDoesNotChooseOneOfMultipleProducers(t *testing.T) {
+	target := haDashboardTarget{
+		PsID: "100", PsKey: "100_55_1_1",
+		PlantDevices: []dashboardPlantDevice{
+			{PsKey: "100_55_1_1", DeviceType: 55},
+			{PsKey: "100_55_1_2", DeviceType: 55},
+		},
+	}
+	states := []haState{
+		dashboardTestState("sensor.gosungrow_100_55_1_1_microinverter1_total_dc_power", "1", "kW"),
+		dashboardTestState("sensor.gosungrow_100_55_1_2_microinverter2_total_dc_power", "2", "kW"),
+	}
+
+	got := resolveDashboardMetricEntity(target, "pv_power", states, dashboardStateByEntityID(states), true)
+	if got != "" {
+		t.Fatalf("resolved ambiguous pv_power = %q, want unresolved", got)
+	}
+}

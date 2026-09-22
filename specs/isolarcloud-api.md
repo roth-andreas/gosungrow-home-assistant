@@ -61,6 +61,7 @@ All endpoints MUST validate required fields, preserve unknown response fields wh
 - **REQ-API-028** — A recoverable endpoint failure MAY cause exactly one session recovery and endpoint replay. Replay MUST retain endpoint name, request JSON, and cache timeout while using the recovered gateway/session.
 - **REQ-API-029** — Endpoint replay MUST NOT occur when logged out, already recovering, error is non-recoverable, error is Docker DNS, or auth details are unavailable.
 - **REQ-API-030** — RSA encryption MUST use the URL-safe base64 DER public key `MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCkecphb6vgsBx4LJknKKes-eyj7-RKQ3fikF5B67EObZ3t4moFZyMGuuJPiadYdaxvRqtxyblIlVM7omAasROtKRhtgKwwRxo2a6878qBhTgUVlsqugpI_7ZC9RmO2Rpmr8WzDeAapGANfHN5bVr7G7GYGwIrjvyxMrAVit_oM4wIDAQAB`. These fixed app/access/public keys are protocol client identifiers embedded in the public product; user passwords and session tokens remain secrets.
+- **REQ-API-031** — MQTT plant aggregation MUST fetch `WebIscmAppService.getPsTreeMenu` during startup and after token-triggered device rediscovery, using its one-hour cache. Topology identity consists of opaque `ps_id`, numeric `UUID`, and numeric `UpUUID`; zero `UpUUID` denotes a root. Within one plant UUIDs MUST be unique, every nonzero `UpUUID` MUST resolve to exactly one UUID in that plant, and a parent reference MUST NOT cross plants. Duplicate UUIDs, dangling parents, and cross-plant references make that plant topology incomplete.
 
 ## Prohibited behavior
 

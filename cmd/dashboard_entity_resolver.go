@@ -230,6 +230,9 @@ func resolveDashboardMetricEntityWithTrace(target haDashboardTarget, metric stri
 		"sensor.gosungrow_virtual_" + psKey + "_" + metric,
 		"sensor.gosungrow_virtual_" + psID + "_" + metric,
 	}
+	if metric == "pv_power" {
+		legacy[0], legacy[1] = legacy[1], legacy[0]
+	}
 	for _, candidate := range legacy {
 		state, ok := stateByID[candidate]
 		if ok && dashboardStateMatchesMetricKind(state, profile) {
@@ -277,9 +280,37 @@ func resolveDashboardMetricEntityWithTrace(target haDashboardTarget, metric stri
 		}
 	}
 
+	if metric == "pv_power" && bestCandidate != "" && dashboardDistinctProducerCandidates(target, trace.Candidates) > 1 {
+		trace.Source = "ambiguous-device-aggregate"
+		return "", trace
+	}
+
 	trace.Resolved = bestCandidate
 	trace.Source = dashboardMetricSourceCategory(target, metric, bestCandidate)
 	return bestCandidate, trace
+}
+
+func dashboardDistinctProducerCandidates(target haDashboardTarget, candidates []dashboardMetricCandidate) int {
+	devices := make(map[string]bool)
+	for _, candidate := range candidates {
+		identity := strings.ToLower(strings.TrimSpace(candidate.Entity))
+		if identity == "" || dashboardCandidateDeviceRole(target, identity) == "plant" {
+			continue
+		}
+		matched := ""
+		for _, device := range target.PlantDevices {
+			key := strings.ToLower(strings.TrimSpace(device.PsKey))
+			if key != "" && dashboardEntityContainsIdentifier(identity, key) {
+				matched = key
+				break
+			}
+		}
+		if matched == "" {
+			matched = identity
+		}
+		devices[matched] = true
+	}
+	return len(devices)
 }
 
 func dashboardRejectedMetricCandidate(target haDashboardTarget, metric string, profile dashboardMetricProfile, state haState, singleTarget bool) (dashboardMetricCandidate, bool) {

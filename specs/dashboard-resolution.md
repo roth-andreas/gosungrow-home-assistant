@@ -71,6 +71,12 @@ The ordered aliases below are normative; tokens are alternatives within `/` grou
 - **REQ-RES-014** — A legacy semantic winner is confident with one candidate, a lead of at least 20, or an equivalent `_2` duplicate having equal state/unit.
 - **REQ-RES-015** — Daily semantics require an identity containing one of `_today`, `today_`, `_daily`, `daily_`, `_p13112`, `_p13116`, `_p13147`, `_p13173`, `_p13199`, or a valid RFC3339 `last_reset` between 6 hours in the future and 48 hours old.
 
+## Canonical live PV matching
+
+- **REQ-RES-016** — For `pv_power`, an exact usable `sensor.gosungrow_virtual_<ps_id>_pv_power` plant entity MUST outrank an exact target-key virtual and every scored candidate.
+- **REQ-RES-017** — Without the canonical plant entity, multiple distinct producer-device candidates make every single-device `pv_power` result non-confident. No one producer may become the automatic plant default; a single producer remains eligible under the existing scoring rules.
+- **REQ-RES-018** — PV candidate diagnostics MUST distinguish canonical plant aggregate, device AC, device DC, mixed-basis rejection, and incomplete-contributor rejection. Candidate ordering remains deterministic under `REQ-RES-006`.
+
 ## Prohibited behavior
 
 - Resolving a candidate only because it has a plausible current value.
