@@ -1,0 +1,4 @@
+interface:
+  display_name: "Plan Issue Learnings"
+  short_description: "Generalize issues into spec change plans"
+  default_prompt: "Use $plan-issue-learnings to turn this issue investigation into general product and diagnostic improvements."

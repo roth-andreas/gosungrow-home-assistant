@@ -5,7 +5,7 @@
 The normative product contract is [`specs/README.md`](specs/README.md). Before changing behavior, read its change protocol and the applicable specifications.
 
 - Change the specification before or with behavior-changing code.
-- Keep each behavior change's specs, source, tests, traceability, and required docs on one feature branch and in one pull request.
+- Always stay on the currently active branch.
 - Treat code and tests as derived artifacts; update them when they disagree with an accepted requirement.
 - Do not turn accidental implementation behavior into a requirement without an explicit decision.
 - Update `specs/traceability.md` when requirements, source ownership, or tests change.
