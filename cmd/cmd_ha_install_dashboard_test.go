@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -335,6 +336,7 @@ func TestVerifyDashboardCardAssetRequiresExactResponse(t *testing.T) {
 	}{
 		{name: "verified", status: http.StatusOK, contentType: "text/javascript; charset=utf-8", body: body},
 		{name: "status", status: http.StatusNotFound, contentType: "text/javascript", body: body, wantError: "HTTP 404"},
+		{name: "redirect", status: http.StatusFound, contentType: "text/javascript", body: body, wantError: "HTTP 302"},
 		{name: "mime", status: http.StatusOK, contentType: "text/plain", body: body, wantError: "non-JavaScript MIME"},
 		{name: "hash", status: http.StatusOK, contentType: "application/javascript", body: []byte("different"), wantError: "hash mismatch"},
 	}
@@ -344,8 +346,8 @@ func TestVerifyDashboardCardAssetRequiresExactResponse(t *testing.T) {
 				if r.URL.Path != "/local/gosungrow/gosungrow-dashboard-cards.0123456789ab.js" {
 					t.Fatalf("unexpected path %q", r.URL.Path)
 				}
-				if got := r.Header.Get("Authorization"); got != "Bearer supervisor-token" {
-					t.Fatalf("unexpected authorization header %q", got)
+				if got := r.Header.Get("Authorization"); got != "" {
+					t.Fatalf("static request leaked authorization header %q", got)
 				}
 				w.Header().Set("Content-Type", tt.contentType)
 				w.WriteHeader(tt.status)
@@ -354,12 +356,12 @@ func TestVerifyDashboardCardAssetRequiresExactResponse(t *testing.T) {
 			defer server.Close()
 
 			wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/websocket"
-			verification, err := verifyDashboardCardAsset(context.Background(), wsURL, "supervisor-token", "/local/gosungrow/gosungrow-dashboard-cards.0123456789ab.js", expectedHash)
+			verification, err := verifyDashboardCardAsset(context.Background(), wsURL, "/local/gosungrow/gosungrow-dashboard-cards.0123456789ab.js", expectedHash)
 			if tt.wantError == "" {
 				if err != nil {
 					t.Fatalf("verifyDashboardCardAsset: %v", err)
 				}
-				if verification.StatusCode != http.StatusOK || verification.MIMEType != "text/javascript" {
+				if verification.StatusCode != http.StatusOK || verification.MIMEType != "text/javascript" || verification.Route != dashboardHTTPRouteWebsocketOrigin {
 					t.Fatalf("unexpected verification: %#v", verification)
 				}
 				return
@@ -368,6 +370,69 @@ func TestVerifyDashboardCardAssetRequiresExactResponse(t *testing.T) {
 				t.Fatalf("expected error containing %q, got %v", tt.wantError, err)
 			}
 		})
+	}
+}
+
+type dashboardHTTPClientFunc func(*http.Request) (*http.Response, error)
+
+func (f dashboardHTTPClientFunc) Do(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
+
+func TestVerifyDashboardCardAssetSeparatesSupervisorAndStaticOrigins(t *testing.T) {
+	body := []byte("customElements.define('x-test', class extends HTMLElement {});")
+	expectedHash := fmt.Sprintf("%x", sha256.Sum256(body))
+	requests := 0
+	client := dashboardHTTPClientFunc(func(request *http.Request) (*http.Response, error) {
+		requests++
+		if got, want := request.URL.String(), "http://homeassistant:8123/local/gosungrow/gosungrow-dashboard-cards.0123456789ab.js"; got != want {
+			t.Fatalf("unexpected static URL: got %q want %q", got, want)
+		}
+		if request.URL.Hostname() == "supervisor" {
+			t.Fatal("static request reached Supervisor proxy")
+		}
+		if got := request.Header.Get("Authorization"); got != "" {
+			t.Fatalf("static request leaked authorization header %q", got)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/javascript"}},
+			Body:       io.NopCloser(bytes.NewReader(body)),
+			Request:    request,
+		}, nil
+	})
+
+	verification, err := verifyDashboardCardAssetWithClient(
+		context.Background(),
+		client,
+		"ws://supervisor/core/websocket",
+		"/local/gosungrow/gosungrow-dashboard-cards.0123456789ab.js",
+		expectedHash,
+	)
+	if err != nil {
+		t.Fatalf("verifyDashboardCardAssetWithClient: %v", err)
+	}
+	if requests != 1 {
+		t.Fatalf("unexpected request count: %d", requests)
+	}
+	if verification.Route != dashboardHTTPRouteDirectCore {
+		t.Fatalf("unexpected verification route: %q", verification.Route)
+	}
+}
+
+func TestDashboardHTTPResourceURLPreservesStandaloneBasePath(t *testing.T) {
+	got, route, err := dashboardHTTPResourceURL(
+		"wss://user:secret@example.test/ha/api/websocket?token=secret#fragment",
+		"/local/gosungrow/card.js",
+	)
+	if err != nil {
+		t.Fatalf("dashboardHTTPResourceURL: %v", err)
+	}
+	if want := "https://example.test/ha/local/gosungrow/card.js"; got != want {
+		t.Fatalf("unexpected resource URL: got %q want %q", got, want)
+	}
+	if route != dashboardHTTPRouteWebsocketOrigin {
+		t.Fatalf("unexpected route: %q", route)
 	}
 }
 
@@ -912,6 +977,7 @@ func TestWriteDashboardInstallDiagnosticsIncludesSummaryAndUnresolvedRefs(t *tes
 		AssetPhase:           "committed",
 		AssetHash:            strings.Repeat("a", 64),
 		AssetURL:             "/local/gosungrow/gosungrow-dashboard-cards.aaaaaaaaaaaa.js",
+		AssetHTTPRoute:       dashboardHTTPRouteDirectCore,
 		AssetHTTPStatus:      http.StatusOK,
 		AssetMIMEType:        "text/javascript",
 		ResourceAction:       "updated",
@@ -1013,7 +1079,7 @@ func TestWriteDashboardInstallDiagnosticsIncludesSummaryAndUnresolvedRefs(t *tes
 	for _, expected := range []string{
 		"Dashboard diagnostics:",
 		"- context: Reconciling after MQTT startup (1)",
-		"- asset: phase=committed hash=" + strings.Repeat("a", 64) + " url=/local/gosungrow/gosungrow-dashboard-cards.aaaaaaaaaaaa.js http_status=200 mime=text/javascript resource_action=updated dashboard_mode=enhanced rollback=not required cleanup=complete",
+		"- asset: phase=committed hash=" + strings.Repeat("a", 64) + " url=/local/gosungrow/gosungrow-dashboard-cards.aaaaaaaaaaaa.js http_route=direct-core http_status=200 mime=text/javascript resource_action=updated dashboard_mode=enhanced rollback=not required cleanup=complete",
 		"- HA states loaded: 1284",
 		"- GoSungrow states found: 42",
 		"- dashboard entity refs found: 23",

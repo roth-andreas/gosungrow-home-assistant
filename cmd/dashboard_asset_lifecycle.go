@@ -18,15 +18,25 @@ import (
 )
 
 const (
-	dashboardAssetModeEnhanced = "enhanced"
-	dashboardAssetModeFallback = "native-fallback"
+	dashboardAssetModeEnhanced        = "enhanced"
+	dashboardAssetModeFallback        = "native-fallback"
+	dashboardHTTPRouteDirectCore      = "direct-core"
+	dashboardHTTPRouteWebsocketOrigin = "websocket-origin"
 )
 
 var managedDashboardBundlePattern = regexp.MustCompile(`^gosungrow-dashboard-cards\.([0-9a-f]{12})\.js$`)
 
+var dashboardAssetHTTPClient = &http.Client{
+	Timeout: 15 * time.Second,
+	CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	},
+}
+
 type dashboardAssetVerification struct {
 	StatusCode int
 	MIMEType   string
+	Route      string
 }
 
 type dashboardResourceChange struct {
@@ -35,10 +45,16 @@ type dashboardResourceChange struct {
 	Before    []haResourceMetadata
 }
 
-func dashboardHTTPResourceURL(websocketURL, resourceURL string) (string, error) {
+func dashboardHTTPResourceURL(websocketURL, resourceURL string) (string, string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(websocketURL))
 	if err != nil {
-		return "", err
+		return "", "", err
+	}
+	path := strings.TrimSuffix(parsed.Path, "/")
+	if strings.EqualFold(parsed.Hostname(), "supervisor") && strings.HasSuffix(path, "/core/websocket") {
+		parsed = &url.URL{Scheme: "http", Host: "homeassistant:8123"}
+		parsed.Path = "/" + strings.TrimPrefix(resourceURL, "/")
+		return parsed.String(), dashboardHTTPRouteDirectCore, nil
 	}
 	switch parsed.Scheme {
 	case "ws":
@@ -46,43 +62,45 @@ func dashboardHTTPResourceURL(websocketURL, resourceURL string) (string, error) 
 	case "wss":
 		parsed.Scheme = "https"
 	default:
-		return "", fmt.Errorf("unsupported Home Assistant websocket scheme %q", parsed.Scheme)
+		return "", "", fmt.Errorf("unsupported Home Assistant websocket scheme %q", parsed.Scheme)
 	}
+	parsed.User = nil
 	parsed.RawQuery = ""
 	parsed.Fragment = ""
-	path := strings.TrimSuffix(parsed.Path, "/")
 	if strings.HasSuffix(path, "/api/websocket") {
 		path = strings.TrimSuffix(path, "/api/websocket")
-	} else {
+	} else if strings.HasSuffix(path, "/websocket") {
 		path = strings.TrimSuffix(path, "/websocket")
 	}
 	parsed.Path = strings.TrimSuffix(path, "/") + "/" + strings.TrimPrefix(resourceURL, "/")
-	return parsed.String(), nil
+	return parsed.String(), dashboardHTTPRouteWebsocketOrigin, nil
 }
 
-func verifyDashboardCardAsset(ctx context.Context, websocketURL, token, resourceURL, expectedHash string) (dashboardAssetVerification, error) {
-	httpURL, err := dashboardHTTPResourceURL(websocketURL, resourceURL)
+func verifyDashboardCardAsset(ctx context.Context, websocketURL, resourceURL, expectedHash string) (dashboardAssetVerification, error) {
+	return verifyDashboardCardAssetWithClient(ctx, dashboardAssetHTTPClient, websocketURL, resourceURL, expectedHash)
+}
+
+type dashboardHTTPDoer interface {
+	Do(*http.Request) (*http.Response, error)
+}
+
+func verifyDashboardCardAssetWithClient(ctx context.Context, client dashboardHTTPDoer, websocketURL, resourceURL, expectedHash string) (dashboardAssetVerification, error) {
+	httpURL, route, err := dashboardHTTPResourceURL(websocketURL, resourceURL)
 	if err != nil {
 		return dashboardAssetVerification{}, err
 	}
+	verification := dashboardAssetVerification{Route: route}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, httpURL, nil)
 	if err != nil {
-		return dashboardAssetVerification{}, err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	client := &http.Client{
-		Timeout: 15 * time.Second,
-		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
+		return verification, err
 	}
 	response, err := client.Do(req)
 	if err != nil {
-		return dashboardAssetVerification{}, fmt.Errorf("fetch staged dashboard asset: %w", err)
+		return verification, fmt.Errorf("fetch staged dashboard asset: %w", err)
 	}
 	defer response.Body.Close()
 
-	verification := dashboardAssetVerification{StatusCode: response.StatusCode}
+	verification.StatusCode = response.StatusCode
 	mediaType, _, parseErr := mime.ParseMediaType(response.Header.Get("Content-Type"))
 	if parseErr == nil {
 		verification.MIMEType = strings.ToLower(mediaType)

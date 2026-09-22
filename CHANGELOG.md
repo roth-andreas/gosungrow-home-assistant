@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.3.1
+
+- Verify dashboard card assets through Home Assistant's direct internal HTTP origin instead of the Supervisor API/WebSocket proxy.
+- Keep Supervisor credentials out of static asset requests and report the selected verification route in dashboard lifecycle diagnostics.
+
 ## 3.3.0
 
 - Preserve causal failure diagnostics across retries and fallback paths so the most useful root error remains visible.

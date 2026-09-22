@@ -16,6 +16,7 @@ Scope: Binary/container build, Home Assistant manifest, validation, and publishi
 - **REQ-REL-009** — Specification, assistant skill, contributor contract, engineering-documentation, validation-script, and dashboard-card test changes MUST trigger validation.
 - **REQ-REL-010** — Pull-request validation MUST reject normative-spec changes without derived artifacts and product implementation changes without normative-spec changes. Explicit `spec-docs-only` and `behavior-neutral` labels MAY waive the corresponding side only after reviewer confirmation that behavior does not change.
 - **REQ-REL-011** — Relevant pull requests and publish validation MUST run a browser-level managed-dashboard smoke test against a repository-pinned Home Assistant Core fixture and Chromium. The test MUST fetch the registered module, open the managed dashboard, assert all three custom elements are registered, and reject Home Assistant configuration-error cards. The pinned Home Assistant version and fixture configuration MUST be explicit and reviewable in the repository.
+- **REQ-REL-012** — Validation MUST exercise the split app deployment topology in which Home Assistant API websocket traffic uses a Supervisor-compatible proxy, `/core/local/...` is unavailable, and static `/local/...` verification uses a separate direct Home Assistant origin. The check MUST prove that activation succeeds without sending an authorization credential to the static origin.
 
 ## Prohibited behavior
 

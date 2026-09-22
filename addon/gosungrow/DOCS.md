@@ -53,7 +53,7 @@ On a healthy setup, the app:
 
 No Home Assistant restart is required for the managed dashboards.
 
-The dashboard cards are served locally from a content-addressed `/local/gosungrow/` module. GoSungrow verifies the exact file through Home Assistant before referencing it and keeps the previous verified version for rollback. A browser that was already open during first installation may need one ordinary page reload; a hard refresh is not required.
+The dashboard cards are served locally from a content-addressed `/local/gosungrow/` module. GoSungrow verifies the exact file directly through Home Assistant before referencing it; API and WebSocket traffic continue through Supervisor. Static verification sends no Supervisor credential and keeps the previous verified version for rollback. A browser that was already open during first installation may need one ordinary page reload; a hard refresh is not required.
 
 If the enhanced card module cannot be activated on a fresh installation, GoSungrow installs a native Home Assistant dashboard automatically. Live MQTT-backed metrics remain usable while flow visualization and source editing are temporarily reduced. A later reconciliation promotes the dashboard to enhanced mode without a Home Assistant restart.
 
@@ -104,7 +104,7 @@ Do not configure a fixed iSolarCloud IP address. The HTTPS certificate and Sungr
 
 ## Troubleshooting Dashboard Cards
 
-Dashboard lifecycle logs report the asset phase, short canonical URL, response status and MIME type, resource action, dashboard mode, rollback, and cleanup result. If the dashboard remains in native fallback mode, verify that Home Assistant can serve `/local/gosungrow/` JavaScript with status 200 and a JavaScript content type. Do not add a CDN or data-URL resource manually; GoSungrow will retry activation during reconciliation.
+Dashboard lifecycle logs report the asset phase, short canonical URL, verification route, response status and MIME type, resource action, dashboard mode, rollback, and cleanup result. `direct-core` is expected for the Home Assistant app; `websocket-origin` is expected for standalone CLI connections. If the dashboard remains in native fallback mode, verify that Home Assistant can serve `/local/gosungrow/` JavaScript with status 200 and a JavaScript content type. Do not add a CDN or data-URL resource manually; GoSungrow will retry activation during reconciliation.
 
 ## Troubleshooting Startup JSON Errors
 

@@ -131,6 +131,7 @@ type dashboardInstallDiagnostics struct {
 	AssetPhase            string
 	AssetHash             string
 	AssetURL              string
+	AssetHTTPRoute        string
 	AssetHTTPStatus       int
 	AssetMIMEType         string
 	ResourceAction        string
@@ -391,7 +392,7 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	// filesystem, resource-registry, or dashboard mutation.
 	resourceURL, assetHash, err := installDashboardCardAsset(opts.AssetDir, opts.HomeAssistantDir)
 	if err != nil {
-		fmt.Printf("Dashboard asset lifecycle: phase=stage-failed hash=none url=none http_status=0 mime=unknown resource_action=none dashboard_mode=unknown rollback=not-required cleanup=not-run error=%q\n", err.Error())
+		fmt.Printf("Dashboard asset lifecycle: phase=stage-failed hash=none url=none http_route=unknown http_status=0 mime=unknown resource_action=none dashboard_mode=unknown rollback=not-required cleanup=not-run error=%q\n", err.Error())
 		return err
 	}
 	assetCommitted := false
@@ -412,7 +413,8 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	diagnostics.AssetURL = resourceURL
 	diagnostics.AssetHash = assetHash
 
-	assetVerification, activationErr := verifyDashboardCardAsset(ctx, opts.HomeAssistantWSURL, opts.SupervisorToken, resourceURL, assetHash)
+	assetVerification, activationErr := verifyDashboardCardAsset(ctx, opts.HomeAssistantWSURL, resourceURL, assetHash)
+	diagnostics.AssetHTTPRoute = assetVerification.Route
 	diagnostics.AssetHTTPStatus = assetVerification.StatusCode
 	diagnostics.AssetMIMEType = assetVerification.MIMEType
 	if activationErr == nil {
@@ -1108,10 +1110,11 @@ func printDashboardInstallDiagnostics(diagnostics dashboardInstallDiagnostics) {
 func writeDashboardInstallDiagnostics(w io.Writer, diagnostics dashboardInstallDiagnostics) {
 	fmt.Fprintln(w, "Dashboard diagnostics:")
 	fmt.Fprintf(w, "- context: %s\n", dashboardDiagnosticContext(diagnostics.DiagnosticContext))
-	fmt.Fprintf(w, "- asset: phase=%s hash=%s url=%s http_status=%d mime=%s resource_action=%s dashboard_mode=%s rollback=%s cleanup=%s\n",
+	fmt.Fprintf(w, "- asset: phase=%s hash=%s url=%s http_route=%s http_status=%d mime=%s resource_action=%s dashboard_mode=%s rollback=%s cleanup=%s\n",
 		dashboardDiagnosticDefault(diagnostics.AssetPhase, "not-started"),
 		dashboardDiagnosticDefault(diagnostics.AssetHash, "none"),
 		dashboardDiagnosticDefault(diagnostics.AssetURL, "none"),
+		dashboardDiagnosticDefault(diagnostics.AssetHTTPRoute, "unknown"),
 		diagnostics.AssetHTTPStatus,
 		dashboardDiagnosticDefault(diagnostics.AssetMIMEType, "unknown"),
 		dashboardDiagnosticDefault(diagnostics.ResourceAction, "none"),
