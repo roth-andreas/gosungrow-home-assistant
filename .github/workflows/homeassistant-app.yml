@@ -139,7 +139,20 @@ jobs:
             -p 8123:8123 \
             -v "$fixture:/config" \
             "$HA_CORE_IMAGE"
-          trap 'docker logs gosungrow-ha-e2e || true; docker rm -f gosungrow-ha-e2e >/dev/null 2>&1 || true' EXIT
+          cleanup() {
+            status=$?
+            set +e
+            docker logs gosungrow-ha-e2e || true
+            docker rm -f gosungrow-ha-e2e >/dev/null 2>&1 || true
+            docker run --rm --entrypoint /bin/sh \
+              -v "$fixture:/cleanup" \
+              "$HA_CORE_IMAGE" \
+              -c 'rm -rf /cleanup/* /cleanup/.[!.]* /cleanup/..?*' \
+              >/dev/null 2>&1 || true
+            rm -rf "$fixture" || true
+            return "$status"
+          }
+          trap cleanup EXIT
           HA_E2E_URL=http://127.0.0.1:8123 \
           HA_E2E_RESOURCE_URL="/local/gosungrow/$asset_name" \
           HA_E2E_RESOURCE_HASH="$asset_hash" \

@@ -27,9 +27,20 @@ wait_for_core() {
 }
 
 cleanup() {
+  local test_status=$?
+  set +e
   docker logs "$container" 2>/dev/null || true
   docker rm -f "$container" >/dev/null 2>&1 || true
-  rm -rf "$fixture"
+  # Home Assistant runs as root and can leave root-owned files in the bind
+  # mount. Remove its contents from a short-lived root container before the
+  # unprivileged CI runner removes the now-empty fixture directory.
+  docker run --rm --entrypoint /bin/sh \
+    -v "$fixture:/cleanup" \
+    "$core_image" \
+    -c 'rm -rf /cleanup/* /cleanup/.[!.]* /cleanup/..?*' \
+    >/dev/null 2>&1 || true
+  rm -rf "$fixture" || true
+  return "$test_status"
 }
 trap cleanup EXIT
 
