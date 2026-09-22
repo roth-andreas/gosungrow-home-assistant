@@ -18,7 +18,7 @@ GoSungrow is primarily a Home Assistant app. It authenticates to Sungrow iSolarC
 - **REQ-PROD-007** — Multiple plants and multiple selected targets MUST remain isolated by stable Sungrow identifiers.
 - **REQ-PROD-008** — The system SHOULD prefer conservative absence or an explicit review state over silently assigning semantically ambiguous energy data.
 - **REQ-PROD-009** — All externally visible output MUST be deterministic for identical inputs, except timestamps, random transport material, network ordering normalized by the specification, and explicitly live Home Assistant values.
-- **REQ-PROD-010** — The managed dashboard MUST retain a resource-independent usable native mode when browser enhancements cannot be activated. Custom-card delivery failure MUST affect only enhanced presentation and dashboard source editing; it MUST NOT interrupt MQTT publication, native live metrics, dashboard reconciliation, or require a Home Assistant restart.
+- **REQ-PROD-010** — The managed dashboard MUST retain a resource-independent usable native mode when browser enhancements cannot be activated. Custom-card delivery failure MUST affect only enhanced presentation and dashboard source editing; it MUST NOT interrupt MQTT publication, native live metrics, or dashboard reconciliation. Ordinary delivery failures MUST NOT require a Home Assistant restart. When a first-time installation successfully stages its public asset but Home Assistant has not registered `/local`, GoSungrow MAY require one explicit user-controlled Home Assistant Core restart under `REQ-DASH-037`; it MUST NOT restart Core automatically.
 
 ## Component responsibilities
 
@@ -42,7 +42,7 @@ GoSungrow is primarily a Home Assistant app. It authenticates to Sungrow iSolarC
 
 ## Prohibited behavior and non-goals
 
-- The app MUST NOT require a Home Assistant restart after dashboard installation.
+- The app MUST NOT automatically restart Home Assistant or require a restart for ordinary dashboard installation failures. The only permitted restart guidance is the narrowly classified first-time `/local` bootstrap recovery in `REQ-DASH-037`.
 - The app MUST NOT configure a fixed IP for iSolarCloud gateways.
 - The app MUST NOT overwrite an unmanaged or externally modified dashboard unless force update is enabled.
 - The app MUST NOT expose authentication tokens or passwords in diagnostics.

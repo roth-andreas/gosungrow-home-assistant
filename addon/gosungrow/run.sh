@@ -82,6 +82,9 @@ find "$(dirname "$GOSUNGROW_CONFIG")" -maxdepth 1 -type f -name '*.json' -size 0
 
 install_managed_dashboard() {
   local action
+  local dashboard_log
+  local dashboard_rc
+  local failure_class
   action="${1:-Installing}"
 
   bashio::log.info "${action} managed Home Assistant dashboard at ${DEFAULT_DASHBOARD_URL_PATH}."
@@ -98,10 +101,23 @@ install_managed_dashboard() {
     dashboard_args+=("--force-update")
   fi
 
-  if ! GoSungrow "${dashboard_args[@]}"; then
-    bashio::log.warning "Managed dashboard ${action} failed; continuing without changing Home Assistant dashboards."
-    return 1
+  dashboard_log="$(mktemp)"
+  set +e
+  GoSungrow "${dashboard_args[@]}" 2>&1 | tee "$dashboard_log"
+  dashboard_rc=${PIPESTATUS[0]}
+  set -e
+
+  if [ "$dashboard_rc" -ne 0 ]; then
+    failure_class="$(gosungrow_failure_class_from_log "$dashboard_log")"
+    rm -f "$dashboard_log"
+    if [ "$failure_class" = "operator_action_required" ]; then
+      bashio::log.warning "Managed dashboard ${action} needs operator action: restart Home Assistant Core once. Restarting the GoSungrow app is insufficient; reconciliation will retry automatically. MQTT startup will continue."
+    else
+      bashio::log.warning "Managed dashboard ${action} failed; continuing without changing Home Assistant dashboards."
+    fi
+    return "$dashboard_rc"
   fi
+  rm -f "$dashboard_log"
 }
 
 reconcile_managed_dashboard_after_mqtt_start() {

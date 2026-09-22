@@ -48,4 +48,10 @@ printf '%s\n' 'ERROR: API httpResponse is 500 Internal Server Error' >"$missing_
 assert_equal 'unclassified' "$(gosungrow_failure_class_from_log "$missing_log")" 'missing classification'
 assert_equal 'stop' "$(gosungrow_retry_policy non_recoverable)" 'non-recoverable policy'
 
+action_log="$test_dir/action.log"
+printf '%s\n' 'GoSungrow-Failure-Class: operator_action_required' >"$action_log"
+action_class="$(gosungrow_failure_class_from_log "$action_log")"
+assert_equal 'operator_action_required' "$action_class" 'operator-action classification'
+assert_equal 'operator_action_required' "$(gosungrow_retry_policy "$action_class")" 'operator-action policy'
+
 printf '%s\n' 'Recovery policy tests passed.'

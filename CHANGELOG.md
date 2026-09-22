@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.3.3
+
+- Recognize Home Assistant's first-install `/local` bootstrap 404 and explain that one Home Assistant Core restart is required instead of reporting a generic non-recoverable failure.
+- Preserve native or existing dashboards, continue MQTT, and automatically promote to enhanced mode after Core registers the staged asset route.
+
 ## 3.3.2
 
 - Discover Home Assistant's direct static-resource scheme and port from authenticated Supervisor metadata on every dashboard reconciliation.

@@ -340,6 +340,9 @@ func TestVerifyDashboardCardAssetRequiresExactResponse(t *testing.T) {
 	}{
 		{name: "verified", status: http.StatusOK, contentType: "text/javascript; charset=utf-8", body: body},
 		{name: "status", status: http.StatusNotFound, contentType: "text/javascript", body: body, wantError: "HTTP 404"},
+		{name: "unauthorized", status: http.StatusUnauthorized, contentType: "text/javascript", body: body, wantError: "HTTP 401"},
+		{name: "forbidden", status: http.StatusForbidden, contentType: "text/javascript", body: body, wantError: "HTTP 403"},
+		{name: "server error", status: http.StatusInternalServerError, contentType: "text/javascript", body: body, wantError: "HTTP 500"},
 		{name: "redirect", status: http.StatusFound, contentType: "text/javascript", body: body, wantError: "HTTP 302"},
 		{name: "mime", status: http.StatusOK, contentType: "text/plain", body: body, wantError: "non-JavaScript MIME"},
 		{name: "hash", status: http.StatusOK, contentType: "application/javascript", body: []byte("different"), wantError: "hash mismatch"},
@@ -372,6 +375,16 @@ func TestVerifyDashboardCardAssetRequiresExactResponse(t *testing.T) {
 			}
 			if err == nil || !strings.Contains(err.Error(), tt.wantError) {
 				t.Fatalf("expected error containing %q, got %v", tt.wantError, err)
+			}
+			if tt.status == http.StatusNotFound {
+				if got := iSolarCloud.ClassifyFailure(err); got != iSolarCloud.FailureClassOperatorActionRequired {
+					t.Fatalf("404 failure class = %q, want operator action", got)
+				}
+				if verification.StaticRouteOutcome != "home-assistant-static-route-unavailable" || verification.OperatorAction != dashboardCoreRestartAction {
+					t.Fatalf("unexpected 404 verification: %#v", verification)
+				}
+			} else if got := iSolarCloud.ClassifyFailure(err); got == iSolarCloud.FailureClassOperatorActionRequired {
+				t.Fatalf("status %d was incorrectly classified as operator action", tt.status)
 			}
 		})
 	}
@@ -1107,6 +1120,8 @@ func TestWriteDashboardInstallDiagnosticsIncludesSummaryAndUnresolvedRefs(t *tes
 		AssetMetadataOutcome: "ok",
 		AssetDiscoveredPort:  18443,
 		AssetDiscoveredTLS:   "true",
+		AssetStaticRoute:     "available",
+		AssetFailureClass:    "none",
 		AssetHTTPStatus:      http.StatusOK,
 		AssetMIMEType:        "text/javascript",
 		ResourceAction:       "updated",
@@ -1208,7 +1223,7 @@ func TestWriteDashboardInstallDiagnosticsIncludesSummaryAndUnresolvedRefs(t *tes
 	for _, expected := range []string{
 		"Dashboard diagnostics:",
 		"- context: Reconciling after MQTT startup (1)",
-		"- asset: phase=committed hash=" + strings.Repeat("a", 64) + " url=/local/gosungrow/gosungrow-dashboard-cards.aaaaaaaaaaaa.js http_route=supervisor-core-info metadata_status=200 metadata_outcome=ok core_port=18443 core_tls=true http_status=200 mime=text/javascript resource_action=updated dashboard_mode=enhanced rollback=not required cleanup=complete",
+		"- asset: phase=committed hash=" + strings.Repeat("a", 64) + " url=/local/gosungrow/gosungrow-dashboard-cards.aaaaaaaaaaaa.js http_route=supervisor-core-info metadata_status=200 metadata_outcome=ok core_port=18443 core_tls=true http_status=200 mime=text/javascript static_route=available failure_class=none operator_action=\"\" resource_action=updated dashboard_mode=enhanced rollback=not required cleanup=complete",
 		"- HA states loaded: 1284",
 		"- GoSungrow states found: 42",
 		"- dashboard entity refs found: 23",

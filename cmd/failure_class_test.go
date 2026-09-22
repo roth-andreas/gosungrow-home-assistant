@@ -28,6 +28,11 @@ func TestFailureClassLineUsesStableClassification(t *testing.T) {
 			err:  errors.New("invalid local configuration"),
 			want: "GoSungrow-Failure-Class: non_recoverable",
 		},
+		{
+			name: "operator action required",
+			err:  &dashboardStaticRouteUnavailableError{},
+			want: "GoSungrow-Failure-Class: operator_action_required",
+		},
 	}
 
 	for _, tc := range tests {

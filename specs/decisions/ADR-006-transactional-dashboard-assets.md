@@ -15,6 +15,8 @@ Home Assistant API/websocket transport and static-resource transport are separat
 
 A fresh installation that cannot activate the module degrades to a resource-independent dashboard composed only of native Home Assistant cards. It preserves targets, view paths, and resolved source decisions so a later reconciliation can promote it automatically. The last verified bundle is retained through upgrades, and lifecycle diagnostics describe bounded metadata rather than asset bodies.
 
+Home Assistant registers `/local` during frontend startup only when the config-root `www` directory already exists. A first GoSungrow installation can therefore stage a correct file after Core startup while `/local` still returns 404. GoSungrow classifies only that verified-stage/HTTP-404 boundary as requiring operator action, preserves or installs native mode, and asks for one user-controlled Core restart. It never restarts Core itself. The next reconciliation promotes automatically after the route becomes available, and the unavailable resource is never registered or exposed to browser negative caching.
+
 ## Consequences
 
 - Browser cache invalidation follows naturally from the content hash; a browser opened before resource registration may need one ordinary reload but never a forced hard refresh.
@@ -22,6 +24,7 @@ A fresh installation that cannot activate the module degrades to a resource-inde
 - Resource and dashboard mutation require explicit rollback and boundary tests.
 - Deployment-topology tests must distinguish the Supervisor websocket proxy from Home Assistant's direct static-file origin.
 - Native fallback remains usable for monitoring while enhanced presentation and source editing are unavailable.
+- First-time installations may require one explicit Core restart when `/local` was not registered at startup; ordinary upgrades and delivery failures do not.
 
 ## Rejected alternatives
 
@@ -32,4 +35,7 @@ A fresh installation that cannot activate the module degrades to a resource-inde
 - Hardcoding port 80 or 8123 is incompatible with other managed and custom Home Assistant Core ports.
 - Port probing, silent fallback, or persisted topology can select the wrong service, conceal permission or metadata failures, and become stale across Core restarts.
 - Disabling TLS certificate verification would weaken the direct static-resource trust boundary.
+- Blindly retrying an unregistered `/local` route cannot repair the Core startup condition.
+- Automatically restarting Core is an unacceptable availability side effect; restarting only the GoSungrow app does not register the route.
+- Registering the resource before HTTP verification exposes browsers to a missing content-addressed URL and possible negative caching.
 - Removing the custom cards would discard the enhanced flow, summary, and source-selection experience rather than isolating its failure mode.

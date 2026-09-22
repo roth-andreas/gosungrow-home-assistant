@@ -7,7 +7,7 @@ gosungrow_failure_class_from_log() {
   log_file="$1"
   failure_class="$(sed -n 's/^GoSungrow-Failure-Class: //p' "$log_file" | head -n 1)"
   case "$failure_class" in
-    recoverable_remote|docker_dns|non_recoverable)
+    recoverable_remote|docker_dns|non_recoverable|operator_action_required)
       printf '%s' "$failure_class"
       ;;
     *)
@@ -23,6 +23,9 @@ gosungrow_retry_policy() {
       ;;
     docker_dns)
       printf '%s' 'docker_dns'
+      ;;
+    operator_action_required)
+      printf '%s' 'operator_action_required'
       ;;
     *)
       printf '%s' 'stop'

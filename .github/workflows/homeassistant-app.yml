@@ -145,6 +145,12 @@ jobs:
           HA_E2E_RESOURCE_HASH="$asset_hash" \
             node tools/ha-e2e/dashboard_resource_smoke.mjs
 
+      - name: Validate first-install local-route bootstrap recovery
+        shell: bash
+        env:
+          HA_CORE_IMAGE: ghcr.io/home-assistant/home-assistant:2026.9.3
+        run: bash tools/ha-e2e/local_route_bootstrap.sh
+
       - name: Validate app startup script
         shell: bash
         run: |

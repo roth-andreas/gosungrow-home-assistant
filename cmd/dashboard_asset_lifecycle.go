@@ -19,6 +19,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud"
 )
 
 const (
@@ -39,13 +41,27 @@ var dashboardAssetHTTPClient = &http.Client{
 }
 
 type dashboardAssetVerification struct {
-	StatusCode      int
-	MIMEType        string
-	Route           string
-	MetadataStatus  int
-	MetadataOutcome string
-	DiscoveredPort  int
-	DiscoveredTLS   bool
+	StatusCode         int
+	MIMEType           string
+	Route              string
+	MetadataStatus     int
+	MetadataOutcome    string
+	DiscoveredPort     int
+	DiscoveredTLS      bool
+	StaticRouteOutcome string
+	OperatorAction     string
+}
+
+const dashboardCoreRestartAction = "restart Home Assistant Core once; restarting the GoSungrow app is insufficient; GoSungrow reconciliation will retry automatically"
+
+type dashboardStaticRouteUnavailableError struct{}
+
+func (e *dashboardStaticRouteUnavailableError) Error() string {
+	return "home assistant static route unavailable: staged dashboard asset returned HTTP 404; " + dashboardCoreRestartAction
+}
+
+func (e *dashboardStaticRouteUnavailableError) FailureClass() iSolarCloud.FailureClass {
+	return iSolarCloud.FailureClassOperatorActionRequired
 }
 
 type dashboardResourceChange struct {
@@ -143,8 +159,15 @@ func verifyDashboardCardAssetWithClient(ctx context.Context, client dashboardHTT
 		verification.MIMEType = strings.ToLower(mediaType)
 	}
 	if response.StatusCode != http.StatusOK {
+		if response.StatusCode == http.StatusNotFound {
+			verification.StaticRouteOutcome = "home-assistant-static-route-unavailable"
+			verification.OperatorAction = dashboardCoreRestartAction
+			return verification, &dashboardStaticRouteUnavailableError{}
+		}
+		verification.StaticRouteOutcome = "http-error"
 		return verification, fmt.Errorf("staged dashboard asset returned HTTP %d", response.StatusCode)
 	}
+	verification.StaticRouteOutcome = "available"
 	if !dashboardJavaScriptMIMEType(verification.MIMEType) {
 		return verification, fmt.Errorf("staged dashboard asset returned non-JavaScript MIME type %q", verification.MIMEType)
 	}

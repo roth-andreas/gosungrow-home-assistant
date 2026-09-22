@@ -33,6 +33,8 @@ const (
 	FailureClassDockerDNS FailureClass = "docker_dns"
 	// FailureClassNonRecoverable stops the app wrapper retry loop.
 	FailureClassNonRecoverable FailureClass = "non_recoverable"
+	// FailureClassOperatorActionRequired stops automated recovery until a user repairs a safe local condition.
+	FailureClassOperatorActionRequired FailureClass = "operator_action_required"
 )
 
 type classifiedFailure interface {

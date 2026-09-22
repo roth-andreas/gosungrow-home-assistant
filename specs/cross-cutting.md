@@ -37,6 +37,7 @@ Scope: Error taxonomy, retry eligibility, files, secrets, determinism, and compa
 - **REQ-XCUT-018** — Successful recovery MUST log outage duration and resumption of the normal schedule.
 - **REQ-XCUT-019** — Failure classification MUST remain separate from rendered error text across nested recovery and process boundaries. A later fallback failure MUST NOT replace earlier causal evidence or change the selected recovery action merely because its message contains text associated with another failure category.
 - **REQ-XCUT-020** — Resource delivery and rollback diagnostics MUST be bounded and structured around lifecycle metadata. JavaScript bodies, encoded asset URLs, credentials, and tokens MUST never be logged.
+- **REQ-XCUT-021** — `operator_action_required` is the stable failure class for a safe local condition that bounded automated retries cannot repair without user action. It MUST preserve its classification through wrapping, MUST NOT trigger login refresh, gateway rotation, Docker-DNS remediation, or a process restart loop, and MUST remain separate from its human-readable guidance. Dashboard reconciliation MAY continue on its existing bounded schedule.
 
 ## Prohibited behavior
 

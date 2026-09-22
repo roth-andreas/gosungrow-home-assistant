@@ -41,6 +41,7 @@ Scope: Commands, flags, app options, configuration precedence, startup, and rest
 - **REQ-ADDON-009** — A Docker-DNS failure classification MUST NOT refresh login and MUST retry after 15, 30, 60, 120, then 300 seconds. A nested diagnostic mentioning `127.0.0.11:53` MUST NOT select this policy unless the stable failure classification is Docker DNS. Temporary log files MUST be removed between attempts.
 - **REQ-ADDON-010** — Any unclassified nonzero exit MUST be returned without indefinite retry.
 - **REQ-ADDON-011** — A normal binary error exit MUST provide the wrapper a stable classification distinguishing recoverable remote, Docker DNS, and non-recoverable failure. The wrapper MUST select recovery from that classification rather than human-readable log substrings. A missing or unknown classification is unclassified under `REQ-ADDON-010`; panic/runtime-fatal detection remains governed by `REQ-ADDON-007`.
+- **REQ-ADDON-012** — A dashboard command classified `operator_action_required` MUST remain nonfatal to MQTT startup, MUST retain the existing bounded dashboard-reconciliation schedule, and MUST report the Core-restart guidance from `REQ-DASH-037`. The wrapper MUST recognize the class but MUST NOT refresh iSolarCloud login, restart the MQTT process, initiate a Core restart, or treat an add-on restart as remediation.
 
 ## Prohibited behavior
 

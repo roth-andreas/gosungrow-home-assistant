@@ -137,6 +137,9 @@ type dashboardInstallDiagnostics struct {
 	AssetMetadataOutcome  string
 	AssetDiscoveredPort   int
 	AssetDiscoveredTLS    string
+	AssetStaticRoute      string
+	AssetOperatorAction   string
+	AssetFailureClass     string
 	AssetHTTPStatus       int
 	AssetMIMEType         string
 	ResourceAction        string
@@ -428,6 +431,11 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	}
 	diagnostics.AssetHTTPStatus = assetVerification.StatusCode
 	diagnostics.AssetMIMEType = assetVerification.MIMEType
+	diagnostics.AssetStaticRoute = assetVerification.StaticRouteOutcome
+	diagnostics.AssetOperatorAction = assetVerification.OperatorAction
+	if activationErr != nil {
+		diagnostics.AssetFailureClass = string(iSolarCloud.ClassifyFailure(activationErr))
+	}
 	if activationErr == nil {
 		diagnostics.AssetPhase = "http-verified"
 	}
@@ -1121,7 +1129,7 @@ func printDashboardInstallDiagnostics(diagnostics dashboardInstallDiagnostics) {
 func writeDashboardInstallDiagnostics(w io.Writer, diagnostics dashboardInstallDiagnostics) {
 	fmt.Fprintln(w, "Dashboard diagnostics:")
 	fmt.Fprintf(w, "- context: %s\n", dashboardDiagnosticContext(diagnostics.DiagnosticContext))
-	fmt.Fprintf(w, "- asset: phase=%s hash=%s url=%s http_route=%s metadata_status=%d metadata_outcome=%s core_port=%d core_tls=%s http_status=%d mime=%s resource_action=%s dashboard_mode=%s rollback=%s cleanup=%s\n",
+	fmt.Fprintf(w, "- asset: phase=%s hash=%s url=%s http_route=%s metadata_status=%d metadata_outcome=%s core_port=%d core_tls=%s http_status=%d mime=%s static_route=%s failure_class=%s operator_action=%q resource_action=%s dashboard_mode=%s rollback=%s cleanup=%s\n",
 		dashboardDiagnosticDefault(diagnostics.AssetPhase, "not-started"),
 		dashboardDiagnosticDefault(diagnostics.AssetHash, "none"),
 		dashboardDiagnosticDefault(diagnostics.AssetURL, "none"),
@@ -1132,6 +1140,9 @@ func writeDashboardInstallDiagnostics(w io.Writer, diagnostics dashboardInstallD
 		dashboardDiagnosticDefault(diagnostics.AssetDiscoveredTLS, "unknown"),
 		diagnostics.AssetHTTPStatus,
 		dashboardDiagnosticDefault(diagnostics.AssetMIMEType, "unknown"),
+		dashboardDiagnosticDefault(diagnostics.AssetStaticRoute, "not-checked"),
+		dashboardDiagnosticDefault(diagnostics.AssetFailureClass, "none"),
+		diagnostics.AssetOperatorAction,
 		dashboardDiagnosticDefault(diagnostics.ResourceAction, "none"),
 		dashboardDiagnosticDefault(diagnostics.DashboardMode, "unknown"),
 		dashboardDiagnosticDefault(diagnostics.RollbackResult, "not-required"),

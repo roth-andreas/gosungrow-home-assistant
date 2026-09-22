@@ -31,7 +31,7 @@ The specification is authoritative; this map helps locate derived artifacts.
 | Test artifact | Governing requirements |
 |---|---|
 | `cmd/cmd_api_test.go` | `REQ-API-002`, `007`–`009`; `REQ-XCUT-002`–`004` |
-| `cmd/failure_class_test.go` | `REQ-ADDON-008`–`011`; `REQ-XCUT-019`; `REQ-ACC-028` |
+| `cmd/failure_class_test.go` | `REQ-ADDON-008`–`012`; `REQ-XCUT-019`, `021`; `REQ-ACC-028`, `038` |
 | `iSolarCloud/recovery_test.go` | `REQ-API-007`–`009`, `028`–`029`; `REQ-XCUT-002`–`004`, `017`, `019`; `REQ-ACC-002`, `029` |
 | `iSolarCloud/highlevel_ps_test.go` | `REQ-API-022`–`024`, `031`; `REQ-ACC-032` |
 | `iSolarCloud/api/web_timeout_test.go` | `REQ-API-001`, `016`; `REQ-ACC-003` |
@@ -52,7 +52,7 @@ The specification is authoritative; this map helps locate derived artifacts.
 | `cmdHassio/options_test.go` | `REQ-MQTT-019`–`020` |
 | `cmdHassio/struct_entity_test.go` | `REQ-HA-008`–`014`, `019`; `REQ-ACC-011`, `030` |
 | `cmd/cmd_mqtt_test.go` | `REQ-MQTT-005`–`022`; `REQ-DATA-018`–`020`; `REQ-ACC-009`–`010`, `032` |
-| `cmd/cmd_ha_install_dashboard_test.go` | `REQ-DASH-001`–`036`; `REQ-REL-004`, `012`; `REQ-ACC-012`, `018`–`019`, `033`–`035`, `037` |
+| `cmd/cmd_ha_install_dashboard_test.go` | `REQ-DASH-001`–`037`; `REQ-REL-004`, `012`–`013`; `REQ-XCUT-021`; `REQ-ACC-012`, `018`–`019`, `033`–`035`, `037`–`038` |
 | `cmd/dashboard_test_helpers_test.go` | shared fixtures for `REQ-DASH-*`, `REQ-RES-*`, and `REQ-SRC-*` tests |
 | `cmd/dashboard_entity_resolver_test.go` | `REQ-RES-001`–`009`, `016`–`018`; `REQ-ACC-013`, `031` |
 | `cmd/dashboard_semantic_matcher_test.go` | `REQ-RES-010`–`015`; `REQ-ACC-013` |
@@ -61,8 +61,8 @@ The specification is authoritative; this map helps locate derived artifacts.
 | `cmd/dashboard_i18n_test.go` | `REQ-DASH-014`–`016`; `REQ-ACC-018` |
 | `tools/preview/gosungrow-source-mapping-card.test.cjs` | `REQ-SRC-017`–`025`; `REQ-CARD-001`–`002` |
 | `tools/test_energy_summary_card.mjs` | `REQ-CARD-008`–`018`; `REQ-ACC-020`–`022` |
-| `tools/ha-e2e/dashboard_resource_smoke.mjs` | `REQ-CARD-018`; `REQ-REL-011`; `REQ-ACC-033`, `036` |
-| `addon/gosungrow/recovery_policy_test.sh` | `REQ-ADDON-008`–`011`; `REQ-XCUT-019`; `REQ-ACC-028` |
+| `tools/ha-e2e/dashboard_resource_smoke.mjs`, `tools/ha-e2e/local_route_bootstrap.mjs`, `tools/ha-e2e/local_route_bootstrap.sh` | `REQ-CARD-018`; `REQ-DASH-037`; `REQ-REL-011`, `013`; `REQ-ACC-033`, `036`, `038` |
+| `addon/gosungrow/recovery_policy_test.sh` | `REQ-ADDON-008`–`012`; `REQ-XCUT-019`, `021`; `REQ-ACC-028`, `038` |
 
 ## Non-test verification
 
@@ -72,7 +72,7 @@ The specification is authoritative; this map helps locate derived artifacts.
 | `go test ./...` plus the reviewed Go diff | `REQ-PROD-*`, `REQ-DOM-*`, `REQ-API-*`, `REQ-DATA-*`, `REQ-MQTT-*`, `REQ-HA-*`, `REQ-DASH-*`, `REQ-RES-*`, `REQ-SRC-*`, `REQ-CARD-*`, `REQ-CLI-*`, `REQ-XCUT-*`, and their `REQ-ACC-*` scenarios |
 | Both Node.js test files above | `REQ-SRC-017`–`025`, `REQ-CARD-*`, frontend acceptance requirements |
 | `bash -n addon/gosungrow/run.sh` | `REQ-ADDON-*` |
-| Docker smoke build and app-manifest review | `REQ-REL-002`–`004`, `006`, `012` |
+| Docker smoke build, app-manifest review, and pinned Core lifecycle test | `REQ-REL-002`–`004`, `006`, `012`–`013` |
 | source/configuration inventory checks in `scripts/check_specs.py` | `REQ-COMP-005`–`009`, `REQ-CFG-004`, `REQ-ACC-027` |
 | pull-request coupling check in `scripts/check_spec_change_scope.py` | `REQ-GOV-004`, `011`–`012`; `REQ-ACC-026` |
 | reviewed implementation diff | requirements without a narrower automated artifact; `REQ-COMP-001`–`004`, `007`–`010` |
