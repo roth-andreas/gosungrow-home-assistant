@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.3.4
+
+- Add the Indian iSolarCloud gateway to automatic login fallback and allow Home Assistant app users to select a supported regional gateway explicitly.
+- Validate configured gateways before dashboard or MQTT startup while preserving the existing Australian default.
+
 ## 3.3.3
 
 - Recognize Home Assistant's first-install `/local` bootstrap 404 and explain that one Home Assistant Core restart is required instead of reporting a generic non-recoverable failure.

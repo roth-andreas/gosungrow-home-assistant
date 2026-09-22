@@ -34,6 +34,7 @@ Required:
 
 Optional:
 
+- `gosungrow_host`: regional iSolarCloud gateway; leave empty for the default and automatic fallback, or use `https://augateway.isolarcloud.com`, `https://gateway.isolarcloud.com`, `https://gateway.isolarcloud.eu`, `https://gateway.isolarcloud.com.hk`, `https://gateway.isolarcloud.com.cn`, or `https://gateway.isolarcloud.in`
 - `mqtt_host`: custom MQTT broker host; leave empty to use the Home Assistant MQTT service
 - `mqtt_port`: custom MQTT broker port; defaults to `1883`
 - `mqtt_username`: custom MQTT username; leave empty to use the Home Assistant MQTT service credentials
@@ -80,7 +81,7 @@ Non-administrator users can inspect the selected sources but cannot modify them.
 - Runtime state is stored in `/data/.GoSungrow`.
 - The managed dashboard state is stored in `/data/.GoSungrow/dashboard_state.json`.
 - If no entities appear, verify MQTT first.
-- The app uses the standard iSolarCloud host, app key, and managed dashboard path internally.
+- The app uses the standard iSolarCloud host unless `gosungrow_host` selects a supported regional gateway. Indian accounts can select `https://gateway.isolarcloud.in`.
 - MQTT uses the custom broker settings when `mqtt_host` is set, otherwise it falls back to the Home Assistant MQTT service.
 - Managed dashboard text follows Home Assistant language when available (fallback: English).
 - If you are updating from an older version with more options, open the app configuration once and save it to clear legacy fields.
@@ -96,7 +97,7 @@ After MQTT has initialized, GoSungrow keeps MQTT connected and retries iSolarClo
 Suggested checks:
 
 1. In Home Assistant, check `Settings > System > Network` and make sure DNS points to a reliable resolver.
-2. If you use Pi-hole, AdGuard, a router DNS proxy, VPN DNS, or custom firewall rules, verify that the Home Assistant host can resolve `gateway.isolarcloud.eu` and `augateway.isolarcloud.com`.
+2. If you use Pi-hole, AdGuard, a router DNS proxy, VPN DNS, or custom firewall rules, verify that the Home Assistant host can resolve the selected gateway, such as `gateway.isolarcloud.in`, `gateway.isolarcloud.eu`, or `augateway.isolarcloud.com`.
 3. Check whether other apps also report lookups through `127.0.0.11:53`; that indicates a host-level DNS problem.
 4. Restart Home Assistant OS or the Docker host if its embedded resolver remains unhealthy. Restarting only GoSungrow may coincide with recovery, but it cannot repair Docker DNS.
 

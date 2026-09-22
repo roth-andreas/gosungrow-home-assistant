@@ -6,7 +6,7 @@ Scope: Cross-subsystem executable examples
 ## Authentication and transport
 
 - **REQ-ACC-001** — Given a missing token file, login proceeds to the network without a file error; given corrupt token JSON, the file is removed and login proceeds.
-- **REQ-ACC-002** — Given configured host/key rejection, login tries unique candidates in specified order. Given `127.0.0.11:53` on the first candidate, it stops host rotation and returns for DNS backoff. Given an earlier authentication/gateway failure followed by `127.0.0.11:53` on a later candidate, it stops rotation, preserves both failures, and remains classified as a recoverable remote login sequence rather than a general Docker-DNS outage.
+- **REQ-ACC-002** — Given configured host/key rejection, login tries unique candidates in specified order. The Indian gateway occurs exactly once in automatic rotation; when configured explicitly it is first, while the existing gateways retain their relative order. Given `127.0.0.11:53` on the first candidate, rotation stops and returns for DNS backoff. Given an earlier authentication/gateway failure followed by `127.0.0.11:53` on a later candidate, rotation stops, preserves both failures, and remains classified as a recoverable remote login sequence rather than a general Docker-DNS outage.
 - **REQ-ACC-003** — Given a timed-out HTTP request, a later request can succeed because requests use a bounded private client rather than corrupting the global client.
 - **REQ-ACC-004** — Given a common request with a token, debug string contains `<redacted>` and not the token.
 
@@ -51,7 +51,7 @@ Scope: Cross-subsystem executable examples
 
 ## Add-on and release
 
-- **REQ-ACC-023** — Dashboard failure logs warning and MQTT starts; missing credentials/host is fatal; panic output exits without login refresh.
+- **REQ-ACC-023** — Dashboard failure logs warning and MQTT starts; missing credentials or MQTT host is fatal; panic output exits without login refresh. Missing or empty `gosungrow_host` uses the existing Australian default, selecting `https://gateway.isolarcloud.in` persists and uses it as the configured gateway, and an unsupported gateway fails before dashboard or MQTT startup.
 - **REQ-ACC-024** — Binary and app versions align, specs pass consistency validation, Go tests pass, shell parses, and amd64 image builds before publication.
 
 ## Configuration and source-of-truth workflow

@@ -63,6 +63,7 @@ The specification is authoritative; this map helps locate derived artifacts.
 | `tools/test_energy_summary_card.mjs` | `REQ-CARD-008`–`018`; `REQ-ACC-020`–`022` |
 | `tools/ha-e2e/dashboard_resource_smoke.mjs`, `tools/ha-e2e/local_route_bootstrap.mjs`, `tools/ha-e2e/local_route_bootstrap.sh` | `REQ-CARD-018`; `REQ-DASH-037`; `REQ-REL-011`, `013`; `REQ-ACC-033`, `036`, `038` |
 | `addon/gosungrow/recovery_policy_test.sh` | `REQ-ADDON-008`–`012`; `REQ-XCUT-019`, `021`; `REQ-ACC-028`, `038` |
+| `addon/gosungrow/configuration_test.sh` | `REQ-ADDON-002`, `013`; `REQ-CFG-003`; `REQ-ACC-023` |
 
 ## Non-test verification
 

@@ -105,6 +105,7 @@ func BuildLoginAttempts(host string, appKey string) []LoginAttempt {
 		"https://gateway.isolarcloud.eu",
 		"https://gateway.isolarcloud.com.hk",
 		"https://gateway.isolarcloud.com.cn",
+		"https://gateway.isolarcloud.in",
 	}
 	appKeys := []string{
 		NormalizeLoginAppKey(appKey),

@@ -3,6 +3,9 @@ configuration:
     name: iSolarCloud-användarnamn
   gosungrow_password:
     name: iSolarCloud-lösenord
+  gosungrow_host:
+    name: iSolarCloud-gateway
+    description: Valfri regional gateway. Lämna tomt för att använda standardgatewayen och automatisk reservväg.
   mqtt_host:
     name: MQTT-vard
     description: Valfri egen MQTT-brokervard. Lamna tomt for att anvanda Home Assistant MQTT-tjansten.

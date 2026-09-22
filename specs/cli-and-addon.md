@@ -18,6 +18,7 @@ Scope: Commands, flags, app options, configuration precedence, startup, and rest
 |---|---|---|
 | `gosungrow_user` | required string | fatal when empty |
 | `gosungrow_password` | required password | fatal when empty |
+| `gosungrow_host` | string, empty | empty selects the existing default gateway; otherwise selects one canonical supported gateway |
 | `mqtt_host` | string, empty | selects custom MQTT when non-empty |
 | `mqtt_port` | port, 1883 | custom/service fallback |
 | `mqtt_username` | string, empty | custom credentials |
@@ -42,6 +43,7 @@ Scope: Commands, flags, app options, configuration precedence, startup, and rest
 - **REQ-ADDON-010** — Any unclassified nonzero exit MUST be returned without indefinite retry.
 - **REQ-ADDON-011** — A normal binary error exit MUST provide the wrapper a stable classification distinguishing recoverable remote, Docker DNS, and non-recoverable failure. The wrapper MUST select recovery from that classification rather than human-readable log substrings. A missing or unknown classification is unclassified under `REQ-ADDON-010`; panic/runtime-fatal detection remains governed by `REQ-ADDON-007`.
 - **REQ-ADDON-012** — A dashboard command classified `operator_action_required` MUST remain nonfatal to MQTT startup, MUST retain the existing bounded dashboard-reconciliation schedule, and MUST report the Core-restart guidance from `REQ-DASH-037`. The wrapper MUST recognize the class but MUST NOT refresh iSolarCloud login, restart the MQTT process, initiate a Core restart, or treat an add-on restart as remediation.
+- **REQ-ADDON-013** — The wrapper MUST trim `gosungrow_host`. Empty selects `https://augateway.isolarcloud.com`; otherwise the value MUST equal one of `https://augateway.isolarcloud.com`, `https://gateway.isolarcloud.com`, `https://gateway.isolarcloud.eu`, `https://gateway.isolarcloud.com.hk`, `https://gateway.isolarcloud.com.cn`, or `https://gateway.isolarcloud.in`. A valid value becomes the configured host exported and persisted before runtime work. An unsupported value is a fatal configuration error and MUST prevent dashboard and MQTT startup without changing API credentials or MQTT selection.
 
 ## Prohibited behavior
 

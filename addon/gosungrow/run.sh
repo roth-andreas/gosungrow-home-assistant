@@ -7,6 +7,7 @@ readonly DEFAULT_DASHBOARD_URL_PATH="gosungrow-flow"
 readonly DEFAULT_DASHBOARD_TITLE="GoSungrow Flow"
 
 source /usr/local/lib/gosungrow/recovery_policy.sh
+source /usr/local/lib/gosungrow/configuration.sh
 
 optional_config() {
   local value
@@ -19,6 +20,7 @@ optional_config() {
 
 GOSUNGROW_USER="$(bashio::config 'gosungrow_user')"
 GOSUNGROW_PASSWORD="$(bashio::config 'gosungrow_password')"
+CUSTOM_GOSUNGROW_HOST="$(optional_config 'gosungrow_host')"
 CUSTOM_MQTT_HOST="$(optional_config 'mqtt_host')"
 CUSTOM_MQTT_PORT="$(optional_config 'mqtt_port')"
 CUSTOM_MQTT_USER="$(optional_config 'mqtt_username')"
@@ -48,6 +50,11 @@ if [ -z "$GOSUNGROW_PASSWORD" ]; then
   bashio::log.fatal 'Missing required option: gosungrow_password'
 fi
 
+if ! GOSUNGROW_HOST="$(gosungrow_resolve_host "$CUSTOM_GOSUNGROW_HOST" "$DEFAULT_HOST")"; then
+  bashio::log.fatal 'Unsupported gosungrow_host. Select a canonical iSolarCloud gateway.'
+  exit 1
+fi
+
 if [ -z "$GOSUNGROW_MQTT_HOST" ]; then
   bashio::log.fatal 'No MQTT broker configured. Set mqtt_host in the app config or install/start the Home Assistant Mosquitto broker app.'
 fi
@@ -60,7 +67,7 @@ fi
 
 export GOSUNGROW_USER
 export GOSUNGROW_PASSWORD
-export GOSUNGROW_HOST="$DEFAULT_HOST"
+export GOSUNGROW_HOST
 export GOSUNGROW_APPKEY="$DEFAULT_APPKEY"
 export GOSUNGROW_MQTT_HOST
 export GOSUNGROW_MQTT_PORT="${GOSUNGROW_MQTT_PORT:-1883}"

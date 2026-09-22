@@ -1,5 +1,5 @@
 name: GoSungrow
-version: 3.3.3
+version: 3.3.4
 slug: gosungrow
 url: https://github.com/roth-andreas/gosungrow-home-assistant
 image: ghcr.io/roth-andreas/gosungrow-addon-{arch}
@@ -23,6 +23,7 @@ arch:
 options:
   gosungrow_user: null
   gosungrow_password: null
+  gosungrow_host: ""
   mqtt_host: ""
   mqtt_port: 1883
   mqtt_username: ""
@@ -34,6 +35,7 @@ options:
 schema:
   gosungrow_user: str
   gosungrow_password: password
+  gosungrow_host: str
   mqtt_host: str
   mqtt_port: port
   mqtt_username: str

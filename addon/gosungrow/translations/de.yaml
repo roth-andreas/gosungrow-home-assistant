@@ -3,6 +3,9 @@ configuration:
     name: iSolarCloud-Benutzername
   gosungrow_password:
     name: iSolarCloud-Passwort
+  gosungrow_host:
+    name: iSolarCloud-Gateway
+    description: Optionales regionales Gateway. Leer lassen, um den Standard und die automatische Ausweichroute zu verwenden.
   mqtt_host:
     name: MQTT-Host
     description: Optionaler eigener MQTT-Broker-Host. Leer lassen, um den Home Assistant MQTT-Dienst zu verwenden.

@@ -37,6 +37,51 @@ func TestBuildLoginAttemptsPrioritizesConfiguredHostAndAppKey(t *testing.T) {
 	}
 }
 
+func TestBuildLoginAttemptsIncludesIndianGatewayInStableHostOrder(t *testing.T) {
+	attempts := BuildLoginAttempts("https://custom.isolarcloud.example", DefaultApiAppKey)
+	wantHosts := []string{
+		"https://custom.isolarcloud.example",
+		"https://augateway.isolarcloud.com",
+		"https://gateway.isolarcloud.com",
+		"https://gateway.isolarcloud.eu",
+		"https://gateway.isolarcloud.com.hk",
+		"https://gateway.isolarcloud.com.cn",
+		"https://gateway.isolarcloud.in",
+	}
+
+	var gotHosts []string
+	for _, attempt := range attempts {
+		if len(gotHosts) == 0 || gotHosts[len(gotHosts)-1] != attempt.Host {
+			gotHosts = append(gotHosts, attempt.Host)
+		}
+	}
+	if strings.Join(gotHosts, "\n") != strings.Join(wantHosts, "\n") {
+		t.Fatalf("host order = %q, want %q", gotHosts, wantHosts)
+	}
+}
+
+func TestBuildLoginAttemptsPrioritizesIndianGatewayWithoutDuplicatingHostGroup(t *testing.T) {
+	attempts := BuildLoginAttempts("https://gateway.isolarcloud.in", DefaultApiAppKey)
+	if len(attempts) == 0 || attempts[0].Host != "https://gateway.isolarcloud.in" {
+		t.Fatalf("first attempt = %+v, want Indian gateway", attempts)
+	}
+
+	hostGroups := 0
+	previousHost := ""
+	for _, attempt := range attempts {
+		if attempt.Host == previousHost {
+			continue
+		}
+		if attempt.Host == "https://gateway.isolarcloud.in" {
+			hostGroups++
+		}
+		previousHost = attempt.Host
+	}
+	if hostGroups != 1 {
+		t.Fatalf("Indian gateway host groups = %d, want 1", hostGroups)
+	}
+}
+
 func TestShouldRecoverGatewayError(t *testing.T) {
 	tests := []struct {
 		name string

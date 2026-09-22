@@ -7,7 +7,7 @@ Scope: Configuration sources, precedence, environment variables, and operational
 
 - **REQ-CFG-001** — Product configuration MUST be resolvable from framework defaults, persisted configuration, `GOSUNGROW_` environment variables, and explicit CLI flags. Explicit flags take precedence; an explicitly supplied empty value remains empty when the affected requirement distinguishes empty from absent.
 - **REQ-CFG-002** — `config write` MUST persist the effective CLI-framework configuration to `GOSUNGROW_CONFIG`; when unset, the framework's standard GoSungrow configuration location is used. Credentials and tokens MUST NOT be printed by normal successful commands.
-- **REQ-CFG-003** — The Home Assistant app wrapper MUST translate app options into the configuration described by `REQ-ADDON-*`; Supervisor-provided service values are inputs only to that translation and MUST NOT redefine CLI precedence.
+- **REQ-CFG-003** — The Home Assistant app wrapper MUST translate app options into the configuration described by `REQ-ADDON-*`; specifically, `gosungrow_host` maps to `GOSUNGROW_HOST` under `REQ-ADDON-013`. Supervisor-provided service values are inputs only to that translation and MUST NOT redefine CLI precedence.
 
 ## Configuration catalog
 

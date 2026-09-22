@@ -20,6 +20,8 @@ The patterns are repository-relative and are checked by `scripts/check_specs.py`
 | `defaults/*.go` | version and product defaults | `REQ-PROD-*`, `REQ-REL-*` |
 | `defaults/*.md` | non-normative configuration examples | `REQ-GOV-008`, `REQ-CFG-*` |
 | `addon/gosungrow/run.sh` | app lifecycle and recovery | `REQ-ADDON-*`, `REQ-CFG-*`, `REQ-XCUT-*` |
+| `addon/gosungrow/configuration.sh` | app option validation and translation policy | `REQ-ADDON-*`, `REQ-CFG-*` |
+| `addon/gosungrow/configuration_test.sh` | app configuration verification | `REQ-ADDON-*`, `REQ-CFG-*`, `REQ-ACC-*` |
 | `addon/gosungrow/recovery_policy.sh` | app process-boundary failure classification policy | `REQ-ADDON-*`, `REQ-XCUT-*` |
 | `addon/gosungrow/recovery_policy_test.sh` | app recovery-policy verification | `REQ-ADDON-*`, `REQ-XCUT-*`, `REQ-ACC-*` |
 | `addon/gosungrow/config.yaml` | app options and manifest | `REQ-ADDON-*`, `REQ-REL-*` |

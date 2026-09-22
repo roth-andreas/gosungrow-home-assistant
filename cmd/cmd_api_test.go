@@ -42,7 +42,7 @@ func TestBuildLoginAttemptsPrioritizesConfiguredHostAndAppKey(t *testing.T) {
 	}
 
 	want := loginAttempt{
-		Host:   "https://gateway.isolarcloud.com.hk",
+		Host:   "https://gateway.isolarcloud.in",
 		AppKey: iSolarCloud.LegacyLoginAppKey,
 	}
 	if !seen[want] {

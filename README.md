@@ -52,6 +52,7 @@ For almost everyone, the only app settings you need are:
 
 - `gosungrow_user`
 - `gosungrow_password`
+- `gosungrow_host` (optional): supported regional iSolarCloud gateway; Indian accounts can select `https://gateway.isolarcloud.in`
 
 ## What You Get
 
