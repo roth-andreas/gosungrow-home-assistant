@@ -5,23 +5,28 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
 const (
 	dashboardAssetModeEnhanced        = "enhanced"
 	dashboardAssetModeFallback        = "native-fallback"
-	dashboardHTTPRouteDirectCore      = "direct-core"
+	dashboardHTTPRouteSupervisorInfo  = "supervisor-core-info"
 	dashboardHTTPRouteWebsocketOrigin = "websocket-origin"
+	dashboardSupervisorCoreInfoURL    = "http://supervisor/core/info"
 )
 
 var managedDashboardBundlePattern = regexp.MustCompile(`^gosungrow-dashboard-cards\.([0-9a-f]{12})\.js$`)
@@ -34,9 +39,13 @@ var dashboardAssetHTTPClient = &http.Client{
 }
 
 type dashboardAssetVerification struct {
-	StatusCode int
-	MIMEType   string
-	Route      string
+	StatusCode      int
+	MIMEType        string
+	Route           string
+	MetadataStatus  int
+	MetadataOutcome string
+	DiscoveredPort  int
+	DiscoveredTLS   bool
 }
 
 type dashboardResourceChange struct {
@@ -52,9 +61,7 @@ func dashboardHTTPResourceURL(websocketURL, resourceURL string) (string, string,
 	}
 	path := strings.TrimSuffix(parsed.Path, "/")
 	if strings.EqualFold(parsed.Hostname(), "supervisor") && strings.HasSuffix(path, "/core/websocket") {
-		parsed = &url.URL{Scheme: "http", Host: "homeassistant:8123"}
-		parsed.Path = "/" + strings.TrimPrefix(resourceURL, "/")
-		return parsed.String(), dashboardHTTPRouteDirectCore, nil
+		return "", dashboardHTTPRouteSupervisorInfo, fmt.Errorf("Supervisor websocket endpoint requires Core endpoint discovery")
 	}
 	switch parsed.Scheme {
 	case "ws":
@@ -76,27 +83,57 @@ func dashboardHTTPResourceURL(websocketURL, resourceURL string) (string, string,
 	return parsed.String(), dashboardHTTPRouteWebsocketOrigin, nil
 }
 
-func verifyDashboardCardAsset(ctx context.Context, websocketURL, resourceURL, expectedHash string) (dashboardAssetVerification, error) {
-	return verifyDashboardCardAssetWithClient(ctx, dashboardAssetHTTPClient, websocketURL, resourceURL, expectedHash)
+func verifyDashboardCardAsset(ctx context.Context, websocketURL, supervisorToken, resourceURL, expectedHash string) (dashboardAssetVerification, error) {
+	return verifyDashboardCardAssetWithClient(ctx, dashboardAssetHTTPClient, websocketURL, supervisorToken, resourceURL, expectedHash)
 }
 
 type dashboardHTTPDoer interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
-func verifyDashboardCardAssetWithClient(ctx context.Context, client dashboardHTTPDoer, websocketURL, resourceURL, expectedHash string) (dashboardAssetVerification, error) {
-	httpURL, route, err := dashboardHTTPResourceURL(websocketURL, resourceURL)
-	if err != nil {
-		return dashboardAssetVerification{}, err
+type dashboardRequestError struct {
+	operation string
+	err       error
+}
+
+func (e *dashboardRequestError) Error() string {
+	switch {
+	case errors.Is(e.err, context.DeadlineExceeded):
+		return e.operation + ": request timed out"
+	case errors.Is(e.err, context.Canceled):
+		return e.operation + ": request canceled"
+	case errors.Is(e.err, syscall.ECONNREFUSED):
+		return e.operation + ": connection refused"
+	case errors.Is(e.err, syscall.ECONNRESET):
+		return e.operation + ": connection reset"
 	}
-	verification := dashboardAssetVerification{Route: route}
+	var dnsErr *net.DNSError
+	if errors.As(e.err, &dnsErr) {
+		return e.operation + ": DNS lookup failed"
+	}
+	var netErr net.Error
+	if errors.As(e.err, &netErr) && netErr.Timeout() {
+		return e.operation + ": request timed out"
+	}
+	return e.operation + ": request failed"
+}
+
+func (e *dashboardRequestError) Unwrap() error {
+	return e.err
+}
+
+func verifyDashboardCardAssetWithClient(ctx context.Context, client dashboardHTTPDoer, websocketURL, supervisorToken, resourceURL, expectedHash string) (dashboardAssetVerification, error) {
+	httpURL, verification, err := resolveDashboardHTTPResourceURL(ctx, client, websocketURL, supervisorToken, resourceURL)
+	if err != nil {
+		return verification, err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, httpURL, nil)
 	if err != nil {
 		return verification, err
 	}
 	response, err := client.Do(req)
 	if err != nil {
-		return verification, fmt.Errorf("fetch staged dashboard asset: %w", err)
+		return verification, &dashboardRequestError{operation: "fetch staged dashboard asset", err: err}
 	}
 	defer response.Body.Close()
 
@@ -120,6 +157,87 @@ func verifyDashboardCardAssetWithClient(ctx context.Context, client dashboardHTT
 		return verification, fmt.Errorf("staged dashboard asset hash mismatch: got %s", got)
 	}
 	return verification, nil
+}
+
+func resolveDashboardHTTPResourceURL(ctx context.Context, client dashboardHTTPDoer, websocketURL, supervisorToken, resourceURL string) (string, dashboardAssetVerification, error) {
+	parsed, err := url.Parse(strings.TrimSpace(websocketURL))
+	if err != nil {
+		return "", dashboardAssetVerification{}, err
+	}
+	path := strings.TrimSuffix(parsed.Path, "/")
+	if !strings.EqualFold(parsed.Hostname(), "supervisor") || !strings.HasSuffix(path, "/core/websocket") {
+		httpURL, route, err := dashboardHTTPResourceURL(websocketURL, resourceURL)
+		return httpURL, dashboardAssetVerification{Route: route}, err
+	}
+
+	verification := dashboardAssetVerification{
+		Route:           dashboardHTTPRouteSupervisorInfo,
+		MetadataOutcome: "request-failed",
+	}
+	discoveryCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(discoveryCtx, http.MethodGet, dashboardSupervisorCoreInfoURL, nil)
+	if err != nil {
+		return "", verification, fmt.Errorf("discover Home Assistant Core endpoint: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+supervisorToken)
+	response, err := client.Do(req)
+	if err != nil {
+		return "", verification, &dashboardRequestError{operation: "discover Home Assistant Core endpoint", err: err}
+	}
+	defer response.Body.Close()
+	verification.MetadataStatus = response.StatusCode
+	if response.StatusCode != http.StatusOK {
+		verification.MetadataOutcome = "http-error"
+		return "", verification, fmt.Errorf("discover Home Assistant Core endpoint: Supervisor returned HTTP %d", response.StatusCode)
+	}
+
+	var envelope struct {
+		Result string `json:"result"`
+		Data   struct {
+			Port json.RawMessage `json:"port"`
+			SSL  json.RawMessage `json:"ssl"`
+		} `json:"data"`
+	}
+	decoder := json.NewDecoder(io.LimitReader(response.Body, 1<<20))
+	if err := decoder.Decode(&envelope); err != nil {
+		verification.MetadataOutcome = "invalid-json"
+		return "", verification, fmt.Errorf("discover Home Assistant Core endpoint: decode Supervisor response: %w", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		verification.MetadataOutcome = "invalid-json"
+		return "", verification, fmt.Errorf("discover Home Assistant Core endpoint: Supervisor response contains trailing JSON")
+	}
+	if envelope.Result != "ok" {
+		verification.MetadataOutcome = "unsuccessful"
+		return "", verification, fmt.Errorf("discover Home Assistant Core endpoint: Supervisor result was not ok")
+	}
+	var port int
+	if len(envelope.Data.Port) == 0 || json.Unmarshal(envelope.Data.Port, &port) != nil || port < 1 || port > 65535 {
+		verification.MetadataOutcome = "invalid-port"
+		return "", verification, fmt.Errorf("discover Home Assistant Core endpoint: Supervisor port is missing or invalid")
+	}
+	var ssl bool
+	if len(envelope.Data.SSL) == 0 || json.Unmarshal(envelope.Data.SSL, &ssl) != nil {
+		verification.MetadataOutcome = "invalid-ssl"
+		return "", verification, fmt.Errorf("discover Home Assistant Core endpoint: Supervisor ssl is missing or invalid")
+	}
+
+	verification.MetadataOutcome = "ok"
+	verification.DiscoveredPort = port
+	verification.DiscoveredTLS = ssl
+	scheme := "http"
+	if ssl {
+		scheme = "https"
+	}
+	resource := &url.URL{
+		Scheme: scheme,
+		Host:   "homeassistant:" + strconv.Itoa(port),
+		Path:   "/" + strings.TrimPrefix(resourceURL, "/"),
+	}
+	return resource.String(), verification, nil
 }
 
 func dashboardJavaScriptMIMEType(value string) bool {

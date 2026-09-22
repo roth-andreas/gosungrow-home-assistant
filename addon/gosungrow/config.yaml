@@ -1,5 +1,5 @@
 name: GoSungrow
-version: 3.3.1
+version: 3.3.2
 slug: gosungrow
 url: https://github.com/roth-andreas/gosungrow-home-assistant
 image: ghcr.io/roth-andreas/gosungrow-addon-{arch}
@@ -9,6 +9,8 @@ startup: services
 boot: auto
 init: false
 homeassistant_api: true
+hassio_api: true
+hassio_role: default
 services:
   - mqtt:want
 map:

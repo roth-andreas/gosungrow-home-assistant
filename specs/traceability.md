@@ -52,7 +52,7 @@ The specification is authoritative; this map helps locate derived artifacts.
 | `cmdHassio/options_test.go` | `REQ-MQTT-019`–`020` |
 | `cmdHassio/struct_entity_test.go` | `REQ-HA-008`–`014`, `019`; `REQ-ACC-011`, `030` |
 | `cmd/cmd_mqtt_test.go` | `REQ-MQTT-005`–`022`; `REQ-DATA-018`–`020`; `REQ-ACC-009`–`010`, `032` |
-| `cmd/cmd_ha_install_dashboard_test.go` | `REQ-DASH-001`–`035`; `REQ-REL-012`; `REQ-ACC-012`, `018`–`019`, `033`–`035`, `037` |
+| `cmd/cmd_ha_install_dashboard_test.go` | `REQ-DASH-001`–`036`; `REQ-REL-004`, `012`; `REQ-ACC-012`, `018`–`019`, `033`–`035`, `037` |
 | `cmd/dashboard_test_helpers_test.go` | shared fixtures for `REQ-DASH-*`, `REQ-RES-*`, and `REQ-SRC-*` tests |
 | `cmd/dashboard_entity_resolver_test.go` | `REQ-RES-001`–`009`, `016`–`018`; `REQ-ACC-013`, `031` |
 | `cmd/dashboard_semantic_matcher_test.go` | `REQ-RES-010`–`015`; `REQ-ACC-013` |
@@ -72,7 +72,7 @@ The specification is authoritative; this map helps locate derived artifacts.
 | `go test ./...` plus the reviewed Go diff | `REQ-PROD-*`, `REQ-DOM-*`, `REQ-API-*`, `REQ-DATA-*`, `REQ-MQTT-*`, `REQ-HA-*`, `REQ-DASH-*`, `REQ-RES-*`, `REQ-SRC-*`, `REQ-CARD-*`, `REQ-CLI-*`, `REQ-XCUT-*`, and their `REQ-ACC-*` scenarios |
 | Both Node.js test files above | `REQ-SRC-017`–`025`, `REQ-CARD-*`, frontend acceptance requirements |
 | `bash -n addon/gosungrow/run.sh` | `REQ-ADDON-*` |
-| Docker smoke build | `REQ-REL-002`–`004`, `006` |
+| Docker smoke build and app-manifest review | `REQ-REL-002`–`004`, `006`, `012` |
 | source/configuration inventory checks in `scripts/check_specs.py` | `REQ-COMP-005`–`009`, `REQ-CFG-004`, `REQ-ACC-027` |
 | pull-request coupling check in `scripts/check_spec_change_scope.py` | `REQ-GOV-004`, `011`–`012`; `REQ-ACC-026` |
 | reviewed implementation diff | requirements without a narrower automated artifact; `REQ-COMP-001`–`004`, `007`–`010` |

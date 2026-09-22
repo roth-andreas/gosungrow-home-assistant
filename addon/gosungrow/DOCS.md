@@ -104,7 +104,7 @@ Do not configure a fixed iSolarCloud IP address. The HTTPS certificate and Sungr
 
 ## Troubleshooting Dashboard Cards
 
-Dashboard lifecycle logs report the asset phase, short canonical URL, verification route, response status and MIME type, resource action, dashboard mode, rollback, and cleanup result. `direct-core` is expected for the Home Assistant app; `websocket-origin` is expected for standalone CLI connections. If the dashboard remains in native fallback mode, verify that Home Assistant can serve `/local/gosungrow/` JavaScript with status 200 and a JavaScript content type. Do not add a CDN or data-URL resource manually; GoSungrow will retry activation during reconciliation.
+Dashboard lifecycle logs report the asset phase, short canonical URL, verification route, Supervisor metadata outcome and discovered port/TLS setting, response status and MIME type, resource action, dashboard mode, rollback, and cleanup result. `supervisor-core-info` is expected for the Home Assistant app; `websocket-origin` is expected for standalone CLI connections. If the dashboard remains in native fallback mode, check the metadata outcome and confirm that Home Assistant can serve `/local/gosungrow/` JavaScript with status 200 and a JavaScript content type. Do not add a CDN or data-URL resource manually; GoSungrow will retry discovery and activation during reconciliation.
 
 ## Troubleshooting Startup JSON Errors
 

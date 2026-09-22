@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.3.2
+
+- Discover Home Assistant's direct static-resource scheme and port from authenticated Supervisor metadata on every dashboard reconciliation.
+- Support managed Core ports 80, 8123, and custom ports without probing or leaking Supervisor credentials to static requests.
+
 ## 3.3.1
 
 - Verify dashboard card assets through Home Assistant's direct internal HTTP origin instead of the Supervisor API/WebSocket proxy.

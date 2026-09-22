@@ -5,13 +5,17 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/gorilla/websocket"
@@ -356,7 +360,7 @@ func TestVerifyDashboardCardAssetRequiresExactResponse(t *testing.T) {
 			defer server.Close()
 
 			wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/websocket"
-			verification, err := verifyDashboardCardAsset(context.Background(), wsURL, "/local/gosungrow/gosungrow-dashboard-cards.0123456789ab.js", expectedHash)
+			verification, err := verifyDashboardCardAsset(context.Background(), wsURL, "", "/local/gosungrow/gosungrow-dashboard-cards.0123456789ab.js", expectedHash)
 			if tt.wantError == "" {
 				if err != nil {
 					t.Fatalf("verifyDashboardCardAsset: %v", err)
@@ -382,41 +386,162 @@ func (f dashboardHTTPClientFunc) Do(request *http.Request) (*http.Response, erro
 func TestVerifyDashboardCardAssetSeparatesSupervisorAndStaticOrigins(t *testing.T) {
 	body := []byte("customElements.define('x-test', class extends HTMLElement {});")
 	expectedHash := fmt.Sprintf("%x", sha256.Sum256(body))
-	requests := 0
+	for _, tt := range []struct {
+		name   string
+		port   int
+		ssl    bool
+		origin string
+	}{
+		{name: "current managed HTTP", port: 80, origin: "http://homeassistant:80"},
+		{name: "legacy HTTP", port: 8123, origin: "http://homeassistant:8123"},
+		{name: "custom HTTPS", port: 18443, ssl: true, origin: "https://homeassistant:18443"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			requests := 0
+			client := dashboardHTTPClientFunc(func(request *http.Request) (*http.Response, error) {
+				requests++
+				if requests == 1 {
+					if got := request.URL.String(); got != dashboardSupervisorCoreInfoURL {
+						t.Fatalf("unexpected metadata URL %q", got)
+					}
+					if got := request.Header.Get("Authorization"); got != "Bearer supervisor-secret" {
+						t.Fatalf("unexpected metadata authorization %q", got)
+					}
+					if got := request.Header.Get("Accept"); got != "application/json" {
+						t.Fatalf("unexpected metadata Accept header %q", got)
+					}
+					metadata := fmt.Sprintf(`{"result":"ok","data":{"port":%d,"ssl":%t,"future":"ignored"}}`, tt.port, tt.ssl)
+					return dashboardHTTPResponse(request, http.StatusOK, "application/json", []byte(metadata)), nil
+				}
+				want := tt.origin + "/local/gosungrow/gosungrow-dashboard-cards.0123456789ab.js"
+				if got := request.URL.String(); got != want {
+					t.Fatalf("unexpected static URL: got %q want %q", got, want)
+				}
+				if got := request.Header.Get("Authorization"); got != "" {
+					t.Fatalf("static request leaked authorization header %q", got)
+				}
+				return dashboardHTTPResponse(request, http.StatusOK, "text/javascript", body), nil
+			})
+
+			verification, err := verifyDashboardCardAssetWithClient(
+				context.Background(), client, "ws://supervisor/core/websocket", "supervisor-secret",
+				"/local/gosungrow/gosungrow-dashboard-cards.0123456789ab.js", expectedHash,
+			)
+			if err != nil {
+				t.Fatalf("verifyDashboardCardAssetWithClient: %v", err)
+			}
+			if requests != 2 {
+				t.Fatalf("unexpected request count: %d", requests)
+			}
+			if verification.Route != dashboardHTTPRouteSupervisorInfo || verification.MetadataOutcome != "ok" || verification.DiscoveredPort != tt.port || verification.DiscoveredTLS != tt.ssl {
+				t.Fatalf("unexpected verification: %#v", verification)
+			}
+		})
+	}
+}
+
+func dashboardHTTPResponse(request *http.Request, status int, contentType string, body []byte) *http.Response {
+	return &http.Response{
+		StatusCode: status,
+		Header:     http.Header{"Content-Type": []string{contentType}},
+		Body:       io.NopCloser(bytes.NewReader(body)),
+		Request:    request,
+	}
+}
+
+func TestVerifyDashboardCardAssetRejectsInvalidSupervisorMetadataWithoutStaticFallback(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		status    int
+		body      string
+		wantError string
+		outcome   string
+	}{
+		{name: "forbidden", status: http.StatusForbidden, body: `{}`, wantError: "HTTP 403", outcome: "http-error"},
+		{name: "unauthorized", status: http.StatusUnauthorized, body: `{}`, wantError: "HTTP 401", outcome: "http-error"},
+		{name: "server error", status: http.StatusInternalServerError, body: `{}`, wantError: "HTTP 500", outcome: "http-error"},
+		{name: "malformed", status: http.StatusOK, body: `{`, wantError: "decode Supervisor response", outcome: "invalid-json"},
+		{name: "unsuccessful", status: http.StatusOK, body: `{"result":"error","data":{"port":80,"ssl":false}}`, wantError: "result was not ok", outcome: "unsuccessful"},
+		{name: "missing port", status: http.StatusOK, body: `{"result":"ok","data":{"ssl":false}}`, wantError: "port is missing or invalid", outcome: "invalid-port"},
+		{name: "fractional port", status: http.StatusOK, body: `{"result":"ok","data":{"port":80.5,"ssl":false}}`, wantError: "port is missing or invalid", outcome: "invalid-port"},
+		{name: "port too high", status: http.StatusOK, body: `{"result":"ok","data":{"port":65536,"ssl":false}}`, wantError: "port is missing or invalid", outcome: "invalid-port"},
+		{name: "missing ssl", status: http.StatusOK, body: `{"result":"ok","data":{"port":80}}`, wantError: "ssl is missing or invalid", outcome: "invalid-ssl"},
+		{name: "string ssl", status: http.StatusOK, body: `{"result":"ok","data":{"port":80,"ssl":"false"}}`, wantError: "ssl is missing or invalid", outcome: "invalid-ssl"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			requests := 0
+			client := dashboardHTTPClientFunc(func(request *http.Request) (*http.Response, error) {
+				requests++
+				if request.URL.String() != dashboardSupervisorCoreInfoURL {
+					t.Fatalf("unexpected fallback request to %q", request.URL.String())
+				}
+				return dashboardHTTPResponse(request, tt.status, "application/json", []byte(tt.body)), nil
+			})
+			verification, err := verifyDashboardCardAssetWithClient(
+				context.Background(), client, "ws://supervisor/core/websocket", "supervisor-secret",
+				"/local/gosungrow/card.js", strings.Repeat("a", 64),
+			)
+			if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantError, err)
+			}
+			if requests != 1 {
+				t.Fatalf("expected only metadata request, got %d requests", requests)
+			}
+			if verification.MetadataOutcome != tt.outcome {
+				t.Fatalf("unexpected metadata outcome %q", verification.MetadataOutcome)
+			}
+		})
+	}
+}
+
+func TestDashboardRequestErrorPreservesCauseWithoutEndpointDetails(t *testing.T) {
+	cause := &url.Error{
+		Op:  "Get",
+		URL: "http://homeassistant:18443/local/private.js",
+		Err: &net.OpError{Op: "dial", Net: "tcp", Addr: nil, Err: syscall.ECONNREFUSED},
+	}
+	err := &dashboardRequestError{operation: "fetch staged dashboard asset", err: cause}
+	if got, want := err.Error(), "fetch staged dashboard asset: connection refused"; got != want {
+		t.Fatalf("unexpected safe error: got %q want %q", got, want)
+	}
+	if strings.Contains(err.Error(), "homeassistant") || strings.Contains(err.Error(), "18443") {
+		t.Fatalf("safe error leaked endpoint details: %q", err.Error())
+	}
+	if !errors.Is(err, syscall.ECONNREFUSED) {
+		t.Fatal("safe error did not preserve its causal error chain")
+	}
+}
+
+func TestVerifyDashboardCardAssetRediscoversSupervisorPort(t *testing.T) {
+	body := []byte("customElements.define('x-test', class extends HTMLElement {});")
+	expectedHash := fmt.Sprintf("%x", sha256.Sum256(body))
+	ports := []int{18080, 28080}
+	discoveries := 0
 	client := dashboardHTTPClientFunc(func(request *http.Request) (*http.Response, error) {
-		requests++
-		if got, want := request.URL.String(), "http://homeassistant:8123/local/gosungrow/gosungrow-dashboard-cards.0123456789ab.js"; got != want {
-			t.Fatalf("unexpected static URL: got %q want %q", got, want)
+		if request.URL.String() == dashboardSupervisorCoreInfoURL {
+			port := ports[discoveries]
+			discoveries++
+			metadata := fmt.Sprintf(`{"result":"ok","data":{"port":%d,"ssl":false}}`, port)
+			return dashboardHTTPResponse(request, http.StatusOK, "application/json", []byte(metadata)), nil
 		}
-		if request.URL.Hostname() == "supervisor" {
-			t.Fatal("static request reached Supervisor proxy")
+		wantHost := fmt.Sprintf("homeassistant:%d", ports[discoveries-1])
+		if request.URL.Host != wantHost {
+			t.Fatalf("static request used %q after discovery %d; want %q", request.URL.Host, discoveries, wantHost)
 		}
-		if got := request.Header.Get("Authorization"); got != "" {
-			t.Fatalf("static request leaked authorization header %q", got)
-		}
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": []string{"text/javascript"}},
-			Body:       io.NopCloser(bytes.NewReader(body)),
-			Request:    request,
-		}, nil
+		return dashboardHTTPResponse(request, http.StatusOK, "text/javascript", body), nil
 	})
 
-	verification, err := verifyDashboardCardAssetWithClient(
-		context.Background(),
-		client,
-		"ws://supervisor/core/websocket",
-		"/local/gosungrow/gosungrow-dashboard-cards.0123456789ab.js",
-		expectedHash,
-	)
-	if err != nil {
-		t.Fatalf("verifyDashboardCardAssetWithClient: %v", err)
+	for range ports {
+		_, err := verifyDashboardCardAssetWithClient(
+			context.Background(), client, "ws://supervisor/core/websocket", "supervisor-secret",
+			"/local/gosungrow/card.js", expectedHash,
+		)
+		if err != nil {
+			t.Fatalf("verifyDashboardCardAssetWithClient: %v", err)
+		}
 	}
-	if requests != 1 {
-		t.Fatalf("unexpected request count: %d", requests)
-	}
-	if verification.Route != dashboardHTTPRouteDirectCore {
-		t.Fatalf("unexpected verification route: %q", verification.Route)
+	if discoveries != len(ports) {
+		t.Fatalf("got %d metadata discoveries, want %d", discoveries, len(ports))
 	}
 }
 
@@ -977,7 +1102,11 @@ func TestWriteDashboardInstallDiagnosticsIncludesSummaryAndUnresolvedRefs(t *tes
 		AssetPhase:           "committed",
 		AssetHash:            strings.Repeat("a", 64),
 		AssetURL:             "/local/gosungrow/gosungrow-dashboard-cards.aaaaaaaaaaaa.js",
-		AssetHTTPRoute:       dashboardHTTPRouteDirectCore,
+		AssetHTTPRoute:       dashboardHTTPRouteSupervisorInfo,
+		AssetMetadataStatus:  http.StatusOK,
+		AssetMetadataOutcome: "ok",
+		AssetDiscoveredPort:  18443,
+		AssetDiscoveredTLS:   "true",
 		AssetHTTPStatus:      http.StatusOK,
 		AssetMIMEType:        "text/javascript",
 		ResourceAction:       "updated",
@@ -1079,7 +1208,7 @@ func TestWriteDashboardInstallDiagnosticsIncludesSummaryAndUnresolvedRefs(t *tes
 	for _, expected := range []string{
 		"Dashboard diagnostics:",
 		"- context: Reconciling after MQTT startup (1)",
-		"- asset: phase=committed hash=" + strings.Repeat("a", 64) + " url=/local/gosungrow/gosungrow-dashboard-cards.aaaaaaaaaaaa.js http_route=direct-core http_status=200 mime=text/javascript resource_action=updated dashboard_mode=enhanced rollback=not required cleanup=complete",
+		"- asset: phase=committed hash=" + strings.Repeat("a", 64) + " url=/local/gosungrow/gosungrow-dashboard-cards.aaaaaaaaaaaa.js http_route=supervisor-core-info metadata_status=200 metadata_outcome=ok core_port=18443 core_tls=true http_status=200 mime=text/javascript resource_action=updated dashboard_mode=enhanced rollback=not required cleanup=complete",
 		"- HA states loaded: 1284",
 		"- GoSungrow states found: 42",
 		"- dashboard entity refs found: 23",

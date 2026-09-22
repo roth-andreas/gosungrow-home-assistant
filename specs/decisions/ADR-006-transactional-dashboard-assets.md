@@ -11,7 +11,7 @@ The managed dashboard depends on three custom elements delivered by one JavaScri
 
 GoSungrow delivers the co-versioned card bundle from a content-addressed `/local/gosungrow/` URL. Installation stages and hashes immutable bytes, verifies the exact response through Home Assistant, activates and re-reads the Lovelace resource, saves and verifies the dashboard, and persists state only after those steps succeed. A later activation failure rolls the resource and dashboard back to their prior working values.
 
-Home Assistant API/websocket transport and static-resource transport are separate trust boundaries. The Supervisor proxy is used only for supported API and websocket routes; it does not expose `/local`. Under Supervisor, static verification therefore uses Home Assistant's direct internal origin. Standalone operation derives the static origin from its websocket endpoint. Static requests carry no Supervisor credential and do not follow redirects.
+Home Assistant API/websocket transport and static-resource transport are separate trust boundaries. The Supervisor proxy is used only for supported API and websocket routes; it does not expose `/local`. Under Supervisor, authenticated `/core/info` metadata is authoritative for the direct Home Assistant scheme and port, while `homeassistant` remains the stable internal hostname. GoSungrow requests that metadata afresh for each reconciliation using only the minimal Supervisor API permission and default role; it neither guesses or probes ports nor persists discovered topology. Standalone operation derives the static origin from its websocket endpoint. The Supervisor credential is sent only to `/core/info`; static requests carry no credential, do not follow redirects, and retain standard TLS certificate verification.
 
 A fresh installation that cannot activate the module degrades to a resource-independent dashboard composed only of native Home Assistant cards. It preserves targets, view paths, and resolved source decisions so a later reconciliation can promote it automatically. The last verified bundle is retained through upgrades, and lifecycle diagnostics describe bounded metadata rather than asset bodies.
 
@@ -29,4 +29,7 @@ A fresh installation that cannot activate the module degrades to a resource-inde
 - CDN delivery adds a runtime dependency and weakens local availability.
 - HACS packaging, a separate web service, or a native Home Assistant integration would split ownership and deployment without solving transactional activation.
 - Reusing the Supervisor websocket origin for `/local` is invalid because the proxy exposes supported API and websocket routes rather than Home Assistant frontend static files.
+- Hardcoding port 80 or 8123 is incompatible with other managed and custom Home Assistant Core ports.
+- Port probing, silent fallback, or persisted topology can select the wrong service, conceal permission or metadata failures, and become stale across Core restarts.
+- Disabling TLS certificate verification would weaken the direct static-resource trust boundary.
 - Removing the custom cards would discard the enhanced flow, summary, and source-selection experience rather than isolating its failure mode.

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -132,6 +133,10 @@ type dashboardInstallDiagnostics struct {
 	AssetHash             string
 	AssetURL              string
 	AssetHTTPRoute        string
+	AssetMetadataStatus   int
+	AssetMetadataOutcome  string
+	AssetDiscoveredPort   int
+	AssetDiscoveredTLS    string
 	AssetHTTPStatus       int
 	AssetMIMEType         string
 	ResourceAction        string
@@ -413,8 +418,14 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	diagnostics.AssetURL = resourceURL
 	diagnostics.AssetHash = assetHash
 
-	assetVerification, activationErr := verifyDashboardCardAsset(ctx, opts.HomeAssistantWSURL, resourceURL, assetHash)
+	assetVerification, activationErr := verifyDashboardCardAsset(ctx, opts.HomeAssistantWSURL, opts.SupervisorToken, resourceURL, assetHash)
 	diagnostics.AssetHTTPRoute = assetVerification.Route
+	diagnostics.AssetMetadataStatus = assetVerification.MetadataStatus
+	diagnostics.AssetMetadataOutcome = assetVerification.MetadataOutcome
+	diagnostics.AssetDiscoveredPort = assetVerification.DiscoveredPort
+	if assetVerification.MetadataOutcome == "ok" {
+		diagnostics.AssetDiscoveredTLS = strconv.FormatBool(assetVerification.DiscoveredTLS)
+	}
 	diagnostics.AssetHTTPStatus = assetVerification.StatusCode
 	diagnostics.AssetMIMEType = assetVerification.MIMEType
 	if activationErr == nil {
@@ -1110,11 +1121,15 @@ func printDashboardInstallDiagnostics(diagnostics dashboardInstallDiagnostics) {
 func writeDashboardInstallDiagnostics(w io.Writer, diagnostics dashboardInstallDiagnostics) {
 	fmt.Fprintln(w, "Dashboard diagnostics:")
 	fmt.Fprintf(w, "- context: %s\n", dashboardDiagnosticContext(diagnostics.DiagnosticContext))
-	fmt.Fprintf(w, "- asset: phase=%s hash=%s url=%s http_route=%s http_status=%d mime=%s resource_action=%s dashboard_mode=%s rollback=%s cleanup=%s\n",
+	fmt.Fprintf(w, "- asset: phase=%s hash=%s url=%s http_route=%s metadata_status=%d metadata_outcome=%s core_port=%d core_tls=%s http_status=%d mime=%s resource_action=%s dashboard_mode=%s rollback=%s cleanup=%s\n",
 		dashboardDiagnosticDefault(diagnostics.AssetPhase, "not-started"),
 		dashboardDiagnosticDefault(diagnostics.AssetHash, "none"),
 		dashboardDiagnosticDefault(diagnostics.AssetURL, "none"),
 		dashboardDiagnosticDefault(diagnostics.AssetHTTPRoute, "unknown"),
+		diagnostics.AssetMetadataStatus,
+		dashboardDiagnosticDefault(diagnostics.AssetMetadataOutcome, "not-used"),
+		diagnostics.AssetDiscoveredPort,
+		dashboardDiagnosticDefault(diagnostics.AssetDiscoveredTLS, "unknown"),
 		diagnostics.AssetHTTPStatus,
 		dashboardDiagnosticDefault(diagnostics.AssetMIMEType, "unknown"),
 		dashboardDiagnosticDefault(diagnostics.ResourceAction, "none"),
