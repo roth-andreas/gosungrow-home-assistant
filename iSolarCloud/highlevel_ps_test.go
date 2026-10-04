@@ -17,6 +17,19 @@ func TestBuildPlantTopologiesValidatesParentRelationships(t *testing.T) {
 		{name: "complete", trees: PsTrees{"100": {Devices: []getPsTreeMenu.Ps{
 			testTreeDevice("100", "100_parent", 10, 0), testTreeDevice("100", "100_child", 11, 10),
 		}}}, plant: "100", valid: true},
+		{name: "cycle", trees: PsTrees{"100": {Devices: []getPsTreeMenu.Ps{
+			testTreeDevice("100", "100_parent", 10, 11), testTreeDevice("100", "100_child", 11, 10),
+		}}}, plant: "100", reason: "topology contains a cycle"},
+		{name: "self cycle", trees: PsTrees{"100": {Devices: []getPsTreeMenu.Ps{
+			testTreeDevice("100", "100_child", 11, 11),
+		}}}, plant: "100", reason: "topology contains a cycle"},
+		{name: "UUID reuse across plants is valid", trees: PsTrees{
+			"100": {Devices: []getPsTreeMenu.Ps{testTreeDevice("100", "100_parent", 10, 0), testTreeDevice("100", "100_child", 11, 10)}},
+			"200": {Devices: []getPsTreeMenu.Ps{testTreeDevice("200", "200_parent", 10, 0), testTreeDevice("200", "200_child", 11, 10)}},
+		}, plant: "100", valid: true},
+		{name: "duplicate UUID", trees: PsTrees{"100": {Devices: []getPsTreeMenu.Ps{
+			testTreeDevice("100", "100_parent", 10, 0), testTreeDevice("100", "100_child", 10, 0),
+		}}}, plant: "100", reason: "topology contains duplicate UUIDs"},
 		{name: "dangling parent", trees: PsTrees{"100": {Devices: []getPsTreeMenu.Ps{
 			testTreeDevice("100", "100_child", 11, 99),
 		}}}, plant: "100", reason: "topology contains a dangling parent"},

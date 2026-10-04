@@ -8,6 +8,29 @@ import (
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/valueTypes"
 )
 
+// DevicePointAttrsByDevice retains the device scope discarded by the flat HA
+// metadata lookup. Discovery metadata is independent of live point values.
+func (sg *SunGrow) DevicePointAttrsByDevice() (map[string]getDevicePointAttrs.Points, error) {
+	points := make(map[string]getDevicePointAttrs.Points)
+	trees, err := sg.PsTreeMenu()
+	if err != nil {
+		return nil, err
+	}
+	for _, tree := range trees {
+		for _, device := range tree.Devices {
+			ep := sg.GetByStruct(getDevicePointAttrs.EndPointName, getDevicePointAttrs.RequestData{
+				Uuid: device.UUID, PsId2: device.PsId, DeviceType2: device.DeviceType,
+			}, time.Hour*24)
+			if sg.IsError() {
+				return nil, sg.Error
+			}
+			data := getDevicePointAttrs.Assert(ep)
+			points[device.PsKey.String()] = data.Points()
+		}
+	}
+	return points, nil
+}
+
 // DevicePointAttrs - Return all points associated with psIds and device_type filter.
 func (sg *SunGrow) DevicePointAttrs(deviceType string, psIDs ...string) (getDevicePointAttrs.Points, error) {
 	var points getDevicePointAttrs.Points

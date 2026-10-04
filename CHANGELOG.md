@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.3.5
+
+- Support complete plant PV aggregation for microinverters using independently discovered producer membership and device-local AC or DC readings.
+- Preserve valid native plant totals and existing MQTT state when readings are incomplete or ambiguous; report the aggregation outcome in app logs.
+- Prefer canonical plant PV sources for new dashboards, reject grid-phase readings as automatic solar sources, and preserve existing source selections for explicit review.
+
 ## 3.3.4
 
 - Add the Indian iSolarCloud gateway to automatic login fallback and allow Home Assistant app users to select a supported regional gateway explicitly.

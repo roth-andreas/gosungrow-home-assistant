@@ -12,6 +12,7 @@ import (
 	"github.com/roth-andreas/gosungrow-home-assistant/cmdHassio"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/getDeviceList"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/queryDeviceList"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/WebAppService/getDevicePointAttrs"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/valueTypes"
@@ -68,6 +69,10 @@ var mqttLoadPlantTrees = func() (iSolarCloud.PsTrees, error) {
 	return cmds.Api.SunGrow.PsTreeMenu()
 }
 
+var mqttLoadDevicePoints = func() (map[string]getDevicePointAttrs.Points, error) {
+	return cmds.Api.SunGrow.DevicePointAttrsByDevice()
+}
+
 //goland:noinspection GoNameStartsWithPackageName
 type CmdMqtt struct {
 	CmdDefault
@@ -93,6 +98,7 @@ type CmdMqtt struct {
 	syncCycle           uint64
 	currentSyncEndpoint string
 	plantTopologies     map[string]iSolarCloud.PlantTopology
+	plantInventories    map[string]iSolarCloud.PlantInventory
 }
 
 func NewCmdMqtt(logLevel string) *CmdMqtt {
@@ -115,6 +121,7 @@ func NewCmdMqtt(logLevel string) *CmdMqtt {
 			optionFetchSchedule: time.Minute * 5,
 			previous:            make(map[string]*api.DataEntries, 0),
 			plantTopologies:     make(map[string]iSolarCloud.PlantTopology),
+			plantInventories:    make(map[string]iSolarCloud.PlantInventory),
 			now:                 time.Now,
 		}
 	}
@@ -309,9 +316,7 @@ func (c *CmdMqtt) MqttArgs(_ *cobra.Command, _ []string) error {
 		}
 
 		c.Error = c.retryStartupRecoverable("device point discovery", func() error {
-			var err error
-			c.points, err = cmds.Api.SunGrow.DevicePointAttrsMap("")
-			return err
+			return c.refreshPlantInventories()
 		})
 		if c.Error != nil {
 			break
@@ -440,6 +445,10 @@ func (c *CmdMqtt) Cron() error {
 				break
 			}
 			c.refreshPlantTopologies()
+			c.Error = c.refreshPlantInventories()
+			if c.Error != nil {
+				break
+			}
 
 			c.Error = c.collectAndPublish(newDay)
 			failureEndpoint = c.currentSyncEndpoint
@@ -515,8 +524,10 @@ func (c *CmdMqtt) collectAndPublishBatch(batch mqttEndpointBatch, newDay bool) e
 	sort.Strings(resultKeys)
 	for _, key := range resultKeys {
 		result := data.Results[key]
-		if stringSliceContains(batch.Endpoints, "queryDeviceList") {
-			c.addCanonicalPlantPVPower(&result.Response.Data)
+		if result.EndPointName.String() == "queryDeviceList" {
+			if err := c.publishPlantPVPower(&result.Response.Data, newDay); err != nil {
+				return err
+			}
 		}
 		if err := c.Update(result.EndPointName.String(), result.Response.Data, newDay); err != nil {
 			return err
@@ -548,6 +559,28 @@ func (c *CmdMqtt) refreshPlantTopologies() {
 	c.plantTopologies = topologies
 }
 
+func (c *CmdMqtt) refreshPlantInventories() error {
+	byDevice, err := mqttLoadDevicePoints()
+	if err != nil {
+		return err
+	}
+	inventories := iSolarCloud.BuildPlantInventories(c.Client.SungrowDevices, byDevice)
+	c.plantInventories = inventories
+	c.points = make(getDevicePointAttrs.PointsMap)
+	keys := make([]string, 0, len(byDevice))
+	for key := range byDevice {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		for i := range byDevice[key] {
+			point := byDevice[key][i]
+			c.points[point.Id.String()] = &point
+		}
+	}
+	return nil
+}
+
 func mqttPlantIDs(devices getDeviceList.Devices) []string {
 	seen := make(map[string]bool)
 	for _, device := range devices {
@@ -564,18 +597,57 @@ func mqttPlantIDs(devices getDeviceList.Devices) []string {
 	return plantIDs
 }
 
-func (c *CmdMqtt) addCanonicalPlantPVPower(data *api.DataMap) {
-	plantIDs := make([]string, 0, len(c.plantTopologies))
-	for psID := range c.plantTopologies {
-		plantIDs = append(plantIDs, psID)
+// publishPlantPVPower evaluates exactly one requested plant snapshot and routes its
+// canonical entity through the ordinary retained discovery/state pipeline.
+func (c *CmdMqtt) publishPlantPVPower(data *api.DataMap, newDay bool) error {
+	if data.EndPoint == nil {
+		return nil
 	}
-	sort.Strings(plantIDs)
-	for _, psID := range plantIDs {
-		result := iSolarCloud.AddCanonicalPlantPVPower(data, c.plantTopologies[psID])
-		if result.Added {
-			c.log.Debug("Plant PV aggregate: ps_id=%s source=%s contributors=%d\n", psID, result.Source, result.Contributors)
+	endpoint := queryDeviceList.Assert(data.EndPoint)
+	psID := endpoint.Request.PsId.String()
+	topology := c.plantTopologies[psID]
+	topology.PsID = psID
+	if inventory, ok := c.plantInventories[psID]; ok {
+		topology.Inventory = inventory
+	}
+	result := iSolarCloud.AddCanonicalPlantPVPower(data, topology)
+	outcome, reason := "suppressed", result.Reason
+	var err error
+	if result.Added {
+		key := "virtual." + psID + ".pv_power"
+		entry := data.Map[key].GetEntry(api.LastEntry)
+		switch {
+		case !c.endpoints.IsOK(entry):
+			outcome, reason = "filtered", "endpoint_filter"
+		default:
+			if _, known := c.Client.MqttDevices[psID]; !known {
+				outcome, reason = "filtered", "unknown_parent"
+			} else {
+				canonical := api.NewDataMap()
+				canonical.Map[key] = data.Map[key]
+				err = c.Update(queryDeviceList.EndPointName, canonical, newDay)
+				if err != nil {
+					outcome, reason = "publication_failed", "publication_failed"
+				} else {
+					outcome, reason = "published", "none"
+				}
+			}
 		}
+		// Do not publish the same canonical point again with the remaining snapshot.
 	}
+	delete(data.Map, "virtual."+psID+".pv_power")
+	expected := "unknown"
+	if result.ExpectedKnown {
+		expected = fmt.Sprint(result.Expected)
+	}
+	c.log.Info("Plant PV aggregation: ps_id=%s cycle=%d outcome=%s source=%s expected=%s received=%d valid_ac=%d valid_dc=%d reason=%s\n",
+		psID, c.syncCycle, outcome, result.Source, expected, result.Received, result.ValidAC, result.ValidDC, reason)
+	for _, record := range result.Records {
+		c.log.Debug("Plant PV aggregation detail: device_key=%s device_type=%d point_id=%s unit=%s valid=%t rejection=%s\n",
+			record.DeviceKey, record.DeviceType, record.PointID, record.Unit, record.Valid, record.Reason)
+	}
+	c.log.Debug("Plant PV aggregation details: omitted=%d\n", result.OmittedRecords)
+	return err
 }
 
 func (c *CmdMqtt) getRealtimePsKeyTargets() []realtimePsKeyTarget {
@@ -682,12 +754,14 @@ func (c *CmdMqtt) clearDockerDNSOutage() {
 }
 
 func (c *CmdMqtt) Update(endpoint string, data api.DataMap, newDay bool) error {
+	c.Error = nil
 	for range Only.Once {
 		// Also getPowerStatistics, getHouseholdStoragePsReport, getPsList, getUpTimePoint,
 		c.log.Info("Syncing %d entries with HASSIO from %s.\n", len(data.Map), endpoint)
 
-		for o := range data.Map {
-			refreshConfig := newDay
+		for _, o := range data.Sort() {
+			_, previouslySeen := c.previous[o]
+			refreshConfig := newDay || !previouslySeen
 
 			entries := data.Map[o]
 			r := entries.GetEntry(api.LastEntry) // Gets the last entry
@@ -702,7 +776,6 @@ func (c *CmdMqtt) Update(endpoint string, data api.DataMap, newDay bool) error {
 					refreshConfig = true
 				}
 			}
-			c.previous[o] = entries
 
 			if !r.Point.Valid {
 				// Any point that shouldn't be passed through to MQTT is ignored
@@ -797,6 +870,7 @@ func (c *CmdMqtt) Update(endpoint string, data api.DataMap, newDay bool) error {
 			if c.Error != nil {
 				break
 			}
+			c.previous[o] = entries
 
 		}
 		c.log.PlainInfo("\n")
@@ -1154,16 +1228,13 @@ func (c *MqttEndPoints) IsOK(check *api.DataEntry) bool {
 			reStr = "^" + strings.TrimPrefix(reStr, "^")
 			re := regexp.MustCompile(reStr)
 			if re.MatchString(check.EndPoint) {
-				yes = false
-				break
+				return false
 			}
 			if re.MatchString(check.Current.FieldPath.String()) {
-				yes = false
-				break
+				return false
 			}
 			if re.MatchString(check.Current.DataStructure.Endpoint.String()) {
-				yes = false
-				break
+				return false
 			}
 		}
 

@@ -9,6 +9,7 @@ import (
 const LabelBinarySensor = "binary_sensor"
 
 func (m *Mqtt) BinarySensorPublishConfig(config EntityConfig) error {
+	m.err = nil
 
 	for range Only.Once {
 		if !config.IsBinarySensor() {
@@ -89,6 +90,7 @@ func (m *Mqtt) BinarySensorPublishConfig(config EntityConfig) error {
 }
 
 func (m *Mqtt) BinarySensorPublishValue(config EntityConfig) error {
+	m.err = nil
 
 	for range Only.Once {
 		if !config.IsBinarySensor() {

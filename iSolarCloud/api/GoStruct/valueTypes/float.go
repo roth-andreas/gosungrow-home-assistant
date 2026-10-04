@@ -1,6 +1,7 @@
 package valueTypes
 
 import (
+	"bytes"
 	"encoding/json"
 	"github.com/MickMake/GoUnify/Only"
 	"math"
@@ -18,8 +19,11 @@ type Float struct {
 func (t *Float) UnmarshalJSON(data []byte) error {
 	for range Only.Once {
 		t.Valid = false
+		t.Error = nil
+		t.float64 = 0
+		t.string = ""
 
-		if len(data) == 0 {
+		if len(data) == 0 || bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
 			break
 		}
 
@@ -123,7 +127,9 @@ func (t *Float) SetPrecision(precision int) Float {
 }
 
 func (t *Float) ToUnitValue() UnitValue {
-	return SetUnitValueFloat("", "", t.float64)
+	value := SetUnitValueFloat("", "", t.float64)
+	value.Valid = t.Valid
+	return value
 }
 
 func SetFloatString(value string) Float {

@@ -114,7 +114,7 @@ func dashboardSemanticRecommendation(target haDashboardTarget, metric string, st
 	if strings.EqualFold(metric, "pv_power") {
 		entity := "sensor.gosungrow_virtual_" + strings.ToLower(strings.TrimSpace(target.PsID)) + "_pv_power"
 		for _, state := range states {
-			if strings.EqualFold(strings.TrimSpace(state.EntityID), entity) && dashboardMetricStateRejectionReason(state, dashboardMetricProfileFor(metric)) == "" {
+			if strings.EqualFold(strings.TrimSpace(state.EntityID), entity) && !dashboardPVForbidden(state, metric) && dashboardMetricStateRejectionReason(state, dashboardMetricProfileFor(metric)) == "" {
 				candidate := dashboardMetricCandidate{Entity: state.EntityID, Metric: metric, Score: 9999, State: state.State, Unit: dashboardStateUnit(state), Source: "plant-aggregate", Reason: "Canonical plant PV aggregate", Scope: "plant", Compatibility: "compatible"}
 				return dashboardSemanticMatch{Entity: state.EntityID, Score: 9999, Reason: candidate.Reason, Confident: true, Candidates: []dashboardMetricCandidate{candidate}}
 			}
@@ -131,7 +131,7 @@ func dashboardCanonicalRecommendation(target haDashboardTarget, metric string, c
 	values := make([]dashboardMetricCandidate, 0)
 	registryAvailable := dashboardRegistryMetadataAvailable(states)
 	for _, state := range states {
-		if dashboardMetricStateRejectionReason(state, profile) != "" || !dashboardSourceStateRecent(state, metric, time.Now()) || !dashboardSemanticStateMatchesTargetStable(target, state, singleTarget, registryAvailable) {
+		if dashboardPVForbidden(state, metric) || dashboardMetricStateRejectionReason(state, profile) != "" || !dashboardSourceStateRecent(state, metric, time.Now()) || !dashboardSemanticStateMatchesTargetStable(target, state, singleTarget, registryAvailable) {
 			continue
 		}
 		var source dashboardSemanticSourceSpec
@@ -225,6 +225,9 @@ func dashboardSemanticCandidateAllowed(target haDashboardTarget, contract dashbo
 		return false
 	}
 	meaning := false
+	if contract.metric == "pv_power" && dashboardSemanticTerminalIdentifier(identity, "p24") && (role == "inverter" || dashboardCandidateHasInverterContext(strings.ToLower(state.EntityID))) {
+		meaning = true
+	}
 	for _, required := range contract.requiredMeaning {
 		if dashboardSemanticContains(identity, required) {
 			meaning = true
@@ -247,10 +250,15 @@ func dashboardCandidateDeviceRoleState(target haDashboardTarget, state haState) 
 }
 
 func dashboardCandidateDeviceRole(target haDashboardTarget, entity string) string {
+	role, length := "unknown", 0
 	for _, device := range target.PlantDevices {
-		if dashboardEntityContainsIdentifier(entity, strings.ToLower(strings.TrimSpace(device.PsKey))) {
-			return dashboardDeviceRole(device.DeviceType)
+		key := strings.ToLower(strings.TrimSpace(device.PsKey))
+		if len(key) > length && dashboardEntityContainsIdentifier(entity, key) {
+			role, length = dashboardDeviceRole(device.DeviceType), len(key)
 		}
+	}
+	if length > 0 {
+		return role
 	}
 	if dashboardEntityContainsIdentifier(entity, strings.ToLower(strings.TrimSpace(target.PsID))) {
 		return "plant"
@@ -260,7 +268,7 @@ func dashboardCandidateDeviceRole(target haDashboardTarget, entity string) strin
 
 func dashboardDeviceRole(deviceType int64) string {
 	switch deviceType {
-	case 1:
+	case 1, 55:
 		return "inverter"
 	case 7:
 		return "meter"
@@ -382,7 +390,7 @@ func dashboardRegistryMetadataAvailable(states []haState) bool {
 func dashboardTargetInverterCount(target haDashboardTarget) int {
 	count := 0
 	for _, device := range target.PlantDevices {
-		if device.DeviceType == 1 {
+		if dashboardPlantDeviceLooksInverterLike(device) {
 			count++
 		}
 	}

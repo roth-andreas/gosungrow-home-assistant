@@ -235,7 +235,7 @@ func resolveDashboardMetricEntityWithTrace(target haDashboardTarget, metric stri
 	}
 	for _, candidate := range legacy {
 		state, ok := stateByID[candidate]
-		if ok && dashboardStateMatchesMetricKind(state, profile) {
+		if ok && dashboardStateMatchesMetricKind(state, profile) && !dashboardPVForbidden(state, metric) {
 			trace.Resolved = candidate
 			trace.Source = dashboardMetricSourceCategory(target, metric, candidate)
 			trace.Candidates = appendDashboardMetricCandidate(trace.Candidates, dashboardMetricCandidate{
@@ -300,9 +300,8 @@ func dashboardDistinctProducerCandidates(target haDashboardTarget, candidates []
 		matched := ""
 		for _, device := range target.PlantDevices {
 			key := strings.ToLower(strings.TrimSpace(device.PsKey))
-			if key != "" && dashboardEntityContainsIdentifier(identity, key) {
+			if len(key) > len(matched) && dashboardEntityContainsIdentifier(identity, key) {
 				matched = key
-				break
 			}
 		}
 		if matched == "" {
@@ -319,7 +318,7 @@ func dashboardRejectedMetricCandidate(target haDashboardTarget, metric string, p
 		return dashboardMetricCandidate{}, false
 	}
 
-	suffixScore, hasSuffixMatch := dashboardMetricSuffixScore(candidate, metric, profile)
+	suffixScore, hasSuffixMatch := dashboardMetricSuffixScore(candidate, metric, profile, target)
 	tokenScore, hasTokenMatch := dashboardMetricTokenScore(candidate, profile)
 	if !hasSuffixMatch && !hasTokenMatch {
 		return dashboardMetricCandidate{}, false
@@ -337,7 +336,11 @@ func dashboardRejectedMetricCandidate(target haDashboardTarget, metric string, p
 		}, true
 	}
 
-	if reason := dashboardMetricStateRejectionReason(state, profile); reason != "" {
+	reason := dashboardMetricStateRejectionReason(state, profile)
+	if dashboardPVForbidden(state, metric) {
+		reason = "grid or phase power is not PV"
+	}
+	if reason != "" {
 		return dashboardMetricCandidate{
 			Entity: candidate,
 			Metric: metric,
@@ -353,6 +356,9 @@ func dashboardRejectedMetricCandidate(target haDashboardTarget, metric string, p
 }
 
 func dashboardScoreMetricCandidate(target haDashboardTarget, metric string, profile dashboardMetricProfile, state haState, singleTarget bool) (string, int, string, bool) {
+	if dashboardPVForbidden(state, metric) {
+		return state.EntityID, 0, "grid or phase power is not PV", false
+	}
 	candidate := strings.ToLower(strings.TrimSpace(state.EntityID))
 	if !strings.HasPrefix(candidate, "sensor.") || !strings.Contains(candidate, "gosungrow") {
 		return "", 0, "", false
@@ -363,7 +369,7 @@ func dashboardScoreMetricCandidate(target haDashboardTarget, metric string, prof
 		return "", 0, "", false
 	}
 
-	suffixScore, hasSuffixMatch := dashboardMetricSuffixScore(candidate, metric, profile)
+	suffixScore, hasSuffixMatch := dashboardMetricSuffixScore(candidate, metric, profile, target)
 	tokenScore, hasTokenMatch := dashboardMetricTokenScore(candidate, profile)
 	if !hasSuffixMatch && !hasTokenMatch {
 		return "", 0, "", false
@@ -522,7 +528,7 @@ func dashboardResolveFailureReason(ref dashboardEntityRef, states []haState, sin
 		}
 		plantStates++
 
-		_, hasSuffixMatch := dashboardMetricSuffixScore(candidate, strings.ToLower(strings.TrimSpace(ref.Metric)), profile)
+		_, hasSuffixMatch := dashboardMetricSuffixScore(candidate, strings.ToLower(strings.TrimSpace(ref.Metric)), profile, ref.Target)
 		_, hasTokenMatch := dashboardMetricTokenScore(candidate, profile)
 		if !hasSuffixMatch && !hasTokenMatch {
 			continue
@@ -704,10 +710,26 @@ func dashboardCandidateHasInverterContext(candidate string) bool {
 		return false
 	}
 	parts := strings.Split(strings.TrimPrefix(candidate, virtualPrefix), "_")
-	return len(parts) >= 5 && parts[1] == "1"
+	return len(parts) >= 5 && (parts[1] == "1" || parts[1] == "55")
 }
 
-func dashboardMetricSuffixScore(candidate string, metric string, profile dashboardMetricProfile) (int, bool) {
+// This guard applies only to automatic PV selection, not accepted manual pins.
+func dashboardPVForbidden(state haState, metric string) bool {
+	if metric != "pv_power" {
+		return false
+	}
+	identity := strings.ToLower(state.EntityID + " " + state.RegistryUniqueID + " " + stringValue(state.Attributes["friendly_name"]) + " " + stringValue(state.Attributes["point_group_name"]))
+	parts := strings.FieldsFunc(identity, func(r rune) bool { return r == '_' || r == '-' || r == '.' || r == ' ' })
+	for _, part := range parts {
+		switch part {
+		case "grid", "meter", "phase", "channel", "l1", "l2", "l3":
+			return true
+		}
+	}
+	return false
+}
+
+func dashboardMetricSuffixScore(candidate string, metric string, profile dashboardMetricProfile, target haDashboardTarget) (int, bool) {
 	if metric != "" && strings.HasSuffix(candidate, "_"+metric) {
 		return 240, true
 	}
@@ -717,7 +739,7 @@ func dashboardMetricSuffixScore(candidate string, metric string, profile dashboa
 		if alias == "" {
 			continue
 		}
-		if ((metric == "p13112" && alias == "p1") || (metric == "pv_power" && alias == "p24")) && !dashboardCandidateHasInverterContext(candidate) {
+		if ((metric == "p13112" && alias == "p1") || (metric == "pv_power" && alias == "p24")) && !dashboardCandidateHasInverterContext(candidate) && dashboardCandidateDeviceRole(target, candidate) != "inverter" {
 			continue
 		}
 		if strings.HasSuffix(candidate, "_"+alias) {

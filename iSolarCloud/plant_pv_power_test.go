@@ -18,7 +18,7 @@ func TestAddCanonicalPlantPVPowerSumsCompleteDCLeaves(t *testing.T) {
 		"100_55_1_2": {PsID: "100", PsKey: "100_55_1_2", UUID: 2},
 	}}
 
-	result := AddCanonicalPlantPVPower(&data, topology)
+	result := AddCanonicalPlantPVPower(&data, withTestInventory(topology))
 	if !result.Added || result.Source != "summed_device_dc" || result.Contributors != 2 {
 		t.Fatalf("AddCanonicalPlantPVPower() = %#v", result)
 	}
@@ -42,7 +42,7 @@ func TestAddCanonicalPlantPVPowerNativeTotalWins(t *testing.T) {
 		"100_55_1_1": {PsID: "100", PsKey: "100_55_1_1", UUID: 1},
 	}}
 
-	result := AddCanonicalPlantPVPower(&data, topology)
+	result := AddCanonicalPlantPVPower(&data, withTestInventory(topology))
 	if !result.Added || result.Source != "native_plant" {
 		t.Fatalf("AddCanonicalPlantPVPower() = %#v", result)
 	}
@@ -65,7 +65,7 @@ func TestAddCanonicalPlantPVPowerPrefersCompleteACAndExcludesParent(t *testing.T
 		"100_1_1_2": {PsID: "100", PsKey: "100_1_1_2", UUID: 12, UpUUID: 10, DeviceType: 1},
 	}}
 
-	result := AddCanonicalPlantPVPower(&data, topology)
+	result := AddCanonicalPlantPVPower(&data, withTestInventory(topology))
 	if !result.Added || result.Source != "summed_device_ac" || result.Contributors != 2 {
 		t.Fatalf("AddCanonicalPlantPVPower() = %#v", result)
 	}
@@ -103,7 +103,7 @@ func TestAddCanonicalPlantPVPowerRejectsIncompleteTierOrTopology(t *testing.T) {
 			for _, entry := range tc.entries {
 				addPlantPowerTestEntry(&data, entry.endpoint, entry.device, entry.point, entry.value, entry.unit, time.Now())
 			}
-			if result := AddCanonicalPlantPVPower(&data, tc.topology); result.Added {
+			if result := AddCanonicalPlantPVPower(&data, withTestInventory(tc.topology)); result.Added {
 				t.Fatalf("unexpected aggregate: %#v", result)
 			}
 			if _, exists := data.Map["virtual.100.pv_power"]; exists {
@@ -131,6 +131,16 @@ type plantPowerTestValue struct {
 
 func addPlantPowerTestEntry(data *api.DataMap, endpoint, device, pointID string, value float64, unit string, when time.Time) {
 	current := &GoStruct.Reflect{IsOk: true}
+	parent := api.NewParentDevice(device)
+	parent.Split()
+	deviceType := int64(55)
+	if parent.Type == "11" {
+		deviceType = 11
+	}
+	if parent.Type == "1" {
+		deviceType = 1
+	}
+	current.Source = GoStruct.MeasurementSource{Endpoint: "AppService.queryDeviceList", PsID: "100", PsKey: device, DeviceType: deviceType, PointID: pointID, PointName: pointID, Unit: unit, Timestamp: when, NumericValid: true}
 	current.DataStructure.Endpoint = GoStruct.NewEndPointPath(stringsToPath(endpoint)...)
 	current.DataStructure.PointId = pointID
 	current.DataStructure.PointName = pointID
@@ -145,6 +155,18 @@ func addPlantPowerTestEntry(data *api.DataMap, endpoint, device, pointID string,
 		Point:  &api.Point{Id: pointID, Description: pointID, Unit: unit, UpdateFreq: GoStruct.UpdateFreq5Mins, ValueType: "Power", Valid: true},
 		Parent: api.NewParentDevice(device), Date: valueTypes.SetDateTimeValue(when), Value: unitValue, Valid: true,
 	})
+}
+
+func withTestInventory(topology PlantTopology) PlantTopology {
+	topology.Inventory = PlantInventory{Available: true, Devices: make(map[string]PlantInventoryDevice)}
+	for key, device := range topology.Devices {
+		if device.DeviceType == 0 {
+			device.DeviceType = 55
+			topology.Devices[key] = device
+		}
+		topology.Inventory.Devices[key] = PlantInventoryDevice{PsKey: key, DeviceType: device.DeviceType}
+	}
+	return topology
 }
 
 func stringsToPath(endpoint string) []string {

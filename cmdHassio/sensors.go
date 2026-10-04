@@ -9,6 +9,7 @@ import (
 const LabelSensor = "sensor"
 
 func (m *Mqtt) SensorPublishConfig(config EntityConfig) error {
+	m.err = nil
 
 	for range Only.Once {
 		if !config.IsSensor() {
@@ -50,6 +51,7 @@ func (m *Mqtt) SensorPublishConfig(config EntityConfig) error {
 }
 
 func (m *Mqtt) SensorPublishValue(config EntityConfig) error {
+	m.err = nil
 
 	for range Only.Once {
 		if !config.IsSensor() {

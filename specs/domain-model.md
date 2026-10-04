@@ -9,7 +9,7 @@ Scope: Identifiers, devices, measurements, periods, and energy meanings
 - **REQ-DOM-002** — `ps_id` and `ps_key` MUST be treated as opaque strings after trimming. Numeric and composite forms MUST round-trip without truncation or numeric coercion.
 - **REQ-DOM-003** — Empty strings, whitespace, `NULL`, `null`, `--`, and composite placeholder values lacking a usable identifier MUST be treated as absent where the typed field requires an identifier or number.
 - **REQ-DOM-004** — A point consists of stable ID, display name, value, unit, value type, device/parent identity, timestamp, update frequency, icon, and validity flags. Unknown response fields MAY be retained but MUST NOT change known semantics.
-- **REQ-DOM-005** — Device roles relevant to selection are: `1=inverter`, `7=meter`, `11=plant`, `14=energy storage system`, `22=communication`; other types are `unknown` for semantic matching.
+- **REQ-DOM-005** — Device roles relevant to selection are `1=inverter`, `55=microinverter`, `7=meter`, `11=plant`, `14=energy storage system`, and `22=communication`. Microinverters MUST receive the existing inverter semantic protections. Other types remain unknown unless a subsystem explicitly determines their context from discovery metadata.
 
 ## Measurement semantics
 
@@ -47,6 +47,7 @@ Scope: Identifiers, devices, measurements, periods, and energy meanings
 - **REQ-DOM-014** — Physical validation MUST flag direct solar consumption materially above solar production, using relative tolerance `5%` and absolute tolerance `0.1` in the entities' compatible energy unit.
 - **REQ-DOM-015** — The live flow card's displayed battery node uses the presentation convention discharge positive and charge negative, derived from directional flows. The published legacy `battery_power` virtual point retains the opposite sign convention specified in [data-normalization.md](data-normalization.md); consumers MUST NOT silently assume the two conventions are identical.
 - **REQ-DOM-016** — Plant-scoped `pv_power` MUST represent one canonical total for the plant. Its measurement basis is, in order, a native plant total, a complete AC producer-leaf aggregate, or a complete DC producer-leaf aggregate. Contributors MUST use one basis consistently; a device-scoped value MUST NOT represent the plant total when multiple producer devices make it incomplete.
+- **REQ-DOM-017** — Grid-meter, grid-channel, and grid-phase measurements MUST NOT represent plant PV production merely because their units or current values appear compatible. Taking absolute values, reversing signs, or summing grid phases MUST NOT establish PV production.
 
 ## Device-type catalog
 

@@ -90,6 +90,7 @@ The app documentation is in `addon/gosungrow/DOCS.md`.
 - This is not a native Home Assistant integration. MQTT must be working before the app starts.
 - The app manages its own dashboard automatically.
 - Multi-inverter plants use `sensor.gosungrow_virtual_<plant-id>_pv_power` when GoSungrow can establish a complete, single-basis plant total. Existing manual dashboard sources remain unchanged and pinned automatic sources receive a reviewable recommendation.
+- Microinverters (type 55) are included. Device sums require every independently discovered producer leaf; missing readings never become zero or a partial total. The `Plant PV aggregation:` info log explains publication or suppression without enabling HTTP tracing.
 - If you are updating from an older version with more options, open the app configuration once and save it to clear legacy fields.
 - The repository also includes `examples/home-assistant-energy-cards.yaml` if you want to build a dashboard around Home Assistant's official Energy cards.
 

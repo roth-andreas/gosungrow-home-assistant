@@ -74,6 +74,12 @@ GoSungrow continues to choose dashboard sensors automatically. If a Sungrow mode
 
 For multi-inverter and microinverter plants, GoSungrow publishes a stable `sensor.gosungrow_virtual_<plant-id>_pv_power` entity when it can use a native plant total or build a complete sum from compatible producer readings. AC and DC readings are never mixed, and incomplete device topology does not produce a partial total. New dashboards select this entity automatically. Existing manual selections remain unchanged; an older pinned automatic device source is marked for review and offered the plant aggregate as the preferred replacement.
 
+Type-55 microinverters are recognized without requiring “inverter” in their names. A device sum must cover every producer leaf in the discovered inventory, not just every device present in the latest response. Missing, null, or invalid readings suppress the new total; a genuine zero is valid. A verified native plant total can still be used when device coverage or topology is unavailable. Grid phases do not contribute, and a controller name alone does not establish a PV producer.
+
+Look for the info-level `Plant PV aggregation:` line in the app log. It reports the plant, cycle, final outcome, source, expected/received producer counts, valid AC/DC counts, and reason. For example, `expected=9 received=8 reason=missing_contributors` means one discovered leaf lacks a recognized reading. `published` means the applicable MQTT operations completed; `filtered` identifies an endpoint filter or unknown parent, and `publication_failed` indicates a broker operation failed. An unknown expected count means completeness could not be established. Suppression leaves the last retained MQTT state untouched, so it may be stale.
+
+No HTTP tracing is needed. Debug-level aggregation detail is limited to 100 sorted metadata records plus an omitted count, without measurement values, serial numbers, credentials, or raw payloads. If your dashboard already has a pinned or manual PV source, review the plant-total recommendation in **Data sources** and select it if appropriate; the app will not silently replace your choice.
+
 Non-administrator users can inspect the selected sources but cannot modify them.
 
 ## Notes

@@ -2,6 +2,19 @@ package valueTypes
 
 import "testing"
 
+func TestUnitValuesCopiesDoNotShareNumericStorage(t *testing.T) {
+	var values UnitValues
+	values.AddFloat("first", "kW", "Power", 1.23456)
+	cloned := values.Copy()
+	cloned.SetPrecision(1)
+	if got := values.GetmapValues()["first"].ValueFloat(); got != 1.23456 {
+		t.Fatalf("copy changed source: %v", got)
+	}
+	if got := cloned.GetmapValues()["first"].ValueFloat(); got != 1.2 {
+		t.Fatalf("copy failed to retain map key/value: %v", got)
+	}
+}
+
 func TestReactivePowerUnitNormalization(t *testing.T) {
 	tests := []struct {
 		name  string

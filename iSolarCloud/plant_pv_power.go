@@ -2,284 +2,554 @@ package iSolarCloud
 
 import (
 	"fmt"
-	"math"
-	"sort"
-	"strings"
-
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/getDeviceList"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/WebAppService/getDevicePointAttrs"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/valueTypes"
+	"math"
+	"sort"
+	"strings"
 )
 
 type PlantTopologyDevice struct {
-	PsID       string
-	PsKey      string
-	UUID       int64
-	UpUUID     int64
-	DeviceType int64
+	PsID, PsKey              string
+	UUID, UpUUID, DeviceType int64
 }
-
 type PlantTopology struct {
-	PsID     string
-	Devices  map[string]PlantTopologyDevice
-	Complete bool
-	Reason   string
+	PsID      string
+	Devices   map[string]PlantTopologyDevice
+	Complete  bool
+	Reason    string
+	Inventory PlantInventory
 }
 
+// PlantInventoryDevice contains independently discovered role and point metadata.
+type PlantInventoryDevice struct {
+	PsKey, Name string
+	DeviceType  int64
+	Points      getDevicePointAttrs.Points
+}
+
+// PlantInventory remains stable until successful device and point rediscovery.
+type PlantInventory struct {
+	Devices             map[string]PlantInventoryDevice
+	Available, Conflict bool
+}
+
+// PlantPVPowerRecord contains safe diagnostic metadata, never a numeric reading.
+type PlantPVPowerRecord struct {
+	DeviceKey             string
+	DeviceType            int64
+	PointID, Unit, Reason string
+	Valid                 bool
+}
+
+// PlantPVPowerResult describes aggregation eligibility, not MQTT publication success.
 type PlantPVPowerResult struct {
-	Added        bool
-	Source       string
-	Contributors int
-	Reason       string
+	Added                                bool
+	Source                               string
+	Contributors                         int
+	Reason                               string
+	ExpectedKnown                        bool
+	Expected, Received, ValidAC, ValidDC int
+	Records                              []PlantPVPowerRecord
+	OmittedRecords                       int
 }
-
 type plantPowerCandidate struct {
-	entry *api.DataEntry
-	value float64
-	valid bool
-	rank  int
+	entry  *api.DataEntry
+	value  float64
+	valid  bool
+	rank   int
+	reason string
 }
-
 type producerCandidates struct {
-	device PlantTopologyDevice
-	ac     *plantPowerCandidate
-	dc     *plantPowerCandidate
+	device   PlantTopologyDevice
+	ac, dc   *plantPowerCandidate
+	received bool
 }
 
-var plantNativePVPointOrder = map[string]int{
-	"p83076": 0, "p83076_map": 1, "p83033": 2, "p83002": 3,
-	"plant_power": 4, "pv_power": 5, "solar_power": 6,
-}
+var plantNativePVPointOrder = map[string]int{"p83076": 0, "p83076_map": 1, "p83033": 2, "p83002": 3, "plant_power": 4, "pv_power": 5, "solar_power": 6}
+var plantACPointOrder = map[string]int{"p24": 0, "inverter_ac_power": 1, "total_active_power": 2, "active_power": 3}
+var plantDCPointOrder = map[string]int{"total_dc_power": 0, "dc_power": 1}
 
-var plantACPointOrder = map[string]int{
-	"p24": 0, "inverter_ac_power": 1, "total_active_power": 2, "active_power": 3,
-}
-
-var plantDCPointOrder = map[string]int{
-	"total_dc_power": 0, "dc_power": 1,
+// BuildPlantInventories preserves independent discovery, never current telemetry.
+func BuildPlantInventories(devices getDeviceList.Devices, points map[string]getDevicePointAttrs.Points) map[string]PlantInventory {
+	out := make(map[string]PlantInventory)
+	owners := make(map[string]string)
+	missingProducerPlant := false
+	for _, d := range devices {
+		psID, key := strings.TrimSpace(d.PsId.String()), strings.TrimSpace(d.PsKey.String())
+		if psID == "" {
+			if d.DeviceType.Value() == 1 || d.DeviceType.Value() == 55 {
+				missingProducerPlant = true
+			}
+			continue
+		}
+		inv := out[psID]
+		if inv.Devices == nil {
+			inv.Devices = make(map[string]PlantInventoryDevice)
+			inv.Available = true
+		}
+		device := PlantInventoryDevice{PsKey: key, Name: d.DeviceName.String(), DeviceType: d.DeviceType.Value(), Points: points[key]}
+		if key == "" {
+			if inventoryProducer(device) {
+				inv.Conflict = true
+			}
+		} else if prior, ok := inv.Devices[key]; ok && (prior.DeviceType != device.DeviceType || prior.Name != device.Name) {
+			inv.Conflict = true
+		} else {
+			if owner, exists := owners[key]; exists && owner != psID {
+				inv.Conflict = true
+				other := out[owner]
+				other.Conflict = true
+				out[owner] = other
+			}
+			owners[key] = psID
+			inv.Devices[key] = device
+		}
+		out[psID] = inv
+	}
+	if missingProducerPlant {
+		for psID, inventory := range out {
+			inventory.Available = false
+			out[psID] = inventory
+		}
+	}
+	return out
 }
 
 func BuildPlantTopologies(trees PsTrees) map[string]PlantTopology {
-	topologies := make(map[string]PlantTopology, len(trees))
-	uuidOwners := make(map[int64]string)
-	duplicateUUID := make(map[int64]bool)
-
-	plantIDs := make([]string, 0, len(trees))
-	for psID := range trees {
-		plantIDs = append(plantIDs, strings.TrimSpace(psID))
-	}
-	sort.Strings(plantIDs)
-
-	for _, psID := range plantIDs {
-		topology := PlantTopology{PsID: psID, Devices: make(map[string]PlantTopologyDevice), Complete: true}
-		if len(trees[psID].Devices) == 0 {
-			topology.Complete = false
-			topology.Reason = "topology contains no devices"
+	out := make(map[string]PlantTopology)
+	for psID, tree := range trees {
+		t := PlantTopology{PsID: psID, Devices: make(map[string]PlantTopologyDevice), Complete: true}
+		uuids := make(map[int64]PlantTopologyDevice)
+		if len(tree.Devices) == 0 {
+			t.Complete = false
+			t.Reason = "topology contains no devices"
 		}
-		for _, raw := range trees[psID].Devices {
-			device := PlantTopologyDevice{
-				PsID: strings.TrimSpace(raw.PsId.String()), PsKey: strings.TrimSpace(raw.PsKey.String()),
-				UUID: raw.UUID.Value(), UpUUID: raw.UpUUID.Value(), DeviceType: raw.DeviceType.Value(),
+		for _, raw := range tree.Devices {
+			d := PlantTopologyDevice{PsID: raw.PsId.String(), PsKey: raw.PsKey.String(), UUID: raw.UUID.Value(), UpUUID: raw.UpUUID.Value(), DeviceType: raw.DeviceType.Value()}
+			if d.PsID == "" {
+				d.PsID = psID
 			}
-			if device.PsID == "" {
-				device.PsID = psID
-			}
-			if device.PsID != psID || device.PsKey == "" {
-				topology.Complete = false
-				topology.Reason = "topology contains a missing key or cross-plant device"
+			if d.PsID != psID || strings.TrimSpace(d.PsKey) == "" {
+				t.Complete = false
+				t.Reason = "topology contains a missing key or cross-plant device"
 				continue
 			}
-			topology.Devices[device.PsKey] = device
-			if device.UUID == 0 {
-				continue
+			if _, ok := t.Devices[d.PsKey]; ok {
+				t.Complete = false
+				t.Reason = "topology contains duplicate keys"
 			}
-			if owner, exists := uuidOwners[device.UUID]; exists {
-				duplicateUUID[device.UUID] = true
-				if owner == psID {
-					topology.Complete = false
-					topology.Reason = "topology contains duplicate UUIDs"
+			if _, ok := uuids[d.UUID]; d.UUID != 0 && ok {
+				t.Complete = false
+				t.Reason = "topology contains duplicate UUIDs"
+			}
+			t.Devices[d.PsKey] = d
+			if d.UUID != 0 {
+				uuids[d.UUID] = d
+			}
+		}
+		for _, d := range t.Devices {
+			seen := make(map[int64]bool)
+			if d.UUID != 0 {
+				seen[d.UUID] = true
+			}
+			for parent := d.UpUUID; parent != 0; {
+				if seen[parent] {
+					t.Complete = false
+					t.Reason = "topology contains a cycle"
+					break
 				}
-			} else {
-				uuidOwners[device.UUID] = psID
+				seen[parent] = true
+				p, ok := uuids[parent]
+				if !ok {
+					t.Complete = false
+					t.Reason = "topology contains a dangling parent"
+					for otherID, other := range trees {
+						if otherID == psID {
+							continue
+						}
+						for _, node := range other.Devices {
+							if node.UUID.Value() == parent {
+								t.Reason = "topology contains a cross-plant parent"
+							}
+						}
+					}
+					break
+				}
+				parent = p.UpUUID
 			}
 		}
-		topologies[psID] = topology
+		out[psID] = t
 	}
-
-	for _, psID := range plantIDs {
-		topology := topologies[psID]
-		known := make(map[int64]bool, len(topology.Devices))
-		for _, device := range topology.Devices {
-			if device.UUID != 0 {
-				known[device.UUID] = true
-			}
-		}
-		for _, device := range topology.Devices {
-			if device.UpUUID == 0 {
-				continue
-			}
-			owner, exists := uuidOwners[device.UpUUID]
-			switch {
-			case duplicateUUID[device.UpUUID]:
-				topology.Complete = false
-				topology.Reason = "topology parent UUID is ambiguous"
-			case exists && owner != psID:
-				topology.Complete = false
-				topology.Reason = "topology contains a cross-plant parent"
-			case !known[device.UpUUID]:
-				topology.Complete = false
-				topology.Reason = "topology contains a dangling parent"
-			}
-		}
-		topologies[psID] = topology
-	}
-
-	return topologies
+	return out
 }
 
-func AddCanonicalPlantPVPower(data *api.DataMap, topology PlantTopology) PlantPVPowerResult {
-	psID := strings.TrimSpace(topology.PsID)
-	if data == nil || psID == "" {
-		return PlantPVPowerResult{Reason: "plant ID is unavailable"}
+func powerAlias(s string) string {
+	return strings.Join(strings.Fields(strings.ReplaceAll(strings.ToLower(strings.TrimSpace(s)), "-", " ")), "_")
+}
+func powerClass(id string) (string, int, bool) {
+	if rank, ok := plantNativePVPointOrder[id]; ok {
+		return "native", rank, true
 	}
-
-	entries := sortedLatestEntries(data)
-	if native := selectNativePlantPVPower(entries, topology); native != nil {
-		addPlantPVPowerEntry(data, psID, native.entry, native.value)
-		return PlantPVPowerResult{Added: true, Source: "native_plant", Contributors: 1}
+	if rank, ok := plantACPointOrder[id]; ok {
+		return "ac", rank, true
 	}
-	if !topology.Complete {
-		return PlantPVPowerResult{Reason: topology.Reason}
+	if rank, ok := plantDCPointOrder[id]; ok {
+		return "dc", rank, true
 	}
-
-	producers := collectProducerCandidates(entries, topology)
-	if len(producers) == 0 {
-		return PlantPVPowerResult{Reason: "no producer candidates"}
-	}
-	leaves := producerLeaves(producers)
-	if len(leaves) == 0 {
-		return PlantPVPowerResult{Reason: "no producer leaves"}
-	}
-
-	selected, source, ok := completeProducerTier(leaves, true)
-	if !ok {
-		selected, source, ok = completeProducerTier(leaves, false)
-	}
-	if !ok {
-		return PlantPVPowerResult{Reason: "no complete AC or DC contributor tier"}
-	}
-
-	total := 0.0
-	sourceEntry := selected[0].entry
-	for _, candidate := range selected {
-		total += candidate.value
-		if candidate.entry.Date.Time.Before(sourceEntry.Date.Time) {
-			sourceEntry = candidate.entry
+	return "", 0, false
+}
+func forbiddenPowerMetadata(parts ...string) bool {
+	text := powerAlias(strings.Join(parts, " "))
+	for _, token := range strings.Split(text, "_") {
+		switch token {
+		case "grid", "meter", "phase", "channel", "l1", "l2", "l3":
+			return true
 		}
 	}
-	total = valueTypes.SetPrecision(total, 3)
-	addPlantPVPowerEntry(data, psID, sourceEntry, total)
-	return PlantPVPowerResult{Added: true, Source: source, Contributors: len(selected)}
+	return false
 }
-
+func measurementClass(s GoStruct.MeasurementSource) (string, int, string) {
+	if (s.Endpoint != "AppService.queryDeviceList" && s.Endpoint != "discovery") || s.Derived {
+		return "", 0, "derived_or_unknown_origin"
+	}
+	class, rank, known := powerClass(powerAlias(s.PointID))
+	named, nrank, nknown := powerClass(powerAlias(s.PointName))
+	if !known && nknown {
+		class, rank = named, nrank
+	}
+	if forbiddenPowerMetadata(s.PointID, s.PointName, s.GroupName) {
+		return class, rank, "grid_or_phase"
+	}
+	if known && nknown && class != named {
+		return class, rank, "identity_conflict"
+	}
+	if known {
+		return class, rank, ""
+	}
+	if nknown {
+		return named, nrank, ""
+	}
+	return "", 0, "unrecognized_point"
+}
+func inventoryProducer(d PlantInventoryDevice) bool {
+	switch d.DeviceType {
+	case 1, 55:
+		return true
+	case 7, 11, 22:
+		return false
+	}
+	for _, p := range d.Points {
+		s := GoStruct.MeasurementSource{Endpoint: "discovery", PointID: p.Id.String(), PointName: p.Name.String(), GroupName: p.PointGroupName}
+		class, _, reason := measurementClass(s)
+		if reason == "" && (class == "dc" || class == "ac" && strings.Contains(strings.ToLower(d.Name), "inverter")) {
+			return true
+		}
+	}
+	return false
+}
 func sortedLatestEntries(data *api.DataMap) []*api.DataEntry {
-	keys := data.Sort()
-	entries := make([]*api.DataEntry, 0, len(keys))
-	for _, key := range keys {
-		entry := data.Map[key].GetEntry(api.LastEntry)
-		if entry != nil && entry.Point != nil {
-			entries = append(entries, entry)
+	entries := make([]*api.DataEntry, 0, len(data.Map)+len(data.Measurements))
+	for i := range data.Measurements {
+		entries = append(entries, &data.Measurements[i])
+	}
+	for _, key := range data.Sort() {
+		if e := data.Map[key].GetEntry(api.LastEntry); e != nil && e.Point != nil {
+			entries = append(entries, e)
 		}
 	}
 	return entries
 }
-
-func selectNativePlantPVPower(entries []*api.DataEntry, topology PlantTopology) *plantPowerCandidate {
-	var best *plantPowerCandidate
-	for _, entry := range entries {
-		if strings.HasPrefix(strings.ToLower(entry.EndPoint), "virtual.") || !plantScopedEntry(entry, topology) {
-			continue
-		}
-		rank, ok := plantNativePVPointOrder[strings.ToLower(strings.TrimSpace(entry.Point.Id))]
-		if !ok {
-			continue
-		}
-		value, valid := plantPowerKilowatts(entry)
-		candidate := &plantPowerCandidate{entry: entry, value: value, valid: valid, rank: rank}
-		if valid && (best == nil || rank < best.rank || rank == best.rank && entry.EndPoint < best.entry.EndPoint) {
-			best = candidate
+func candidateFor(e *api.DataEntry, rank int) *plantPowerCandidate {
+	value, valid := plantPowerKilowatts(e)
+	reason := ""
+	if !valid {
+		reason = "invalid_values"
+		if e.Value.Unit() != "W" && e.Value.Unit() != "kW" && e.Value.Unit() != "MW" {
+			reason = "incompatible_units"
 		}
 	}
-	return best
+	if !e.Current.Source.NumericValid {
+		valid = false
+		reason = "invalid_values"
+	}
+	return &plantPowerCandidate{entry: e, value: value, valid: valid, rank: rank, reason: reason}
+}
+func preferredPlantCandidate(a, b *plantPowerCandidate) *plantPowerCandidate {
+	if a == nil || b.valid && !a.valid || a.valid == b.valid && (b.rank < a.rank || b.rank == a.rank && candidateKey(b) < candidateKey(a)) {
+		return b
+	}
+	return a
+}
+func candidateKey(c *plantPowerCandidate) string {
+	s := c.entry.Current.Source
+	return s.PointID + "\x00" + s.Endpoint + "\x00" + c.entry.EndPoint
 }
 
-func plantScopedEntry(entry *api.DataEntry, topology PlantTopology) bool {
-	key := strings.TrimSpace(entry.Parent.Key)
-	if key == topology.PsID {
-		return true
+// Conflicting representations of one measurement cannot be used to repair a tier.
+func usableMeasurements(entries []*api.DataEntry) ([]*api.DataEntry, map[string]bool) {
+	groups := make(map[string][]*api.DataEntry)
+	conflicts := make(map[string]bool)
+	for _, e := range entries {
+		if e.Current == nil {
+			continue
+		}
+		s := e.Current.Source
+		if s.Endpoint != "AppService.queryDeviceList" || s.Derived {
+			continue
+		}
+		key := s.PsID + "\x00" + s.PsKey + "\x00" + s.PointID
+		groups[key] = append(groups[key], e)
 	}
-	parent := entry.Parent
-	parent.Split()
-	if parent.PsId == topology.PsID && parent.Type == "11" {
-		return true
+	keys := make([]string, 0, len(groups))
+	for k := range groups {
+		keys = append(keys, k)
 	}
-	device, ok := topology.Devices[key]
-	return ok && device.DeviceType == 11
+	sort.Strings(keys)
+	out := make([]*api.DataEntry, 0, len(groups))
+	for _, key := range keys {
+		copies := groups[key]
+		first := copies[0]
+		fv, fok := plantPowerKilowatts(first)
+		for _, e := range copies[1:] {
+			ev, eok := plantPowerKilowatts(e)
+			a, b := first.Current.Source, e.Current.Source
+			if fok != eok || (fok && fv != ev) || a.NumericValid != b.NumericValid || a.PointName != b.PointName || a.GroupName != b.GroupName || a.DeviceType != b.DeviceType || !a.Timestamp.Equal(b.Timestamp) || a.Unit != b.Unit {
+				conflicts[key] = true
+			}
+		}
+		if conflicts[key] {
+			for _, e := range copies {
+				conflicts[e.EndPoint] = true
+			}
+		}
+		out = append(out, first)
+	}
+	return out, conflicts
 }
 
-func collectProducerCandidates(entries []*api.DataEntry, topology PlantTopology) map[string]*producerCandidates {
+// AddCanonicalPlantPVPower evaluates one plant-scoped collection snapshot.
+func AddCanonicalPlantPVPower(data *api.DataMap, topology PlantTopology) PlantPVPowerResult {
+	result := PlantPVPowerResult{Source: "none", Reason: "inventory_unavailable"}
+	if data == nil || topology.PsID == "" {
+		return result
+	}
+	entries, conflicts := usableMeasurements(sortedLatestEntries(data))
 	producers := make(map[string]*producerCandidates)
-	for _, entry := range entries {
-		device, ok := topology.Devices[strings.TrimSpace(entry.Parent.Key)]
-		if !ok || device.DeviceType == 11 {
+	inv := topology.Inventory
+	inventoryConflict := inv.Conflict
+	for _, device := range data.MeasurementDevices {
+		if device.DeviceType != 1 && device.DeviceType != 55 {
 			continue
 		}
-		pointID := strings.ToLower(strings.TrimSpace(entry.Point.Id))
-		acRank, ac := plantACPointOrder[pointID]
-		dcRank, dc := plantDCPointOrder[pointID]
-		if !ac && !dc {
+		known, ok := inv.Devices[device.PsKey]
+		if !ok || known.DeviceType != device.DeviceType || device.PsID != "" && device.PsID != topology.PsID {
+			inventoryConflict = true
+		}
+	}
+	for key, d := range inv.Devices {
+		if !inventoryProducer(d) {
 			continue
 		}
-		if ac && !hasInverterContext(entry, device) {
+		td, ok := topology.Devices[key]
+		if !ok && topology.Complete {
+			topology.Complete = false
+			topology.Reason = "topology missing an expected producer"
+		}
+		if ok && td.DeviceType != d.DeviceType {
+			inventoryConflict = true
+		}
+		td.PsKey = key
+		td.DeviceType = d.DeviceType
+		producers[key] = &producerCandidates{device: td}
+	}
+	leaves := producerLeaves(producers, topology)
+	result.ExpectedKnown = inv.Available && !inventoryConflict && topology.Complete
+	if result.ExpectedKnown {
+		result.Expected = len(leaves)
+	}
+	native, blocked, records, pointConflict := collectPlantMeasurements(entries, conflicts, topology, inv, producers)
+	inventoryConflict = inventoryConflict || pointConflict
+	result.Records = records
+	if inventoryConflict {
+		result.ExpectedKnown = false
+	}
+	for _, p := range leaves {
+		if p.received {
+			result.Received++
+		}
+		if p.ac != nil && p.ac.valid {
+			result.ValidAC++
+		}
+		if p.dc != nil && p.dc.valid {
+			result.ValidDC++
+		}
+	}
+	sort.Slice(result.Records, func(i, j int) bool {
+		a, b := result.Records[i], result.Records[j]
+		return fmt.Sprintf("%s\x00%d\x00%s\x00%s\x00%t\x00%s", a.DeviceKey, a.DeviceType, a.PointID, a.Unit, a.Valid, a.Reason) < fmt.Sprintf("%s\x00%d\x00%s\x00%s\x00%t\x00%s", b.DeviceKey, b.DeviceType, b.PointID, b.Unit, b.Valid, b.Reason)
+	})
+	if len(result.Records) > 100 {
+		result.OmittedRecords = len(result.Records) - 100
+		result.Records = result.Records[:100]
+	}
+	if native != nil {
+		addPlantPVPowerEntry(data, topology.PsID, native.entry, native.value)
+		result.Added = true
+		result.Source = "native_plant"
+		result.Contributors = 1
+		result.Reason = "none"
+		return result
+	}
+	switch {
+	case !inv.Available:
+		result.Reason = "inventory_unavailable"
+	case inventoryConflict:
+		result.Reason = "inventory_conflict"
+	case !topology.Complete && len(topology.Devices) == 0:
+		result.Reason = "topology_unavailable"
+	case !topology.Complete:
+		result.Reason = "topology_invalid"
+	case len(leaves) == 0:
+		result.Reason = "no_producers"
+	default:
+		selected, source, ok := completeProducerTier(leaves, true)
+		if !ok {
+			selected, source, ok = completeProducerTier(leaves, false)
+		}
+		if ok {
+			total := 0.0
+			oldest := selected[0].entry
+			for _, c := range selected {
+				total += c.value
+				if c.entry.Date.Time.Before(oldest.Date.Time) {
+					oldest = c.entry
+				}
+			}
+			if !math.IsInf(total, 0) && !math.IsNaN(total) {
+				addPlantPVPowerEntry(data, topology.PsID, oldest, total)
+				result.Added = true
+				result.Source = source
+				result.Contributors = len(selected)
+				result.Reason = "none"
+				return result
+			}
+			blocked["invalid_values"] = true
+		}
+		switch {
+		case blocked["conflicting_points"]:
+			result.Reason = "conflicting_points"
+		case result.Received < result.Expected:
+			result.Reason = "missing_contributors"
+		case blocked["incompatible_units"]:
+			result.Reason = "incompatible_units"
+		case blocked["invalid_values"]:
+			result.Reason = "invalid_values"
+		default:
+			result.Reason = "incomplete_basis"
+		}
+	}
+	return result
+}
+
+// collectPlantMeasurements applies source semantics before selecting numeric candidates.
+func collectPlantMeasurements(entries []*api.DataEntry, conflicts map[string]bool, topology PlantTopology, inv PlantInventory, producers map[string]*producerCandidates) (*plantPowerCandidate, map[string]bool, []PlantPVPowerRecord, bool) {
+	var native *plantPowerCandidate
+	inventoryConflict := false
+	var records []PlantPVPowerRecord
+	blocked := make(map[string]bool)
+	for _, e := range entries {
+		s := e.Current.Source
+		if s.PsID != topology.PsID {
 			continue
 		}
-		producer := producers[device.PsKey]
-		if producer == nil {
-			producer = &producerCandidates{device: device}
-			producers[device.PsKey] = producer
+		class, rank, reject := measurementClass(s)
+		if conflicts[e.EndPoint] {
+			reject = "conflicting_points"
 		}
-		value, valid := plantPowerKilowatts(entry)
-		if ac {
-			producer.ac = preferredPlantCandidate(producer.ac, &plantPowerCandidate{entry: entry, value: value, valid: valid, rank: acRank})
+		if reject != "" {
+			if reject == "identity_conflict" {
+				blocked["conflicting_points"] = true
+			}
 		}
-		if dc {
-			producer.dc = preferredPlantCandidate(producer.dc, &plantPowerCandidate{entry: entry, value: value, valid: valid, rank: dcRank})
+		if class == "" && s.Unit != "W" && s.Unit != "kW" && s.Unit != "MW" {
+			continue
 		}
+		record := PlantPVPowerRecord{DeviceKey: s.PsKey, DeviceType: s.DeviceType, PointID: s.PointID, Unit: s.Unit, Valid: s.NumericValid, Reason: reject}
+		if class == "native" && (s.DeviceType == 11 || s.PsKey == topology.PsID || s.PsKey == "") {
+			c := candidateFor(e, rank)
+			if reject == "" && c.valid {
+				native = preferredPlantCandidate(native, c)
+			}
+			if record.Reason == "" {
+				record.Reason = c.reason
+			}
+		} else if class == "ac" || class == "dc" {
+			d, known := inv.Devices[s.PsKey]
+			if !known && s.DeviceType != 7 && s.DeviceType != 11 && s.DeviceType != 22 {
+				inventoryConflict = true
+			}
+			if known && d.DeviceType != s.DeviceType {
+				inventoryConflict = true
+			}
+			p := producers[s.PsKey]
+			if p != nil {
+				p.received = true
+				if class == "ac" && d.DeviceType != 1 && d.DeviceType != 55 && !strings.Contains(strings.ToLower(d.Name), "inverter") {
+					record.Reason = "not_inverter"
+				}
+				c := candidateFor(e, rank)
+				if record.Reason == "" {
+					record.Reason = c.reason
+				} else {
+					c.valid = false
+					c.reason = record.Reason
+				}
+				if reject == "conflicting_points" {
+					blocked["conflicting_points"] = true
+				}
+				if c.reason != "" {
+					blocked[c.reason] = true
+				}
+				if class == "ac" {
+					p.ac = preferredPlantCandidate(p.ac, c)
+				} else {
+					p.dc = preferredPlantCandidate(p.dc, c)
+				}
+			}
+		}
+		record.Valid = s.NumericValid && e.Value.Valid && e.Value.IsNumber() && !math.IsNaN(e.Value.ValueFloat()) && !math.IsInf(e.Value.ValueFloat(), 0)
+		if record.Reason == "" {
+			record.Reason = "none"
+		}
+		records = append(records, record)
 	}
-	return producers
+	return native, blocked, records, inventoryConflict
 }
 
-func hasInverterContext(entry *api.DataEntry, device PlantTopologyDevice) bool {
-	if device.DeviceType == 1 {
-		return true
+func producerLeaves(producers map[string]*producerCandidates, topology PlantTopology) []*producerCandidates {
+	byUUID := make(map[int64]PlantTopologyDevice)
+	for _, d := range topology.Devices {
+		if d.UUID != 0 {
+			byUUID[d.UUID] = d
+		}
 	}
-	identity := strings.ToLower(strings.Join([]string{device.PsKey, entry.EndPoint, entry.Point.Description, entry.Point.GroupName}, " "))
-	return strings.Contains(identity, "inverter")
-}
-
-func preferredPlantCandidate(current, candidate *plantPowerCandidate) *plantPowerCandidate {
-	if current == nil || candidate.rank < current.rank || candidate.rank == current.rank && candidate.valid && !current.valid ||
-		candidate.rank == current.rank && candidate.valid == current.valid && candidate.entry.EndPoint < current.entry.EndPoint {
-		return candidate
-	}
-	return current
-}
-
-func producerLeaves(producers map[string]*producerCandidates) []*producerCandidates {
-	parents := make(map[int64]bool)
-	for _, producer := range producers {
-		if producer.device.UpUUID != 0 {
-			parents[producer.device.UpUUID] = true
+	parents := make(map[string]bool)
+	for _, p := range producers {
+		seen := make(map[int64]bool)
+		for parent := p.device.UpUUID; parent != 0 && !seen[parent]; {
+			seen[parent] = true
+			d, ok := byUUID[parent]
+			if !ok {
+				break
+			}
+			if _, ok := producers[d.PsKey]; ok {
+				parents[d.PsKey] = true
+			}
+			parent = d.UpUUID
 		}
 	}
 	keys := make([]string, 0, len(producers))
@@ -289,26 +559,23 @@ func producerLeaves(producers map[string]*producerCandidates) []*producerCandida
 	sort.Strings(keys)
 	leaves := make([]*producerCandidates, 0, len(keys))
 	for _, key := range keys {
-		producer := producers[key]
-		if producer.device.UUID != 0 && parents[producer.device.UUID] {
-			continue
+		if !parents[key] {
+			leaves = append(leaves, producers[key])
 		}
-		leaves = append(leaves, producer)
 	}
 	return leaves
 }
-
 func completeProducerTier(leaves []*producerCandidates, ac bool) ([]*plantPowerCandidate, string, bool) {
 	selected := make([]*plantPowerCandidate, 0, len(leaves))
-	for _, producer := range leaves {
-		candidate := producer.dc
+	for _, p := range leaves {
+		c := p.dc
 		if ac {
-			candidate = producer.ac
+			c = p.ac
 		}
-		if candidate == nil || !candidate.valid {
+		if c == nil || !c.valid {
 			return nil, "", false
 		}
-		selected = append(selected, candidate)
+		selected = append(selected, c)
 	}
 	if ac {
 		return selected, "summed_device_ac", true
@@ -317,6 +584,9 @@ func completeProducerTier(leaves []*producerCandidates, ac bool) ([]*plantPowerC
 }
 
 func plantPowerKilowatts(entry *api.DataEntry) (float64, bool) {
+	if entry != nil && entry.Current != nil && entry.Current.Source.Endpoint != "" && !entry.Current.Source.NumericValid {
+		return 0, false
+	}
 	if entry == nil || entry.Point == nil || !entry.Valid || !entry.Point.Valid || !entry.Value.Valid || !entry.Value.IsNumber() {
 		return 0, false
 	}
@@ -333,14 +603,15 @@ func plantPowerKilowatts(entry *api.DataEntry) (float64, bool) {
 	default:
 		return 0, false
 	}
-	return value, true
+	return value, !math.IsNaN(value) && !math.IsInf(value, 0)
 }
 
 func addPlantPVPowerEntry(data *api.DataMap, psID string, source *api.DataEntry, value float64) {
 	if source == nil || source.Current == nil {
 		return
 	}
-	current := *source.Current
+	current := source.Current.Copy()
+	current.Source.Derived = true
 	current.DataStructure.Endpoint = GoStruct.NewEndPointPath("virtual", psID, "pv_power")
 	current.DataStructure.PointId = "pv_power"
 	current.DataStructure.PointName = "Plant PV Power"
@@ -352,7 +623,10 @@ func addPlantPVPowerEntry(data *api.DataMap, psID string, source *api.DataEntry,
 	current.DataStructure.ValueType = "Power"
 	current.IsOk = true
 
-	unitValue := valueTypes.SetUnitValueFloat("kW", "Power", valueTypes.SetPrecision(value, 3))
+	if math.Abs(value) <= math.MaxFloat64/1000 {
+		value = math.Round(value*1000) / 1000
+	}
+	unitValue := valueTypes.SetUnitValueFloat("kW", "Power", value)
 	unitValue.SetDeviceId(psID)
 	current.SetUnitValue(unitValue)
 	point := api.CreatePoint(&current, psID)

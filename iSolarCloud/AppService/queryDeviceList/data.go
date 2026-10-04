@@ -1,12 +1,15 @@
 package queryDeviceList
 
 import (
+	"encoding/json"
 	"github.com/MickMake/GoUnify/Only"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/valueTypes"
+	"strconv"
 
 	"fmt"
+	"strings"
 )
 
 const Url = "/v1/devService/queryDeviceList"
@@ -150,7 +153,8 @@ type Device struct {
 }
 
 type PointStruct struct {
-	GoStruct GoStruct.GoStruct `json:"-" PointIdFrom:"PointId" PointIdReplace:"true" PointTimestampFrom:"TimeStamp" PointDeviceFromParent:"PsKey"`
+	sourcePointID string
+	GoStruct      GoStruct.GoStruct `json:"-" PointIdFrom:"PointId" PointIdReplace:"true" PointTimestampFrom:"TimeStamp" PointDeviceFromParent:"PsKey"`
 	// GoStruct               GoStruct.GoStruct   `json:"-" PointDeviceFromParent:"PsKey"`
 
 	TimeStamp        valueTypes.DateTime `json:"time_stamp" PointUpdateFreq:"UpdateFreq5Mins" PointNameDateFormat:"DateTimeLayout"`
@@ -175,6 +179,33 @@ type PointStruct struct {
 	PointGroupIdOrderId    valueTypes.Integer  `json:"point_group_id_order_id" PointGroupNameFrom:"PointGroupName" PointTimestampFrom:"TimeStamp" PointUpdateFreq:"UpdateFreqBoot"`
 	ValIsFixed             valueTypes.Bool     `json:"val_is_fixd" PointId:"value_is_fixed" PointGroupNameFrom:"PointGroupName" PointTimestampFrom:"TimeStamp" PointUpdateFreq:"UpdateFreqBoot"`
 	ValidSize              valueTypes.Integer  `json:"valid_size" PointGroupNameFrom:"PointGroupName" PointTimestampFrom:"TimeStamp" PointUpdateFreq:"UpdateFreqBoot"`
+}
+
+// UnmarshalJSON retains semantic identity before the legacy PointId decoder
+// rewrites readable IDs. Existing normalized/MQTT identities remain unchanged.
+func (p *PointStruct) UnmarshalJSON(data []byte) error {
+	type pointFields PointStruct
+	var fields pointFields
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*p = PointStruct(fields)
+	var raw struct {
+		PointID json.RawMessage `json:"point_id"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	var original string
+	if err := json.Unmarshal(raw.PointID, &original); err == nil {
+		p.sourcePointID = original
+		if _, err := strconv.ParseInt(strings.TrimPrefix(original, "p"), 10, 64); err == nil {
+			p.sourcePointID = p.PointId.String()
+		}
+	} else {
+		p.sourcePointID = p.PointId.String()
+	}
+	return nil
 }
 
 func (e *ResultData) IsValid() error {
@@ -231,24 +262,41 @@ func (e *EndPoint) GetData() api.DataMap {
 		// var TotalPvYield
 		// var DailyTotalLoad
 		// var TotalEnergyConsumption
-		for _, device := range e.Response.ResultData.PageList {
-			epp := GoStruct.NewEndPointPath("virtual", device.PsKey.String())
-			deviceId := device.PsKey.String()
-			if device.PsKey.String() == "" {
-				epp = GoStruct.NewEndPointPath("virtual", device.PsId.String())
-				deviceId = device.PsId.String()
+		for deviceIndex, device := range e.Response.ResultData.PageList {
+			entries.MeasurementDevices = append(entries.MeasurementDevices, GoStruct.MeasurementSource{
+				Endpoint: EndPointName, PsID: strings.TrimSpace(device.PsId.String()), PsKey: strings.TrimSpace(device.PsKey.String()), DeviceType: device.DeviceType.Value(),
+			})
+			deviceId := strings.TrimSpace(device.PsKey.String())
+			if deviceId == "" {
+				deviceId = strings.TrimSpace(device.PsId.String())
 			}
 			// Points are embedded within []PointStruct. So manually add virtuals instead of using the structure.
 
-			for _, point := range device.PointData {
+			for pointIndex, point := range device.PointData {
 				name := point.PointId.String()
-				foo := entries.CopyPointFromName(name, epp, name, point.PointName.String())
-				if foo == nil {
-					e.debugMissingVirtualPoint(epp, name, name)
-					continue
+				sourceID := point.sourcePointID
+				if sourceID == "" {
+					sourceID = name
 				}
-				foo.Value.Reset()
-				foo.Value.AddFloat("", point.Unit.String(), "", point.Value.Value())
+				foo := &GoStruct.Reflect{IsOk: true}
+				foo.FieldPath = GoStruct.NewEndPointPath("queryDeviceList", e.Request.PsId.String(), "ResultData", "PageList", fmt.Sprintf("[%d]", deviceIndex), "PointData", fmt.Sprintf("[%d]", pointIndex), "Value")
+				foo.DataStructure.Endpoint = GoStruct.NewEndPointPath("virtual", deviceId, name)
+				foo.DataStructure.PointId = name
+				foo.DataStructure.PointName = point.PointName.String()
+				foo.DataStructure.PointUpdateFreq = GoStruct.UpdateFreq5Mins
+				foo.Source = GoStruct.MeasurementSource{
+					Endpoint: EndPointName, PsID: strings.TrimSpace(device.PsId.String()), PsKey: strings.TrimSpace(device.PsKey.String()),
+					DeviceType: device.DeviceType.Value(), PointID: sourceID, PointName: point.PointName.String(),
+					GroupName: point.PointGroupName.String(), Unit: point.Unit.String(),
+					Timestamp: point.TimeStamp.Time, NumericValid: point.Value.Valid,
+				}
+				if foo.Source.PsID == "" {
+					foo.Source.PsID = e.Request.PsId.String()
+				}
+				uv := valueTypes.SetUnitValueFloat(point.Unit.String(), "", point.Value.Value())
+				uv.Valid = point.Value.Valid
+				uv.SetDeviceId(deviceId)
+				foo.SetUnitValue(uv)
 				// foo.SetUnit(point.Unit.String())
 				foo.Value.SetDeviceId(deviceId)
 				foo.DataStructure.PointGroupName = point.PointGroupName.String()
@@ -257,6 +305,22 @@ func (e *EndPoint) GetData() api.DataMap {
 				foo.DataStructure.PointUnit = point.Unit.String()
 				foo.DataStructure.PointTimestamp = point.TimeStamp.Time
 				foo.IsOk = true
+				entries.StructMap.Add(foo)
+				p := api.CreatePoint(foo, deviceId)
+				original := foo.Copy()
+				entries.Measurements = append(entries.Measurements, api.DataEntry{
+					Current: &original, EndPoint: foo.DataStructure.Endpoint.String(), Point: &p,
+					Parent: api.NewParentDevice(deviceId), Date: point.TimeStamp, Value: uv.Copy(), Valid: true,
+				})
+				// Keep the raw field's MQTT identity, but attach its enclosing point identity.
+				for _, raw := range entries.StructMap.Map {
+					if raw.FieldPath.String() == foo.FieldPath.String() {
+						raw.Source = foo.Source
+						raw.Value = foo.Value.Copy()
+						raw.DataStructure.PointDevice = deviceId
+						foo.FieldPath = raw.FieldPath.Copy()
+					}
+				}
 				// fmt.Printf("%s.%s -> %s\n", epp, name, foo.DataStructure.PointDevice)
 			}
 		}

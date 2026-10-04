@@ -33,7 +33,7 @@ For non-exact candidates the score MUST be additive:
 
 - **REQ-RES-005** — Candidate must match a suffix alias or every token group. Forbidden tokens penalize legacy matching; canonical semantic contracts reject their forbidden meanings outright.
 - **REQ-RES-006** — Ties choose the shorter entity ID; equal-length ties preserve input state order. Diagnostic candidate lists contain the best five unique entities in score-descending, length-ascending, stable-input order.
-- **REQ-RES-007** — `p1` is a `p13112` alias and `p24` is a `pv_power` alias only with inverter context. Inverter context is an explicit inverter name or a virtual key encoding device type 1.
+- **REQ-RES-007** — `p1` is a `p13112` alias and `p24` is a `pv_power` alias only with inverter context established by discovered type 1 or 55, an explicit inverter name, or a virtual key encoding type 1 or 55.
 - **REQ-RES-008** — Source preference bonuses use substring matching unless stated otherwise: PV `_pv_power`/`_solar_power`/`_total_dc_power` +48, inverter-context suffix `_p24` +44, `_p83076`/`_p83033`/`_p83002` +18; grid `_p8018`/`_p83032`/`_meter_active_power`/`_meter_ac_power` +42, `_p83549`/`_grid_active_power` +18; daily yield inverter-context suffix `_p1`, `_p83009`, `_yield_today`, or `_today_yield` +48, `_p83022`/`_daily_yield_of_plant` +18, `_p83018`/`_theoretical` -60.
 
 ## Metric profiles
@@ -76,6 +76,8 @@ The ordered aliases below are normative; tokens are alternatives within `/` grou
 - **REQ-RES-016** — For `pv_power`, an exact usable `sensor.gosungrow_virtual_<ps_id>_pv_power` plant entity MUST outrank an exact target-key virtual and every scored candidate.
 - **REQ-RES-017** — Without the canonical plant entity, multiple distinct producer-device candidates make every single-device `pv_power` result non-confident. No one producer may become the automatic plant default; a single producer remains eligible under the existing scoring rules.
 - **REQ-RES-018** — PV candidate diagnostics MUST distinguish canonical plant aggregate, device AC, device DC, mixed-basis rejection, and incomplete-contributor rejection. Candidate ordering remains deterministic under `REQ-RES-006`.
+- **REQ-RES-019** — Inverter-like diagnostic counts include types 1, 14, and 55, plus unknown-role devices explicitly named as inverters. Plant, meter, and communication roles MUST be excluded regardless of name. Such counts MUST NOT be presented as proof of aggregation completeness.
+- **REQ-RES-020** — Automatic PV resolution MUST reject grid-channel and phase-power candidates regardless of their units, current values, or plant affinity. Existing accepted manual selections remain governed by the override compatibility rules.
 
 ## Prohibited behavior
 

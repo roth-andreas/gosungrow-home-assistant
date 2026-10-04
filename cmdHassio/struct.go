@@ -54,6 +54,13 @@ type Mqtt struct {
 
 const OptionLogLevel = "mqtt_loglevel"
 
+// WithClient allows the MQTT transport to be supplied by the caller while
+// retaining the same discovery/state serialization and completion handling.
+func (m *Mqtt) WithClient(client mqtt.Client) *Mqtt {
+	m.client = client
+	return m
+}
+
 func New(req Mqtt) *Mqtt {
 	var ret Mqtt
 
@@ -332,6 +339,11 @@ func (m *Mqtt) Publish(topic string, qos byte, retained bool, payload string) er
 		m.logger.Debug("MQTT[%s] -> %v\n", topic, payload)
 		t := m.client.Publish(topic, qos, retained, payload)
 		if !t.WaitTimeout(m.Timeout) {
+			m.err = t.Error()
+			if m.err == nil {
+				m.err = fmt.Errorf("MQTT publication timed out")
+			}
+		} else {
 			m.err = t.Error()
 		}
 	}

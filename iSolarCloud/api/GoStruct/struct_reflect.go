@@ -477,7 +477,17 @@ func StrSet(src string, dst string) string {
 
 // Reflect - Combines all the common reflect work into one package
 // So we don't have to keep repeating ourselves.
+// MeasurementSource describes the API measurement before namespacing or conversion.
+// It is deliberately excluded from wire and MQTT payloads.
+type MeasurementSource struct {
+	Endpoint, PsID, PsKey, PointID, PointName, GroupName, Unit string
+	DeviceType                                                 int64
+	Timestamp                                                  time.Time
+	NumericValid, Derived                                      bool
+}
+
 type Reflect struct {
+	Source          MeasurementSource `json:"-"`
 	FieldPath       EndPointPath
 	ParentReflect   *Reflect
 	CurrentReflect  *Reflect
@@ -610,6 +620,7 @@ func (r *Reflect) Copy() Reflect {
 	for range Only.Once {
 		ref = *r
 		ref.DataStructure.Endpoint = r.DataStructure.Endpoint.Copy()
+		ref.Value = r.Value.Copy()
 	}
 	return ref
 }
@@ -947,6 +958,9 @@ func (r *Reflect) SetByIndex(parent *Reflect, current *Reflect, index int, index
 // Operate on UnitValue
 
 func (r *Reflect) SetValue(value interface{}) {
+	if r.Source.Endpoint != "" {
+		r.Source.Derived = true
+	}
 	for range Only.Once {
 		r.InterfaceValue = value
 		r.Value, r.IsNil, r.IsOk = valueTypes.AnyToUnitValue(

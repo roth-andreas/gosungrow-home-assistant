@@ -26,6 +26,24 @@ type UnitValue struct {
 	Error    error `json:"-"`
 }
 
+// Copy isolates the optional numeric storage as well as its metadata.
+func (t UnitValue) Copy() UnitValue {
+	cloned := t
+	if t.float64 != nil {
+		value := *t.float64
+		cloned.float64 = &value
+	}
+	if t.int64 != nil {
+		value := *t.int64
+		cloned.int64 = &value
+	}
+	if t.bool != nil {
+		value := *t.bool
+		cloned.bool = &value
+	}
+	return cloned
+}
+
 var zero = int64(0)
 
 type reactivePowerScale struct {
@@ -741,6 +759,27 @@ type UnitValues struct {
 
 	Unit      string `json:"unit"`
 	TypeValue string `json:"type_value"`
+}
+
+// Copy isolates the mutable values while retaining map keys and array shape.
+func (t UnitValues) Copy() UnitValues {
+	copy := t
+	copy.mapOrder = append([]string(nil), t.mapOrder...)
+	if t.mapValues != nil {
+		copy.mapValues = make(map[string]*UnitValue, len(t.mapValues))
+		for key, value := range t.mapValues {
+			cloned := value.Copy()
+			copy.mapValues[key] = &cloned
+		}
+	}
+	if t.arrayValues != nil {
+		copy.arrayValues = make([]*UnitValue, len(t.arrayValues))
+		for i, value := range t.arrayValues {
+			cloned := value.Copy()
+			copy.arrayValues[i] = &cloned
+		}
+	}
+	return copy
 }
 
 func (t UnitValues) String() string {

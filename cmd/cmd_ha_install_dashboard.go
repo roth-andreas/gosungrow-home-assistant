@@ -1088,15 +1088,13 @@ func dashboardTargetProfileWarnings(target dashboardTargetDiagnostics) []string 
 }
 
 func dashboardPlantDeviceLooksInverterLike(device dashboardPlantDevice) bool {
-	name := strings.ToLower(strings.TrimSpace(device.DeviceName + " " + device.SelectionSource))
-	if strings.Contains(name, "inverter") {
-		return true
-	}
 	switch device.DeviceType {
-	case 1, 11, 14:
+	case 1, 14, 55:
 		return true
-	default:
+	case 7, 11, 22:
 		return false
+	default:
+		return strings.Contains(strings.ToLower(device.DeviceName), "inverter")
 	}
 }
 

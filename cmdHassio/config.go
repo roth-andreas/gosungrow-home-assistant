@@ -36,6 +36,11 @@ func (m *Mqtt) NewDevice(config EntityConfig) (bool, Device) {
 			cmdLog.LogPrintDate("Unknown parentDevice: %s - will ignore.\n", config.ParentName)
 			break
 		}
+		if config.FullId == "virtual."+config.ParentName+".pv_power" && config.Point != nil && config.Point.Id == "pv_power" {
+			ret = parent
+			ok = true
+			break
+		}
 
 		manu := parent.Manufacturer
 		if manu == "" {

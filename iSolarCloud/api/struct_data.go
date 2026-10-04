@@ -16,6 +16,10 @@ import (
 
 type DataMap struct {
 	Map map[string]*DataEntries
+	// Measurements retain every decoded row, including invalid and duplicate rows
+	// which the generic reflection map cannot represent. Not published separately.
+	Measurements       []DataEntry                  `json:"-"`
+	MeasurementDevices []GoStruct.MeasurementSource `json:"-"`
 
 	parentDeviceId string
 	TimeStamp      time.Time
@@ -122,7 +126,7 @@ func (dm *DataMap) CopyPoint(refEndpoint *GoStruct.Reflect, endpoint GoStruct.En
 	var Current *GoStruct.Reflect
 	for range Only.Once {
 		var tmp GoStruct.Reflect
-		tmp = *refEndpoint
+		tmp = refEndpoint.Copy()
 		Current = &tmp
 
 		if pointId != "" {
@@ -197,6 +201,9 @@ func (dm *DataMap) GetReflect(refEndpoint string) *GoStruct.Reflect {
 }
 
 func (dm *DataMap) MakeState(Current *GoStruct.Reflect) *GoStruct.Reflect {
+	if Current != nil {
+		Current.Source.Derived = true
+	}
 	// func (dm *DataMap) MakeState(refEndpoint *GoStruct.Reflect, endpoint GoStruct.EndPointPath, pointId string, pointName string) *GoStruct.Reflect {
 	for range Only.Once {
 		// Current = dm.CopyPoint(refEndpoint, endpoint, pointId, pointName)
