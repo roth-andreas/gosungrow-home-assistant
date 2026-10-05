@@ -7,8 +7,9 @@ Scope: Error taxonomy, retry eligibility, files, secrets, determinism, and compa
 
 - **REQ-XCUT-001** — Configuration errors (missing credentials/host/token, malformed options), incompatible local data, and programming/runtime failures are non-recoverable unless a subsystem explicitly states otherwise.
 - **REQ-XCUT-002** — Recoverable remote errors are login state `-1`, login rejection, invalid app key/token, login-required, cannot-login, HTTP 5xx, internal/bad/service-unavailable/gateway-timeout, DNS resolution, network unreachable, connection refused, context deadline, and I/O timeout.
-- **REQ-XCUT-003** — Docker DNS is the recoverable subset containing `127.0.0.11:53` plus no-such-host, temporary-name-resolution, or server-misbehaving. It MUST use DNS backoff and MUST NOT cause gateway rotation/login refresh by itself.
+- **REQ-XCUT-003** — Docker DNS is the recoverable subset containing `127.0.0.11:53` plus no-such-host, temporary-name-resolution, or server-misbehaving. It MUST use DNS backoff and MUST NOT establish an authentication-recovery obligation or cause gateway rotation/login refresh by itself. This restriction does not prohibit resuming authentication that was already pending before the DNS failure. Such retries MUST start at the retained recovery anchor after DNS backoff and MUST stop candidate rotation on a first-candidate Docker-DNS failure under REQ-API-008.
 - **REQ-XCUT-004** — Recovery is layered: endpoint performs at most one replay; MQTT startup performs at most three attempts; live MQTT defers to its next-cycle policy; app wrapper restarts only classified failures.
+- **REQ-XCUT-022** — A recoverable error describes the failed operation and MUST NOT permanently prevent subsequent eligible attempts. Starting a later permitted retry MUST retire blocking error state from the previous attempt without discarding required recovery obligations or diagnostic evidence. A retry failure MUST report its own outcome and classification. Non-recoverable errors MUST retain their existing fatal behavior.
 
 ## Files
 

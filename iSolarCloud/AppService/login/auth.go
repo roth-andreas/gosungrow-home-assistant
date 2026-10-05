@@ -25,6 +25,7 @@ type SunGrowAuth struct {
 	UserAccount  string
 	UserPassword string
 	TokenFile    string
+	TokenPath    func() string `json:"-"`
 	// Token        string
 	Force bool
 
@@ -63,8 +64,18 @@ func (a *SunGrowAuth) Verify() error {
 }
 
 func (e *EndPoint) Login(auth *SunGrowAuth) error {
+	if err := e.Authenticate(auth); err != nil {
+		return err
+	}
+	return e.Persist()
+}
+
+// Authenticate stages a response without replacing the persisted session.
+func (e *EndPoint) Authenticate(auth *SunGrowAuth) error {
 	for range Only.Once {
 		e.Auth = auth
+		e.Auth.newToken = false
+		e.fresh = false
 		e.Request.RequestData = RequestData{
 			UserAccount:        valueTypes.SetStringValue(auth.UserAccount),
 			UserPassword:       valueTypes.SetStringValue(auth.UserPassword),
@@ -90,7 +101,6 @@ func (e *EndPoint) Login(auth *SunGrowAuth) error {
 		}
 
 		if auth.Force {
-			e.SetCacheTimeout(time.Second)
 			e.SetTokenInvalid() // e.CacheFilename()
 			// e.RemoveCache
 		}
@@ -99,7 +109,12 @@ func (e *EndPoint) Login(auth *SunGrowAuth) error {
 			break
 		}
 
+		root := e.ApiRoot
+		// A fresh login is never satisfied by a cached response, and candidate
+		// failure must not remove or overwrite a previously valid response.
+		e.ApiRoot = root.WithoutCache()
 		ep := Assert(e.Call())
+		e.ApiRoot = root
 		e.Error = ep.GetError()
 		if e.Error != nil {
 			break
@@ -126,14 +141,29 @@ func (e *EndPoint) Login(auth *SunGrowAuth) error {
 		e.Auth.lastLogin = e.Response.ResultData.LoginLastDate.Time
 		// e.Auth.lastLogin, _ = time.Parse(LastLoginDateFormat, e.Response.ResultData.LoginLastDate)
 		e.Auth.newToken = true
+		e.fresh = true
 
-		e.Error = e.saveToken()
-		if e.Error != nil {
-			break
-		}
 	}
 
 	return e.Error
+}
+
+// Persist is called only after the complete candidate has been validated.
+func (e *EndPoint) Persist() error {
+	if !e.fresh {
+		return nil
+	}
+	if err := e.saveToken(); err != nil {
+		return err
+	}
+	return e.ApiRoot.WebCacheWrite(*e, []byte(e.GetResponseJson()))
+}
+
+func (e *EndPoint) tokenPath() string {
+	if e.Auth.TokenPath != nil {
+		return e.Auth.TokenPath()
+	}
+	return e.GetFilePath()
 }
 
 func (e *EndPoint) SetTokenInvalid() {
@@ -207,7 +237,7 @@ func (e *EndPoint) Print() {
 // Retrieves a token from a local file.
 func (e *EndPoint) readTokenFile() error {
 	for range Only.Once {
-		e.Auth.TokenFile = e.GetFilePath()
+		e.Auth.TokenFile = e.tokenPath()
 
 		e.Error = output.FileRead(e.Auth.TokenFile, &e.Response)
 		if e.Error != nil {
@@ -246,7 +276,7 @@ func (e *EndPoint) readTokenFile() error {
 // Saves a token to a file path.
 func (e *EndPoint) saveToken() error {
 	for range Only.Once {
-		e.Auth.TokenFile = e.GetFilePath()
+		e.Auth.TokenFile = e.tokenPath()
 
 		e.Error = output.FileWrite(e.Auth.TokenFile, e.Response, output.DefaultFileMode)
 		if e.Error != nil {
@@ -260,7 +290,7 @@ func (e *EndPoint) saveToken() error {
 // RemoveToken - Removes a token from a file path.
 func (e *EndPoint) RemoveToken() error {
 	for range Only.Once {
-		e.Auth.TokenFile = e.GetFilePath()
+		e.Auth.TokenFile = e.tokenPath()
 
 		e.Error = output.FileRemove(e.Auth.TokenFile)
 		if e.Error != nil {

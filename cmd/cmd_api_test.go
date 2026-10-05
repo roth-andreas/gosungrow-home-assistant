@@ -7,6 +7,74 @@ import (
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud"
 )
 
+func TestApiLoginPersistsBeforePromotionAndRemembersWinningGateway(t *testing.T) {
+	f := newMQTTRecoveryFixture(t)
+	c := cmds.Api
+	f.loginHost = "augateway.isolarcloud.com"
+	oldClient, oldToken := c.SunGrow, c.SunGrow.GetToken()
+	persisted := false
+	apiWriteConfig = func() error {
+		if c.SunGrow != oldClient || c.SunGrow.GetToken() != oldToken || c.Url != "https://augateway.isolarcloud.com" {
+			t.Fatal("candidate promoted before configuration persistence")
+		}
+		persisted = true
+		return nil
+	}
+	if err := c.ApiLogin(true); err != nil {
+		t.Fatal(err)
+	}
+	if !persisted || c.SunGrow != oldClient || c.SunGrow.ApiRoot.ServerUrl.String() != c.Url {
+		t.Fatal("candidate was not promoted into the stable client")
+	}
+	f.loginHost = ""
+	apiWriteConfig = func() error { return nil }
+	start := len(f.requests)
+	if err := c.ApiLogin(true); err != nil {
+		t.Fatal(err)
+	}
+	if f.requests[start] != "augateway.isolarcloud.com/v1/userService/login" {
+		t.Fatalf("winning gateway not prioritized: %s", f.requests[start])
+	}
+}
+
+func TestApiLoginFailedPersistenceRestoresConfigurationAndSession(t *testing.T) {
+	f := newMQTTRecoveryFixture(t)
+	c := cmds.Api
+	oldURL, oldKey, oldLogin, oldToken := c.Url, c.AppKey, c.LastLogin, c.ApiToken
+	f.loginHost = "augateway.isolarcloud.com"
+	failure := errors.New("synthetic configuration persistence failure")
+	apiWriteConfig = func() error { return failure }
+	if err := c.ApiLogin(true); !errors.Is(err, failure) {
+		t.Fatal(err)
+	}
+	if c.Url != oldURL || c.AppKey != oldKey || c.LastLogin != oldLogin || c.ApiToken != oldToken || c.SunGrow.GetToken() != oldToken || c.SunGrow.ApiRoot.ServerUrl.String() != oldURL {
+		t.Fatal("failed persistence changed active session/configuration")
+	}
+}
+
+func TestApiLoginSameTokenSkipsConfigurationWrite(t *testing.T) {
+	f := newMQTTRecoveryFixture(t)
+	f.fixedToken = cmds.Api.SunGrow.GetToken()
+	writes, logins := f.configWrites, f.loginCalls
+	if err := cmds.Api.ApiLogin(true); err != nil {
+		t.Fatal(err)
+	}
+	if f.configWrites != writes || f.loginCalls != logins+1 {
+		t.Fatal("forced login reused cache or rewrote unchanged token configuration")
+	}
+}
+
+func TestApiBootstrapLoginRetainsValidTokenAndEndpointCaches(t *testing.T) {
+	f := newMQTTRecoveryFixture(t)
+	calls, writes := len(f.requests), f.configWrites
+	if err := cmds.Api.ApiLogin(false); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.requests) != calls || f.configWrites != writes {
+		t.Fatal("bootstrap login bypassed valid token or endpoint cache")
+	}
+}
+
 func TestNormalizeLoginAppKey(t *testing.T) {
 	if got := normalizeLoginAppKey(""); got != iSolarCloud.DefaultApiAppKey {
 		t.Fatalf("empty app key should fall back to default: got %q", got)

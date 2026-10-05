@@ -104,6 +104,7 @@ func (sgd *SunGrowData) SetPsIds(psids ...string) {
 	for range Only.Once {
 		var pids valueTypes.PsIds
 		pids = sgd.sunGrow.SetPsIds(psids...)
+		sgd.Error = sgd.sunGrow.Error
 		if sgd.Error != nil {
 			break
 		}
@@ -146,7 +147,7 @@ func (sgd *SunGrowData) CallEndpoint(endpoint api.EndPoint, request SunGrowDataR
 		sgd.Error = endpoint.GetError()
 		if sgd.Error != nil {
 			if strings.Contains(sgd.Error.Error(), "er_token_login_invalid") {
-				sgd.sunGrow.Logout()
+				sgd.sunGrow.RequireAuthentication()
 				break
 			}
 			fmt.Println(endpoint.Help())

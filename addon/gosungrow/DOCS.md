@@ -94,6 +94,10 @@ Non-administrator users can inspect the selected sources but cannot modify them.
 
 ## Troubleshooting DNS Errors
 
+Temporary login and regional-gateway failures after MQTT initialization do not require restarting GoSungrow. Each permitted retry makes a new attempt, beginning authentication at the last successfully authenticated gateway when authentication is pending. Failed alternative gateways leave the retained session intact. Collection resumes after fresh authentication and device rediscovery succeed; failed attempts do not advance the last successful refresh time or replace retained MQTT values. Local authentication-file or configuration-write failures are reported as errors and prevent the candidate session from becoming active.
+
+Direct Docker-DNS failures during collection retry the active gateway without starting a login or regional-gateway search. If authentication was already pending before DNS failed, that obligation remains pending and resumes on its recovery gateway after DNS backoff.
+
 When GoSungrow classifies the startup failure as Docker DNS, Docker's internal resolver cannot resolve the first iSolarCloud gateway. The request did not reach Sungrow, so changing iSolarCloud credentials will not help.
 
 A failed regional-gateway search may also contain a later `127.0.0.11:53` message. In that case, GoSungrow keeps the earlier login or gateway failure, reports the first failure and terminal stop reason, and uses normal remote recovery instead of claiming a general Docker-DNS outage. Check the complete ordered summary to distinguish credentials or regional-server selection from a direct DNS failure.

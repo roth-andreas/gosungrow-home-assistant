@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/login"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api"
 )
 
@@ -52,6 +53,14 @@ type endpointFailure struct {
 	err error
 }
 
+// Local persistence failure cannot be repaired by gateway rotation, even when
+// its text contains a timeout or a previous authentication diagnostic.
+type sessionPersistenceError struct{ cause error }
+
+func (e *sessionPersistenceError) Error() string              { return e.cause.Error() }
+func (e *sessionPersistenceError) Unwrap() error              { return e.cause }
+func (e *sessionPersistenceError) FailureClass() FailureClass { return FailureClassNonRecoverable }
+
 var _ api.EndPoint = endpointFailure{}
 
 func (e endpointFailure) GetError() error {
@@ -97,8 +106,13 @@ func appendUniqueLoginAttempt(list []LoginAttempt, item LoginAttempt) []LoginAtt
 }
 
 func BuildLoginAttempts(host string, appKey string) []LoginAttempt {
+	return buildSessionAttempts(host, appKey, "", "")
+}
+
+func buildSessionAttempts(host, appKey, successfulHost, successfulKey string) []LoginAttempt {
 	candidates := make([]LoginAttempt, 0)
 	hosts := []string{
+		successfulHost,
 		host,
 		DefaultHost,
 		"https://gateway.isolarcloud.com",
@@ -108,6 +122,7 @@ func BuildLoginAttempts(host string, appKey string) []LoginAttempt {
 		"https://gateway.isolarcloud.in",
 	}
 	appKeys := []string{
+		successfulKey,
 		NormalizeLoginAppKey(appKey),
 		DefaultApiAppKey,
 		OldLoginAppKey,
@@ -322,73 +337,92 @@ func FinalizeLoginAttemptFailures(failures []LoginAttemptFailure, fallback error
 	return SummarizeLoginAttemptFailures(failures, secrets...)
 }
 
-func (sg *SunGrow) recoverGatewaySession(force bool) error {
+// AuthenticateSession evaluates isolated candidates and promotes only a persisted
+// session. Runtime recovery and CLI login share this boundary.
+func (sg *SunGrow) AuthenticateSession(auth login.SunGrowAuth, runtime bool, persist func(*SunGrow) error) error {
 	if sg == nil {
 		return errors.New("sungrow instance not configured")
-	}
-	if sg.AuthDetails == nil {
-		return errors.New("no auth details available for recovery")
 	}
 	if sg.recovering {
 		return sg.Error
 	}
-
-	cacheDir := sg.ApiRoot.GetCacheDir()
-	auth := *sg.AuthDetails
-	auth.AppKey = NormalizeLoginAppKey(auth.AppKey)
-	auth.Force = force
-	attempts := BuildLoginAttempts(sg.ApiRoot.ServerUrl.String(), auth.AppKey)
-
-	failures := make([]LoginAttemptFailure, 0, len(attempts))
-
+	if sg.configuredHost == "" {
+		sg.configuredHost = sg.ApiRoot.ServerUrl.String()
+		sg.configuredKey = NormalizeLoginAppKey(auth.AppKey)
+	}
+	attempts := BuildLoginAttempts(sg.configuredHost, sg.configuredKey)
+	if runtime {
+		auth.Force = true
+		attempts = buildSessionAttempts(sg.configuredHost, sg.configuredKey, sg.lastSuccessfulHost, sg.lastSuccessfulKey)
+	}
 	sg.recovering = true
-	defer func() {
-		sg.recovering = false
-	}()
-
-	for idx, attempt := range attempts {
-		if idx > 0 {
-			sg.Logout()
+	defer func() { sg.recovering = false }()
+	failures := make([]LoginAttemptFailure, 0, len(attempts))
+	secrets := []string{auth.UserAccount, auth.UserPassword, sg.GetToken()}
+	for _, attempt := range attempts {
+		root := sg.ApiRoot
+		if auth.Force {
+			root = root.WithoutCache()
 		}
-
-		replacement := NewSunGro(attempt.Host, cacheDir)
-		if replacement.Error != nil {
-			sg.Error = replacement.Error
-			failures = append(failures, LoginAttemptFailure{Attempt: attempt, Err: replacement.Error})
-			break
+		candidate := &SunGrow{ApiRoot: root, Directory: sg.Directory, OutputType: sg.OutputType, SaveAsFile: sg.SaveAsFile, recovering: true}
+		candidate.ApiRoot.Error = nil
+		candidate.ApiRoot.Body = nil
+		err := candidate.ApiRoot.SetUrl(attempt.Host)
+		if err == nil {
+			err = candidate.Init()
 		}
-		replacement.Directory = sg.Directory
-		replacement.OutputType = sg.OutputType
-		replacement.SaveAsFile = sg.SaveAsFile
-		if err := replacement.Init(); err != nil {
-			sg.Error = err
-			failures = append(failures, LoginAttemptFailure{Attempt: attempt, Err: err})
-			break
+		candidateAuth := auth
+		candidateAuth.AppKey = attempt.AppKey
+		if err == nil {
+			err = candidate.authenticate(candidateAuth)
 		}
-
-		sg.ApiRoot = replacement.ApiRoot
-		sg.Areas = replacement.Areas
-		sg.Auth = replacement.Auth
-		sg.Error = nil
-		sg.NeedLogin = false
-
-		auth.AppKey = attempt.AppKey
-		if err := sg.Login(auth); err == nil {
-			sg.Error = nil
-			return nil
-		} else {
-			failures = append(failures, LoginAttemptFailure{
-				Attempt: attempt,
-				Err:     err,
-			})
-			if !ShouldTryNextLoginAttempt(err) {
-				break
+		if err == nil {
+			// Persistence errors are fatal and never trigger another candidate.
+			if err = candidate.Auth.Persist(); err == nil && auth.Force && candidate.validationResponse != nil {
+				err = candidate.ApiRoot.WebCacheWrite(candidate.validationResponse, []byte(candidate.validationResponse.GetResponseJson()))
 			}
+			if err == nil && persist != nil {
+				err = persist(candidate)
+			}
+			if err != nil {
+				sg.Error = &sessionPersistenceError{cause: err}
+				return sg.Error
+			}
+			candidate.ApiRoot = candidate.ApiRoot.WithCache()
+			candidate.Auth.ApiRoot = candidate.ApiRoot
+			candidate.Error = nil
+			// Rebuild endpoint templates against the promoted, cache-enabled root.
+			if err = candidate.Init(); err != nil {
+				sg.Error = err
+				return err
+			}
+			candidate.lastSuccessfulHost, candidate.lastSuccessfulKey = attempt.Host, attempt.AppKey
+			candidate.configuredHost, candidate.configuredKey = sg.configuredHost, sg.configuredKey
+			candidate.persistSession = persist
+			candidate.validationResponse = nil
+			*sg = *candidate
+			return nil
+		}
+		secrets = append(secrets, candidate.GetToken())
+		failures = append(failures, LoginAttemptFailure{Attempt: attempt, Err: err})
+		if !ShouldTryNextLoginAttempt(err) {
+			break
 		}
 	}
-
-	sg.Error = FinalizeLoginAttemptFailures(failures, sg.Error, auth.UserAccount, auth.UserPassword, sg.GetToken())
+	sg.Error = FinalizeLoginAttemptFailures(failures, errors.New("no login candidates"), secrets...)
+	if runtime && ShouldRecoverGatewayError(sg.Error) {
+		sg.NeedLogin = true
+	}
 	return sg.Error
+}
+
+func (sg *SunGrow) recoverGatewaySession(force bool) error {
+	if sg == nil || sg.AuthDetails == nil {
+		return errors.New("no auth details available for recovery")
+	}
+	auth := *sg.AuthDetails
+	auth.Force = force
+	return sg.AuthenticateSession(auth, true, sg.persistSession)
 }
 
 func (sg *SunGrow) rebuildEndpointForCurrentGateway(endpoint api.EndPoint) api.EndPoint {

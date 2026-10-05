@@ -31,7 +31,18 @@ type Web struct {
 	client       http.Client
 	httpRequest  *http.Request
 	httpResponse *http.Response
+	uncached     bool
 }
+
+// WithTransport preserves production defaults while allowing isolated clients.
+func (w Web) WithTransport(transport http.RoundTripper) Web {
+	w.client.Transport = transport
+	return w
+}
+
+// WithoutCache isolates authentication candidates from shared response files.
+func (w Web) WithoutCache() Web { w.uncached = true; return w }
+func (w Web) WithCache() Web    { w.uncached = false; return w }
 
 func (w *Web) do(httpReq *http.Request) (*http.Response, error) {
 	if w.client.Timeout <= 0 {
@@ -127,7 +138,7 @@ func (w *Web) Get(endpoint EndPoint) EndPoint {
 
 		isCached := false
 		fetchedFromApi := false
-		if w.WebCacheCheck(endpoint) {
+		if !w.uncached && w.WebCacheCheck(endpoint) {
 			isCached = true
 		}
 
@@ -180,12 +191,14 @@ func (w *Web) Get(endpoint EndPoint) EndPoint {
 
 		w.Error = endpoint.IsResponseValid()
 		if w.Error != nil {
-			_ = w.WebCacheRemove(endpoint)
+			if !w.uncached {
+				_ = w.WebCacheRemove(endpoint)
+			}
 			// fmt.Printf("ERROR: Body is:\n%s\n", w.Body)
 			break
 		}
 
-		if isCached {
+		if isCached || w.uncached {
 			// Do nothing.
 		} else {
 			w.Error = w.WebCacheWrite(endpoint, w.Body)

@@ -24,9 +24,11 @@ Scope: Broker connection, startup discovery, synchronization, selection, options
 - **REQ-MQTT-011** — `mqtt sync` MUST perform an immediate sync and schedule singleton executions using `*/5 * * * *` by default; a supplied cron expression uses `.` as an alias for `*`.
 - **REQ-MQTT-012** — Each sync MUST detect a local calendar-day transition, request configured batches, normalize/publish each result, and update `LastRefresh` only after complete success.
 - **REQ-MQTT-013** — Discovery config MUST be republished on first observation, when a point value changed since the previous cycle, or on a new day. State MUST be published on every successful cycle for each eligible point.
-- **REQ-MQTT-014** — A token-invalid sync MUST force login, refresh the device list, and retry the complete collection once. Other recoverable gateway errors MUST keep the service alive and wait for the next cycle.
+- **REQ-MQTT-014** — A token-invalid collection failure MUST establish an authentication-recovery obligation. MQTT MUST initiate at most one forced-login sequence per sync cycle for token-invalid or pending authentication recovery. If that sequence succeeds, MQTT MUST refresh device inventory and attempt plant-topology refresh before collection. A token-invalid failure discovered during collection MAY cause exactly one complete collection retry after successful recovery when the cycle's forced-login opportunity has not already been used. Otherwise collection MUST defer to the next permitted cycle. Recoverable failures during login, rediscovery, or retried collection MUST preserve the live MQTT process and connection and follow the applicable next-cycle policy. Non-recoverable failures MUST follow REQ-MQTT-016. Endpoint-level recovery retains its separate bound under REQ-API-028.
 - **REQ-MQTT-015** — Docker DNS failures after MQTT initialization MUST preserve MQTT connection and last retained values and retry after `15s`, `30s`, `60s`, `120s`, then `300s` indefinitely. A successful cycle resets the outage counter and normal five-minute schedule.
 - **REQ-MQTT-016** — A non-recoverable error MUST end the runtime command with an error so the app wrapper can decide whether to restart.
+
+- **REQ-MQTT-025** — Before each scheduled sync attempt, previous recoverable operation errors MUST cease to block endpoint lookup or execution. This reset MUST preserve pending authentication or device-rediscovery obligations. Pending authentication MUST be attempted before collection, using the recovery anchor and candidate order under REQ-API-007 and REQ-API-034. A recoverable authentication failure MUST end that collection attempt and retain the obligation for the next retry permitted by REQ-MQTT-010, REQ-MQTT-011, and REQ-MQTT-015. Successful MQTT-initiated forced authentication MUST establish a device-rediscovery obligation. Recoverable device-rediscovery failure MUST retain that obligation for the next permitted attempt without requiring another login solely because rediscovery failed. Successful device rediscovery clears that obligation; topology refresh remains nonfatal under REQ-MQTT-022. These rules apply to both `mqtt run` and `mqtt sync`.
 
 ## Endpoint selection
 
@@ -59,4 +61,4 @@ Scope: Broker connection, startup discovery, synchronization, selection, options
 
 - Publishing a realtime request containing multiple plants.
 - Dropping retained Home Assistant state merely because iSolarCloud is temporarily unavailable.
-- Refreshing login repeatedly for Docker embedded-DNS failures.
+- Starting authentication recovery or rotating gateways solely because of a directly classified Docker-DNS endpoint failure. Resuming authentication that was already pending remains governed by REQ-XCUT-003 and REQ-MQTT-025.

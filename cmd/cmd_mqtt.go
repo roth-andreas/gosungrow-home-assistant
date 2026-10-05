@@ -65,6 +65,8 @@ var mqttApiLogin = func(force bool) error {
 	return cmds.Api.ApiLogin(force)
 }
 
+var mqttLoadDevices = func() (getDeviceList.Devices, error) { return cmds.Api.SunGrow.GetDeviceList() }
+
 var mqttLoadPlantTrees = func() (iSolarCloud.PsTrees, error) {
 	return cmds.Api.SunGrow.PsTreeMenu()
 }
@@ -99,6 +101,7 @@ type CmdMqtt struct {
 	currentSyncEndpoint string
 	plantTopologies     map[string]iSolarCloud.PlantTopology
 	plantInventories    map[string]iSolarCloud.PlantInventory
+	rediscoveryPending  bool
 }
 
 func NewCmdMqtt(logLevel string) *CmdMqtt {
@@ -358,38 +361,66 @@ func (c *CmdMqtt) CmdMqttRun(_ *cobra.Command, _ []string) error {
 }
 
 func (c *CmdMqtt) CmdMqttSync(_ *cobra.Command, args []string) error {
-	for range Only.Once {
-		// */1 * * * * /dir/command args args
-		cronString := "*/5 * * * *"
-		if len(args) > 0 {
-			cronString = strings.Join(args[0:5], " ")
-			cronString = strings.ReplaceAll(cronString, ".", "*")
+	cronString := "*/5 * * * *"
+	if len(args) > 0 {
+		if len(args) < 5 {
+			return errors.New("cron expression requires five fields")
 		}
-
-		cron := gocron.NewScheduler(time.UTC)
-		cron = cron.Cron(cronString)
-		cron = cron.SingletonMode()
-
-		c.Error = c.Cron()
-		if c.Error != nil {
-			break
+		cronString = strings.ReplaceAll(strings.Join(args[:5], " "), ".", "*")
+	}
+	scheduler := gocron.NewScheduler(time.UTC)
+	ticks := make(chan struct{}, 1)
+	_, err := scheduler.Cron(cronString).SingletonMode().Do(func() {
+		select {
+		case ticks <- struct{}{}:
+		default:
 		}
+	})
+	if err != nil {
+		return err
+	}
+	if err = c.Cron(); err != nil {
+		return err
+	}
+	scheduler.StartAsync()
+	defer scheduler.Stop()
+	c.log.Info("Created job schedule using '%s'\n", cronString)
+	return c.runScheduledSync(ticks, c.Cron, time.After)
+}
 
-		var job *gocron.Job
-		job, c.Error = cron.Do(c.Cron)
-		if c.Error != nil {
-			break
+// runScheduledSync serializes cron and DNS attempts. Cron ticks cannot shorten
+// an active DNS deadline, and fatal cycle errors terminate the scheduler owner.
+func (c *CmdMqtt) runScheduledSync(ticks <-chan struct{}, attempt func() error, after func(time.Duration) <-chan time.Time) error {
+	for {
+		var retry <-chan time.Time
+		if c.dockerDNSErrorCount > 0 {
+			retry = after(c.nextSyncDelay())
 		}
-		job.IsRunning()
-
-		c.log.Info("Created job schedule using '%s'\n", cronString)
-		cron.StartBlocking()
-		if c.Error != nil {
-			break
+	wait:
+		for {
+			select {
+			case <-ticks:
+				if retry == nil {
+					break wait
+				}
+			case <-retry:
+				break wait
+			}
+		}
+		if err := attempt(); err != nil {
+			return err
+		}
+		if retry != nil {
+		drain:
+			for {
+				select {
+				case <-ticks:
+				default:
+					break drain
+				}
+			}
 		}
 	}
-
-	return c.Error
 }
 
 // -------------------------------------------------------------------------------- //
@@ -398,90 +429,120 @@ func (c *CmdMqtt) Cron() error {
 	if c == nil {
 		return errors.New("mqtt not available")
 	}
-	now := c.now
-	if now == nil {
-		now = time.Now
+	if cmds.Api.SunGrow == nil {
+		return errors.New("sungrow not available")
 	}
-	var started time.Time
-	var cycle uint64
-	failureEndpoint := ""
-	for range Only.Once {
-		if cmds.Api.SunGrow == nil {
-			c.Error = errors.New("sungrow not available")
-			break
+	if c.now == nil {
+		c.now = time.Now
+	}
+	sg := cmds.Api.SunGrow
+	sg.BeginRetry()
+	if c.isRecoverableGatewayError(c.Error) {
+		c.Error = nil
+	}
+	if sg.Error != nil {
+		return sg.Error
+	}
+	if c.Error != nil {
+		return c.Error
+	}
+	if c.Client.IsFirstRun() {
+		c.Client.UnsetFirstRun()
+	} else if c.dockerDNSErrorCount == 0 {
+		time.Sleep(c.optionSleepDelay)
+	}
+	started := c.now()
+	c.syncCycle++
+	c.log.Info("Starting iSolarCloud sync cycle %d.\n", c.syncCycle)
+	c.currentSyncEndpoint = "authentication"
+	c.Error = c.syncAttempt(c.Client.IsNewDay())
+	if c.Error != nil {
+		if c.isTokenInvalidError(c.Error) {
+			cmds.Api.SunGrow.RequireAuthentication()
 		}
-
-		if c.Client.IsFirstRun() {
-			c.Client.UnsetFirstRun()
-		} else if c.dockerDNSErrorCount == 0 {
-			c.log.Debug("Sleeping for %s...\n", c.GetSleepDelay())
-			time.Sleep(c.optionSleepDelay)
-		}
-		started = now()
-		c.syncCycle++
-		cycle = c.syncCycle
-		c.log.Info("Starting iSolarCloud sync cycle %d.\n", cycle)
-
-		newDay := false
-		if c.Client.IsNewDay() {
-			newDay = true
-		}
-
-		c.Error = c.collectAndPublish(newDay)
-		failureEndpoint = c.currentSyncEndpoint
-		if c.Error != nil {
-			c.log.Info("iSolarCloud sync cycle %d failed at %s after %s: %s\n", cycle, failureEndpoint, now().Sub(started).Round(time.Millisecond), c.Error)
-		}
-		if c.Error != nil && c.isTokenInvalidError(c.Error) {
-			c.log.Info("Token expired/invalid. Re-authenticating...\n")
-
-			c.Error = cmds.Api.ApiLogin(true)
-			if c.Error != nil {
-				break
-			}
-
-			c.Client.SungrowDevices, c.Error = cmds.Api.SunGrow.GetDeviceList()
-			if c.Error != nil {
-				break
-			}
-			c.refreshPlantTopologies()
-			c.Error = c.refreshPlantInventories()
-			if c.Error != nil {
-				break
-			}
-
-			c.Error = c.collectAndPublish(newDay)
-			failureEndpoint = c.currentSyncEndpoint
-			if c.Error != nil {
-				c.log.Info("iSolarCloud sync cycle %d retry failed at %s after %s: %s\n", cycle, failureEndpoint, now().Sub(started).Round(time.Millisecond), c.Error)
-			}
-			if c.Error != nil {
-				break
-			}
-		}
-		if c.Error != nil && c.isRecoverableGatewayError(c.Error) {
+		c.log.Info("iSolarCloud sync cycle %d failed at %s after %s: %s\n", c.syncCycle, c.currentSyncEndpoint, c.now().Sub(started).Round(time.Millisecond), c.Error)
+		if c.isRecoverableGatewayError(c.Error) {
 			if c.isDockerDNSError(c.Error) {
 				c.recordDockerDNSError(c.Error)
-				c.Error = nil
-				break
+			} else {
+				c.log.Info("Recoverable API/gateway error during sync. Keeping service alive and retrying on next cycle: %s\n", c.Error)
 			}
-			c.log.Info("Recoverable API/gateway error during sync. Keeping service alive and retrying on next cycle: %s\n", c.Error)
 			c.Error = nil
-			break
+			return nil
 		}
-		if c.Error != nil {
-			break
-		}
-
-		c.clearDockerDNSOutage()
-		c.Client.LastRefresh = time.Now()
-		c.log.Info("Completed iSolarCloud sync cycle %d in %s.\n", cycle, now().Sub(started).Round(time.Millisecond))
-	}
-
-	if c.Error != nil {
 		c.log.Error("%s\n", c.Error)
+		return c.Error
 	}
-	return c.Error
+	c.clearDockerDNSOutage()
+	c.Client.LastRefresh = c.now()
+	c.log.Info("Completed iSolarCloud sync cycle %d in %s.\n", c.syncCycle, c.now().Sub(started).Round(time.Millisecond))
+	return nil
+}
+
+func (c *CmdMqtt) syncAttempt(newDay bool) error {
+	loginUsed := false
+	recover := func() error {
+		loginUsed = true
+		c.currentSyncEndpoint = "authentication"
+		if err := mqttApiLogin(true); err != nil {
+			return err
+		}
+		c.rediscoveryPending = true
+		return nil
+	}
+	if cmds.Api.SunGrow.NeedLogin {
+		if err := recover(); err != nil {
+			return err
+		}
+	}
+	if c.rediscoveryPending {
+		if err := c.rediscover(); err != nil {
+			return err
+		}
+	}
+	err := c.collectAndPublish(newDay)
+	if err == nil || !c.isTokenInvalidError(err) {
+		return err
+	}
+	cmds.Api.SunGrow.RequireAuthentication()
+	if loginUsed {
+		return err
+	}
+	if err = recover(); err != nil {
+		return err
+	}
+	if err = c.rediscover(); err != nil {
+		return err
+	}
+	// One complete collection replay; any failure is handled by Cron.
+	return c.collectAndPublish(newDay)
+}
+
+func (c *CmdMqtt) rediscover() error {
+	c.currentSyncEndpoint = "device rediscovery"
+	devices, err := mqttLoadDevices()
+	if err != nil {
+		return err
+	}
+	staged := *c
+	client := *c.Client
+	client.SungrowDevices = devices
+	staged.Client = &client
+	if err = staged.refreshPlantInventories(); err != nil {
+		return err
+	}
+	c.currentSyncEndpoint = "plant topology refresh"
+	staged.refreshPlantTopologies()
+	if cmds.Api.SunGrow.NeedLogin {
+		if cmds.Api.SunGrow.Error != nil {
+			return cmds.Api.SunGrow.Error
+		}
+		return errors.New("need to login again")
+	}
+	c.Client.SungrowDevices = devices
+	c.plantInventories, c.points, c.plantTopologies = staged.plantInventories, staged.points, staged.plantTopologies
+	c.rediscoveryPending = false
+	return nil
 }
 
 func (c *CmdMqtt) collectAndPublish(newDay bool) error {
@@ -540,6 +601,10 @@ func (c *CmdMqtt) collectAndPublishBatch(batch mqttEndpointBatch, newDay bool) e
 
 func (c *CmdMqtt) refreshPlantTopologies() {
 	trees, err := mqttLoadPlantTrees()
+	if err != nil && cmds.Api.SunGrow != nil && !cmds.Api.SunGrow.NeedLogin {
+		// Topology failure is explicitly nonfatal; retire its operation error.
+		cmds.Api.SunGrow.Error = nil
+	}
 	topologies := iSolarCloud.BuildPlantTopologies(trees)
 	plantIDs := mqttPlantIDs(c.Client.SungrowDevices)
 	for _, psID := range plantIDs {
@@ -658,6 +723,14 @@ func (c *CmdMqtt) isTokenInvalidError(err error) bool {
 	if err == nil {
 		return false
 	}
+	// A classified sequence describes its current outcome; earlier token text
+	// in its causal summary cannot authorize another login or override fatality.
+	var classified interface {
+		FailureClass() iSolarCloud.FailureClass
+	}
+	if errors.As(err, &classified) {
+		return false
+	}
 
 	msg := strings.ToLower(err.Error())
 	if strings.Contains(msg, "er_token_login_invalid") {
@@ -673,9 +746,6 @@ func (c *CmdMqtt) isTokenInvalidError(err error) bool {
 func (c *CmdMqtt) isRecoverableGatewayError(err error) bool {
 	if err == nil {
 		return false
-	}
-	if c.isTokenInvalidError(err) {
-		return true
 	}
 	return iSolarCloud.ShouldRecoverGatewayError(err)
 }

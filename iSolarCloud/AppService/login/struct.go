@@ -25,6 +25,7 @@ type EndPoint struct {
 	Request  Request
 	Response Response
 	Auth     *SunGrowAuth
+	fresh    bool
 }
 
 // Request - Holds the api.RequestCommon and user RequestData structures. See data.go for request fields.
@@ -87,12 +88,14 @@ func (e EndPoint) GetResponse() Response {
 }
 
 // Assert - Used to obtain locally scoped EndPoint methods, (not visible from api.EndPoint).
+//
 //goland:noinspection GoUnusedExportedFunction
 func Assert(e api.EndPoint) EndPoint {
 	return e.(EndPoint)
 }
 
 // AssertResultData - Used to obtain locally scoped ResultData methods, (not visible from api.EndPoint).
+//
 //goland:noinspection GoUnusedExportedFunction
 func AssertResultData(e api.EndPoint) ResultData {
 	return e.(EndPoint).Response.ResultData

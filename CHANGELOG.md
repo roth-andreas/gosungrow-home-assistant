@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.3.6
+
+- Recover MQTT synchronization after failed iSolarCloud login sequences without restarting the app, beginning recovery at the last successful gateway.
+- Preserve the active session and valid stored authentication when fallback candidates fail, and require fresh authentication before promoting a replacement session.
+- Retry authentication and device rediscovery separately while preserving MQTT values, bounded collection retries, and Docker-DNS backoff.
+
 ## 3.3.5
 
 - Support complete plant PV aggregation for microinverters using independently discovered producer membership and device-local AC or DC readings.

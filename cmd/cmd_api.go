@@ -23,6 +23,8 @@ const (
 
 type loginAttempt = iSolarCloud.LoginAttempt
 
+var apiWriteConfig = func() error { return cmds.Unify.WriteConfig() }
+
 //goland:noinspection GoNameStartsWithPackageName
 type CmdApi struct {
 	CmdDefault
@@ -164,68 +166,31 @@ func (ca *Cmds) SunGrowArgs(cmd *cobra.Command, args []string) error {
 }
 
 func (c *CmdApi) ApiLogin(force bool) error {
-	for range Only.Once {
-		if c.SunGrow == nil {
-			c.Error = errors.New("sungrow instance not configured")
-			break
-		}
+	if c.SunGrow == nil {
+		c.Error = errors.New("sungrow instance not configured")
+		return c.Error
+	}
+	auth := login.SunGrowAuth{AppKey: iSolarCloud.NormalizeLoginAppKey(c.AppKey), UserAccount: c.Username, UserPassword: c.Password, TokenFile: c.ApiTokenFile, Force: force}
+	if c.SunGrow.AuthDetails != nil {
+		auth.TokenPath = c.SunGrow.AuthDetails.TokenPath
+	}
+	c.Error = c.SunGrow.AuthenticateSession(auth, force, c.persistSession)
+	return c.Error
+}
 
-		c.AppKey = iSolarCloud.NormalizeLoginAppKey(c.AppKey)
-		candidates := buildLoginAttempts(c.Url, c.AppKey)
-
-		cacheDir := c.SunGrow.ApiRoot.GetCacheDir()
-		failures := make([]iSolarCloud.LoginAttemptFailure, 0, len(candidates))
-		for idx, attempt := range candidates {
-			if idx > 0 && c.SunGrow != nil {
-				c.SunGrow.Logout()
-			}
-			c.SunGrow = iSolarCloud.NewSunGro(attempt.Host, cacheDir)
-			if c.SunGrow.Error != nil {
-				c.Error = c.SunGrow.Error
-				failures = append(failures, iSolarCloud.LoginAttemptFailure{Attempt: attempt, Err: c.Error})
-				break
-			}
-			c.Error = c.SunGrow.Init()
-			if c.Error != nil {
-				failures = append(failures, iSolarCloud.LoginAttemptFailure{Attempt: attempt, Err: c.Error})
-				break
-			}
-
-			auth := login.SunGrowAuth{
-				AppKey:       attempt.AppKey,
-				UserAccount:  c.Username,
-				UserPassword: c.Password,
-				TokenFile:    c.ApiTokenFile,
-				Force:        force,
-			}
-			c.Error = c.SunGrow.Login(auth)
-			if c.Error == nil {
-				c.Url = attempt.Host
-				c.AppKey = attempt.AppKey
-				break
-			}
-			failures = append(failures, iSolarCloud.LoginAttemptFailure{
-				Attempt: attempt,
-				Err:     c.Error,
-			})
-			if !shouldTryNextLoginAttempt(c.Error) {
-				break
-			}
-		}
-		if c.Error != nil {
-			c.Error = iSolarCloud.FinalizeLoginAttemptFailures(failures, c.Error, c.Username, c.Password, c.ApiToken)
-		}
-		if c.Error != nil {
-			break
-		}
-
-		if c.SunGrow.HasTokenChanged() {
-			c.LastLogin = c.SunGrow.GetLastLogin()
-			c.ApiToken = c.SunGrow.GetToken()
-			c.Error = cmds.Unify.WriteConfig()
+// persistSession stages CLI values for WriteConfig and restores them on failure.
+// It runs before the candidate replaces the active iSolarCloud client.
+func (c *CmdApi) persistSession(candidate *iSolarCloud.SunGrow) error {
+	oldURL, oldKey, oldLogin, oldToken := c.Url, c.AppKey, c.LastLogin, c.ApiToken
+	c.Url, c.AppKey = candidate.ApiRoot.ServerUrl.String(), candidate.GetAppKey()
+	c.LastLogin, c.ApiToken = candidate.GetLastLogin(), candidate.GetToken()
+	if c.ApiToken != oldToken {
+		if err := apiWriteConfig(); err != nil {
+			c.Url, c.AppKey, c.LastLogin, c.ApiToken = oldURL, oldKey, oldLogin, oldToken
+			return err
 		}
 	}
-	return c.Error
+	return nil
 }
 
 func normalizeLoginAppKey(appKey string) string {

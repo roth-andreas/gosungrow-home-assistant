@@ -8,7 +8,7 @@ The patterns are repository-relative and are checked by `scripts/check_specs.py`
 | Tracked path pattern | Classification | Normative owner |
 |---|---|---|
 | `main.go` | product entry point | `REQ-PROD-*`, `REQ-CLI-*` |
-| `cmd/*.go` | CLI, orchestration, dashboard behavior | `REQ-CLI-*`, `REQ-MQTT-*`, `REQ-DASH-*`, `REQ-RES-*`, `REQ-SRC-*` |
+| `cmd/*.go` | CLI, orchestration, dashboard behavior | `REQ-CLI-*`, `REQ-API-*`, `REQ-MQTT-*`, `REQ-XCUT-*`, `REQ-DASH-*`, `REQ-RES-*`, `REQ-SRC-*` |
 | `cmdHassio/*.go` | MQTT and Home Assistant model | `REQ-MQTT-*`, `REQ-HA-*` |
 | `iSolarCloud/*.go` | client lifecycle, aggregation, recovery | `REQ-PROD-*`, `REQ-DOM-*`, `REQ-API-*`, `REQ-DATA-*`, `REQ-XCUT-*` |
 | `iSolarCloud/api/**/*.go` | protocol, schemas, normalization, output | `REQ-API-*`, `REQ-DATA-*`, `REQ-XCUT-*` |

@@ -27,13 +27,19 @@ const (
 )
 
 type SunGrow struct {
-	ApiRoot     api.Web
-	Auth        login.EndPoint
-	Areas       api.Areas
-	Error       error
-	NeedLogin   bool
-	AuthDetails *login.SunGrowAuth
-	recovering  bool
+	ApiRoot            api.Web
+	Auth               login.EndPoint
+	Areas              api.Areas
+	Error              error
+	NeedLogin          bool
+	AuthDetails        *login.SunGrowAuth
+	recovering         bool
+	lastSuccessfulHost string
+	lastSuccessfulKey  string
+	configuredHost     string
+	configuredKey      string
+	persistSession     func(*SunGrow) error
+	validationResponse api.EndPoint
 
 	Directory  string
 	OutputType output.OutputType
@@ -118,6 +124,10 @@ func (sg *SunGrow) AppendUrl(endpoint string) api.EndPointUrl {
 }
 
 func (sg *SunGrow) GetEndpoint(ae string) api.EndPoint {
+	if sg.NeedLogin && !sg.recovering {
+		sg.Error = errors.New("need to login again")
+		return nil
+	}
 	var ep api.EndPoint
 
 	for range Only.Once {
@@ -155,7 +165,7 @@ func (sg *SunGrow) GetByJson(endpoint string, request string) api.EndPoint {
 	var ret api.EndPoint
 	for range Only.Once {
 		if sg.NeedLogin {
-			sg.Error = errors.New("currently logged out")
+			sg.Error = errors.New("need to login again")
 			break
 		}
 
@@ -215,7 +225,7 @@ func (sg *SunGrow) GetByStruct(endpoint string, request interface{}, cache time.
 	var ret api.EndPoint
 	for range Only.Once {
 		if sg.NeedLogin {
-			sg.Error = errors.New("currently logged out")
+			sg.Error = errors.New("need to login again")
 			break
 		}
 
@@ -317,7 +327,7 @@ func (sg *SunGrow) login() error {
 		a := sg.GetEndpoint(login.EndPointName)
 		sg.Auth = login.Assert(a)
 
-		sg.Error = sg.Auth.Login(sg.AuthDetails)
+		sg.Error = sg.Auth.Authenticate(sg.AuthDetails)
 		if sg.IsLoggedOut() {
 			break
 		}
@@ -329,17 +339,29 @@ func (sg *SunGrow) login() error {
 }
 
 func (sg *SunGrow) Login(auth login.SunGrowAuth) error {
+	return sg.AuthenticateSession(auth, auth.Force, sg.persistSession)
+}
+
+func (sg *SunGrow) authenticate(auth login.SunGrowAuth) error {
+	wasRecovering := sg.recovering
+	sg.recovering = true
+	defer func() { sg.recovering = wasRecovering }()
 	for range Only.Once {
 		sg.AuthDetails = &auth
+		sg.NeedLogin = false
 
-		for range Only.Twice {
+		for attempt := 0; attempt < 2; attempt++ {
+			sg.NeedLogin = false
+			if attempt > 0 {
+				auth.Force = true
+			}
 			sg.Error = nil
 			sg.Error = sg.login()
 			if sg.Error != nil {
 				break
 			}
 
-			_ = sg.GetByStruct(getUserList.EndPointName, nil, DefaultCacheTimeout)
+			sg.validationResponse = sg.GetByStruct(getUserList.EndPointName, nil, DefaultCacheTimeout)
 			if !sg.IsLoggedOut() {
 				break
 			}
@@ -367,20 +389,23 @@ func (sg *SunGrow) Login(auth login.SunGrowAuth) error {
 }
 
 func (sg *SunGrow) IsLoggedOut() bool {
-	for range Only.Once {
-		if sg.IsNotError() {
-			sg.NeedLogin = false
-			break
-		}
-		if strings.Contains(sg.Error.Error(), "er_token_login_invalid") {
-			sg.NeedLogin = true
-			sg.Logout()
-		}
+	if sg.Error != nil && (strings.Contains(sg.Error.Error(), "er_token_login_invalid") || strings.Contains(sg.Error.Error(), "need to login again")) {
+		sg.NeedLogin = true
 	}
 	return sg.NeedLogin
 }
 
+// BeginRetry retires an operation failure without discarding session obligations.
+func (sg *SunGrow) BeginRetry() {
+	if ShouldRecoverGatewayError(sg.Error) {
+		sg.Error = nil
+	}
+}
+
+func (sg *SunGrow) RequireAuthentication() { sg.NeedLogin = true }
+
 func (sg *SunGrow) Logout() {
+	sg.NeedLogin = true
 	for range Only.Once {
 		_ = sg.ApiRoot.WebCacheRemove(sg.Auth)
 		_ = sg.Auth.RemoveToken()

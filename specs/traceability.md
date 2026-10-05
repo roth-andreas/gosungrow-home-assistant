@@ -39,6 +39,19 @@ The artifacts below cover `REQ-DOM-005`, `017`; `REQ-DATA-011`, `022`–`026`; `
 | MQTT publication integration | `cmd/cmd_mqtt_plant_pv_test.go`: actual retained discovery/state serialization with transport completion/failure, filters, retry, retained-state preservation, independent rediscovery, and sorted/bounded safe diagnostics |
 | Dashboard composition and compatibility | Decoded MQTT-to-dashboard template/mapping test, type-55 context and nine-producer counts, grid/phase rejection, and the existing pinned/manual upgrade and compatibility tests |
 
+## Runtime session recovery
+
+The issue #26 requirements are derived into isolated authentication candidates, persistence before session promotion, a retained successful gateway/app-key anchor, operation-error retirement, and separate authentication and device-rediscovery obligations. Both MQTT modes use the same bounded sync cycle; cron mode serializes normal triggers and Docker-DNS deadlines and propagates fatal cycle errors. Synthetic HTTP and MQTT fixtures provide regression evidence without using a live account or the user's token store. User guidance is in `README.md` and `addon/gosungrow/DOCS.md`.
+
+| Test artifact | Governing requirements | Evidence |
+|---|---|---|
+| `cmd/cmd_api_test.go` | `REQ-API-004`, `033`–`034`; `REQ-CLI-006`; `REQ-ACC-047`, `050` | Configuration persistence before promotion, restoration on write failure, unchanged-token write suppression, and reuse of the winning gateway |
+| `iSolarCloud/recovery_test.go` | `REQ-API-007`, `033`–`034`; `REQ-XCUT-003`, `022`; `REQ-ACC-046`–`047`, `050`–`051` | Repeated fresh authentication, retained session/token on failed candidates, cache bypass, persistence failure, pending-auth collection guard, runtime ordering, and first-candidate DNS stop |
+| `iSolarCloud/AppService/login/auth_test.go` | `REQ-API-004`–`006`, `033`; `REQ-ACC-047`, `050` | Isolated token paths, missing/corrupt token recovery, forced network authentication, deferred token/login-cache writes, and token-file replacement failure |
+| `cmd/cmd_mqtt_test.go` | `REQ-API-028`, `031`–`034`; `REQ-MQTT-014`–`016`, `022`, `025`; `REQ-XCUT-003`, `022`; `REQ-ACC-046`–`051` | Actual HTTP and retained MQTT publication across failed/healthy cycles, DNS request counts and delays, bounded login/collection/endpoint replay, device/metadata retry without redundant login, nonfatal topology refresh, fatal phase propagation, and cron/DNS serialization |
+
+Client ownership is `iSolarCloud/struct.go`, `recovery.go`, `data.go`, `api/web.go`, and `AppService/login/{auth,struct}.go`; orchestration ownership is `cmd/cmd_api.go` and `cmd/cmd_mqtt.go`. No new configuration or persisted recovery-state format is introduced. Bootstrap ordering, wire protocol, entity identity, opaque IDs, dashboard behavior, startup retry limits, and release metadata retain their existing contracts. Validation results are reported separately for the current working tree.
+
 ## Behavioral tests
 
 Artifact ownership identifies executable evidence; validation results must be reported separately for each working tree.
