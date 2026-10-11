@@ -57,13 +57,14 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
     const layout = this._layout(compact);
     const flows = this._flowDisplays();
     const nodes = this._nodeDisplays(flows);
+    nodes.batteryStatus = this._batteryDirectionStatus(flows);
 
     const edgeMarkup = Object.entries(layout.edges)
       .map(([key, edge]) => this._renderEdge(key, edge, flows[key]))
       .join("");
 
     const edgeLabels = Object.entries(layout.edges)
-      .map(([key, edge]) => this._renderEdgeLabel(key, edge, flows[key], nodes))
+      .map(([key, edge]) => this._renderEdgeLabel(key, edge, flows[key], nodes, flows))
       .join("");
 
     const nodeMarkup = Object.entries(layout.nodes)
@@ -361,7 +362,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
           solar: { x: 350, y: 122, label: this._label("node_pv", "PV"), ringClass: "solar-ring", labelY: 182, powerChip: { x: 350, y: 40, className: "node-chip-solar" } },
           grid: { x: 154, y: 286, label: this._label("node_grid", "Grid"), ringClass: "grid-ring", labelY: 350, powerChip: { x: 94, y: 286, className: "node-chip-grid" } },
           home: { x: 546, y: 286, label: this._label("node_home", "Home"), ringClass: "home-ring", labelY: 350, powerChip: { x: 606, y: 286, className: "node-chip-home" } },
-          battery: { x: 350, y: 442, label: this._label("node_battery", "Battery"), ringClass: "battery-ring", labelY: 516, powerChip: { x: 350, y: 366, className: "node-chip-battery" }, socChip: { x: 350, y: 492, className: "node-chip-soc" } },
+          battery: { x: 350, y: 442, label: this._label("node_battery", "Battery"), ringClass: "battery-ring", labelY: 516, powerChip: { x: 180, y: 442, className: "node-chip-battery" }, socChip: { x: 350, y: 492, className: "node-chip-soc" } },
         },
         edges: {
           pv_to_grid_power: {
@@ -387,7 +388,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
             edgeClass: "edge-solar-battery",
             pillClass: "pill-solar-battery",
             dotDur: "4.8s",
-            hideLabelWhenNodeReflectsFlow: { node: "battery", sign: -1 },
+            hideLabelWhenNodeReflectsFlow: { node: "battery", sign: -1, opposite: "battery_to_load_power" },
           },
           grid_to_load_power: {
             path: "M194 286 L506 286",
@@ -404,6 +405,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
             edgeClass: "edge-battery-home",
             pillClass: "pill-battery-home",
             dotDur: "4.9s",
+            hideLabelWhenNodeReflectsFlow: { node: "battery", sign: 1, opposite: "pv_to_battery_power" },
           },
         },
       };
@@ -417,7 +419,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
           solar: { x: 470, y: 74, label: this._label("node_pv", "PV"), ringClass: "solar-ring", labelY: 136, powerChip: { x: 470, y: 20, className: "node-chip-solar" } },
           grid: { x: 190, y: 164, label: this._label("node_grid", "Grid"), ringClass: "grid-ring", labelY: 226, powerChip: { x: 104, y: 164, className: "node-chip-grid" } },
           home: { x: 750, y: 164, label: this._label("node_home", "Home"), ringClass: "home-ring", labelY: 226, powerChip: { x: 836, y: 164, className: "node-chip-home" } },
-          battery: { x: 470, y: 244, label: this._label("node_battery", "Battery"), ringClass: "battery-ring", labelY: 328, powerChip: { x: 470, y: 180, className: "node-chip-battery" }, socChip: { x: 470, y: 300, className: "node-chip-soc" } },
+          battery: { x: 470, y: 244, label: this._label("node_battery", "Battery"), ringClass: "battery-ring", labelY: 328, powerChip: { x: 315, y: 244, className: "node-chip-battery" }, socChip: { x: 470, y: 300, className: "node-chip-soc" } },
       },
       edges: {
         pv_to_grid_power: {
@@ -443,7 +445,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
           edgeClass: "edge-solar-battery",
           pillClass: "pill-solar-battery",
           dotDur: "4.8s",
-          hideLabelWhenNodeReflectsFlow: { node: "battery", sign: -1 },
+          hideLabelWhenNodeReflectsFlow: { node: "battery", sign: -1, opposite: "battery_to_load_power" },
         },
         grid_to_load_power: {
           path: "M228 164 L712 164",
@@ -460,6 +462,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
           edgeClass: "edge-battery-home",
           pillClass: "pill-battery-home",
           dotDur: "4.9s",
+          hideLabelWhenNodeReflectsFlow: { node: "battery", sign: 1, opposite: "pv_to_battery_power" },
         },
       },
     };
@@ -538,6 +541,27 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
     };
   }
 
+  _validPowerDisplay(display) {
+    return Boolean(display?.available && display.numericValid !== false &&
+      Number.isFinite(display.numericValue) && ["W", "kW", "MW"].includes(display.unit));
+  }
+
+  _batteryDirectionStatus(flows) {
+    const charge = flows.pv_to_battery_power;
+    const discharge = flows.battery_to_load_power;
+    let status = "unavailable";
+    if (this._validPowerDisplay(charge) && this._validPowerDisplay(discharge) &&
+        charge.unit === discharge.unit && charge.numericValue >= 0 && discharge.numericValue >= 0) {
+      const net = discharge.numericValue - charge.numericValue;
+      status = net > 0.01 ? "discharging" : net < -0.01 ? "charging" :
+        charge.numericValue <= 0.01 && discharge.numericValue <= 0.01 ? "idle" : "balanced";
+    }
+    return this._label(`battery_status_${status}`, {
+      charging: "Charging", discharging: "Discharging", idle: "Idle",
+      balanced: "Balanced flows", unavailable: "Direction unavailable",
+    }[status]);
+  }
+
   _renderEdge(key, edge, display) {
     const magnitude = Math.abs(display.numericValue);
     const active = magnitude > 0.01;
@@ -556,7 +580,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
     `;
   }
 
-  _renderEdgeLabel(key, edge, display, nodes) {
+  _renderEdgeLabel(key, edge, display, nodes, flows) {
     if (this._compact) {
       return "";
     }
@@ -564,7 +588,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
     if (!active) {
       return "";
     }
-    if (this._isRedundantEdgeLabel(edge, display, nodes)) {
+    if (this._isRedundantEdgeLabel(edge, display, nodes, flows)) {
       return "";
     }
     const width = Math.max(62, display.formatted.length * 6.8);
@@ -576,14 +600,17 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
     `;
   }
 
-  _isRedundantEdgeLabel(edge, display, nodes) {
+  _isRedundantEdgeLabel(edge, display, nodes, flows) {
     const rule = edge.hideLabelWhenNodeReflectsFlow;
     if (!rule || !nodes) {
       return false;
     }
 
     const nodeDisplay = nodes[rule.node];
-    if (!nodeDisplay?.available) {
+    const opposite = flows?.[rule.opposite];
+    if (![nodeDisplay, display, opposite].every((value) => this._validPowerDisplay(value)) ||
+        nodeDisplay.unit !== display.unit || opposite.unit !== display.unit ||
+        Math.abs(opposite.numericValue) > 0.01) {
       return false;
     }
 
@@ -598,12 +625,20 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
     const iconLayout = this._iconLayout(key, node);
     const iconMarkup = this._renderIcon(key, iconLayout.x, iconLayout.y, iconLayout.scale);
     const batterySoc = displays.batterySoc;
+    const caption = this._label("battery_power_caption", "Battery power");
+    const batteryDetails = key === "battery" ? `
+      <text class="node-label" x="${node.powerChip.x}" y="${node.powerChip.y - 24}">${this._escape(caption)}</text>
+      <text class="node-label" x="${node.powerChip.x}" y="${node.powerChip.y + 30}">${this._escape(displays.batteryStatus)}</text>
+    ` : "";
+    const batteryIdentity = key === "battery" ?
+      `${caption}: ${displays.battery.formatted}; ${displays.batteryStatus}` : "";
     const chips = [
       this._renderNodeChip(key, "power", node.powerChip, displays[key].formatted),
       key === "battery" ? this._renderNodeChip(key, "soc", node.socChip, batterySoc.formatted) : "",
     ].join("");
     return `
-      <g class="node-button" data-node="${key}" ${entityId ? `data-entity="${this._escape(entityId)}"` : `role="presentation"`}>
+      <g class="node-button" data-node="${key}" ${entityId ? `data-entity="${this._escape(entityId)}"` : key === "battery" ? "" : `role="presentation"`} ${key === "battery" ? `role="img" aria-label="${this._escape(batteryIdentity)}"` : ""}>
+        ${key === "battery" ? `<title>${this._escape(batteryIdentity)}</title>` : ""}
         <circle class="node-hit" cx="${node.x}" cy="${node.y}" r="${radius + 18}"></circle>
         <circle class="node-ring ${node.ringClass}" cx="${node.x}" cy="${node.y}" r="${radius}"></circle>
         <circle class="node-fill" cx="${node.x}" cy="${node.y}" r="${radius - 2}"></circle>
@@ -611,6 +646,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         <text class="node-label" data-node-label="${key}" x="${node.x}" y="${node.labelY}">${this._escape(node.label)}</text>
       </g>
       ${chips}
+      ${batteryDetails}
     `;
   }
 
@@ -714,12 +750,13 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
 
     const numericValue = Number.parseFloat(stateObj.state);
     if (!Number.isFinite(numericValue)) {
-      return { formatted: stateObj.state, numericValue: 0, unit, available: true };
+      return { formatted: stateObj.state, numericValue: 0, unit, available: true, numericValid: false };
     }
 
     return {
       formatted: this._formatNumber(numericValue, unit),
       numericValue,
+      numericValid: Number.isFinite(Number(stateObj.state)) && String(stateObj.state).trim() !== "",
       unit,
       available: true,
     };
@@ -812,24 +849,48 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         node_grid: "Grid",
         node_home: "Home",
         node_battery: "Battery",
+        battery_power_caption: "Battery power",
+        battery_status_charging: "Charging",
+        battery_status_discharging: "Discharging",
+        battery_status_idle: "Idle",
+        battery_status_balanced: "Balanced flows",
+        battery_status_unavailable: "Direction unavailable",
       },
       sv: {
         node_pv: "PV",
         node_grid: "Nät",
         node_home: "Hem",
         node_battery: "Batteri",
+        battery_power_caption: "Batterieffekt",
+        battery_status_charging: "Laddar",
+        battery_status_discharging: "Urladdar",
+        battery_status_idle: "Inaktiv",
+        battery_status_balanced: "Balanserade flöden",
+        battery_status_unavailable: "Riktning ej tillgänglig",
       },
       de: {
         node_pv: "PV",
         node_grid: "Netz",
         node_home: "Haus",
         node_battery: "Batterie",
+        battery_power_caption: "Batterieleistung",
+        battery_status_charging: "Lädt",
+        battery_status_discharging: "Entlädt",
+        battery_status_idle: "Inaktiv",
+        battery_status_balanced: "Ausgeglichene Flüsse",
+        battery_status_unavailable: "Richtung nicht verfügbar",
       },
       es: {
         node_pv: "Solar",
         node_grid: "Red",
         node_home: "Casa",
         node_battery: "Batería",
+        battery_power_caption: "Potencia de batería",
+        battery_status_charging: "Cargando",
+        battery_status_discharging: "Descargando",
+        battery_status_idle: "Inactiva",
+        battery_status_balanced: "Flujos equilibrados",
+        battery_status_unavailable: "Dirección no disponible",
       },
     };
   }

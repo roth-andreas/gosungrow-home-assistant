@@ -181,6 +181,132 @@ test("live flow preserves directional sums while configured sources remain autom
   assert.equal(nodes.solar.numericValue, 6);
 });
 
+function createBatteryFlowCard(compact = false, values = {}, units = {}) {
+  const card = new FlowCard();
+  const readings = {
+    solar_power: 3.8, load_power: 5.17, grid_power: -0.43, battery_power: -1.8,
+    battery_soc: 100, pv_to_load_power: 3.37, pv_to_grid_power: 0.43,
+    pv_to_battery_power: 0, grid_to_load_power: 0, battery_to_load_power: 1.8,
+    ...values,
+  };
+  const entities = Object.fromEntries(Object.keys(readings).map((key) => [key, `sensor.${key}`]));
+  card._isCompact = () => compact;
+  card.setConfig({ entities, automatic_entities: { ...entities } });
+  card.hass = {
+    locale: { language: "en-US" },
+    states: Object.fromEntries(Object.entries(readings).filter(([, value]) => value !== null).map(([key, value]) => [
+      entities[key], { state: String(value), attributes: { unit_of_measurement: units[key] ?? (key === "battery_soc" ? "%" : "kW") } },
+    ])),
+  };
+  return card;
+}
+
+function batteryDirection(card) {
+  return card._batteryDirectionStatus(card._flowDisplays());
+}
+
+test("issue 15 discharge and charging retain battery identity in both layouts", () => {
+  for (const compact of [false, true]) {
+    const card = createBatteryFlowCard(compact);
+    let html = card.shadowRoot.innerHTML;
+    assert.match(html, /aria-label="Battery power: 1\.80 kW; Discharging"/);
+    assert.match(html, />Battery power<\/text>/);
+    assert.match(html, />Discharging<\/text>/);
+    assert.match(html, /data-node="home" data-chip="power"[\s\S]*?>5\.17 kW<\/text>/);
+    assert.match(html, /data-node="battery" data-chip="soc"[\s\S]*?>100 %<\/text>/);
+    assert.doesNotMatch(html, /class="route-pill pill-solar-battery"/);
+    assert.doesNotMatch(html, /class="route-pill pill-battery-home"/);
+    assert.match(html, /edge-active edge-battery-home[^>]*opacity:0\.96/);
+    assert.match(html, /edge-active edge-solar-battery[^>]*opacity:0;/);
+    const layout = card._layout(compact);
+    assert.ok(layout.nodes.battery.powerChip.x < layout.nodes.battery.x - layout.radius);
+
+    card._hass.states["sensor.pv_to_battery_power"].state = "1.8";
+    card._hass.states["sensor.battery_to_load_power"].state = "0";
+    card.hass = card._hass;
+    html = card.shadowRoot.innerHTML;
+    assert.match(html, /aria-label="Battery power: -1\.80 kW; Charging"/);
+    assert.doesNotMatch(html, /class="route-pill pill-solar-battery"/);
+    assert.match(html, /edge-active edge-solar-battery[^>]*opacity:0\.96/);
+  }
+});
+
+test("battery direction covers boundaries, simultaneous flows, and invalid live inputs", () => {
+  const cases = [
+    [0, 0, "Idle"], [0.01, 0, "Idle"], [0, 0.01, "Idle"], [0.01, 0.01, "Idle"],
+    [0, 0.011, "Discharging"], [0.011, 0, "Charging"],
+    [1, 2, "Discharging"], [2, 1, "Charging"], [1, 1, "Balanced flows"],
+    [1, 1.005, "Balanced flows"], [null, 0, "Direction unavailable"],
+    [0, null, "Direction unavailable"], ["unknown", 0, "Direction unavailable"],
+    [0, "unavailable", "Direction unavailable"], ["NaN", 0, "Direction unavailable"],
+    ["Infinity", 0, "Direction unavailable"], ["", 0, "Direction unavailable"],
+    ["1.8invalid", 0, "Direction unavailable"], [-1, 0, "Direction unavailable"],
+  ];
+  for (const [charge, discharge, expected] of cases) {
+    const card = createBatteryFlowCard(false, { pv_to_battery_power: charge, battery_to_load_power: discharge });
+    assert.equal(batteryDirection(card), expected, `${charge}/${discharge}`);
+  }
+  for (const unit of ["", "W", "kWh", "%"]) {
+    assert.equal(batteryDirection(createBatteryFlowCard(false, {}, { pv_to_battery_power: unit })), "Direction unavailable");
+  }
+  for (const unit of ["W", "kW", "MW"]) {
+    assert.equal(batteryDirection(createBatteryFlowCard(false, {}, { pv_to_battery_power: unit, battery_to_load_power: unit })), "Discharging");
+  }
+});
+
+test("battery labels retain distinct manual and simultaneous route values", () => {
+  const card = createBatteryFlowCard();
+  card._config.entities.battery_power = "sensor.manual_battery";
+  card._hass.states["sensor.manual_battery"] = { state: "-4.2", attributes: { unit_of_measurement: "kW" } };
+  card.hass = card._hass;
+  assert.match(card.shadowRoot.innerHTML, /aria-label="Battery power: -4\.20 kW; Discharging"/);
+  assert.match(card.shadowRoot.innerHTML, /class="route-pill pill-battery-home"/);
+  card._hass.states["sensor.manual_battery"].state = "unavailable";
+  card.hass = card._hass;
+  assert.match(card.shadowRoot.innerHTML, /class="route-pill pill-battery-home"/);
+  const simultaneous = createBatteryFlowCard(false, { pv_to_battery_power: 1, battery_to_load_power: 2 });
+  assert.match(simultaneous.shadowRoot.innerHTML, /class="route-pill pill-solar-battery"/);
+  assert.match(simultaneous.shadowRoot.innerHTML, /class="route-pill pill-battery-home"/);
+  for (const opposite of [null, "unknown"]) {
+    assert.match(createBatteryFlowCard(false, { pv_to_battery_power: opposite }).shadowRoot.innerHTML, /class="route-pill pill-battery-home"/);
+  }
+  assert.match(createBatteryFlowCard(false, {}, { pv_to_battery_power: "W" }).shadowRoot.innerHTML, /class="route-pill pill-battery-home"/);
+});
+
+test("battery label suppression uses strict tolerance and retains unavailable nodes", () => {
+  const card = createBatteryFlowCard();
+  const layout = card._layout(false);
+  const power = (value, available = true) => ({ numericValue: value, unit: "kW", available, formatted: `${value} kW` });
+  const flow = power(0.02);
+  const flows = { pv_to_battery_power: power(0), battery_to_load_power: flow };
+  const label = (node) => card._renderEdgeLabel("battery_to_load_power", layout.edges.battery_to_load_power, flow, { battery: node }, flows);
+  assert.equal(label(power(0.025)), "");
+  assert.notEqual(label(power(0.01)), "");
+  assert.notEqual(label(power(0.02, false)), "");
+  flows.pv_to_battery_power = power(0.01);
+  assert.equal(label(power(0.02)), "");
+  flows.pv_to_battery_power = power(0.011);
+  assert.notEqual(label(power(0.02)), "");
+});
+
+test("battery caption and direction localize, fall back, and escape custom text", () => {
+  const card = createBatteryFlowCard();
+  for (const [locale, caption, direction] of [
+    ["en-US", "Battery power", "Discharging"], ["de-DE", "Batterieleistung", "Entlädt"],
+    ["sv-SE", "Batterieffekt", "Urladdar"], ["es-ES", "Potencia de batería", "Descargando"],
+    ["fr-FR", "Battery power", "Discharging"],
+  ]) {
+    card._hass.locale.language = locale;
+    card.hass = card._hass;
+    assert.ok(card.shadowRoot.innerHTML.includes(`>${caption}</text>`));
+    assert.ok(card.shadowRoot.innerHTML.includes(`>${direction}</text>`));
+  }
+  card._config.labels = { battery_power_caption: "<Custom battery>", battery_status_discharging: "Custom discharge" };
+  card.hass = card._hass;
+  assert.match(card.shadowRoot.innerHTML, /&lt;Custom battery&gt;/);
+  assert.match(card.shadowRoot.innerHTML, /Custom discharge/);
+});
+
 test("source mapping card renders automatic and manual status without changing defaults", () => {
   const card = new SourceCard();
   card.setConfig({ schema_version: 1, mapping_id: "target", defaults: { p13112: "sensor.auto" }, overrides: {}, metrics: [{ key: "p13112", group: "today_energy", label: "Solar production today", default: "sensor.auto", selected: "sensor.auto", status: "automatic", candidates: [] }], labels: { groups: { today_energy: "Today's energy" } } });

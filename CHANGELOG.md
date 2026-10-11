@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.3.8
+
+- Place live battery power beside the battery icon with an explicit caption and localized charging, discharging, idle, balanced, or unavailable direction status.
+- Hide duplicate battery route values consistently during charging and discharge while preserving distinct route values and manually selected battery readings.
+- Add battery-flow regression coverage and diagnostic guidance for reporting selected sources and live values.
+
 ## 3.3.7
 
 - Resolve daily dashboard sources through canonical Sungrow meanings before capability pruning, retaining valid renamed entities and their source-selection bindings.

@@ -71,6 +71,9 @@ Scope: Cross-subsystem executable examples
 
 ## Frontend summaries
 
+- **REQ-ACC-058** — Given automatic node selection, PV `3.80 kW`, PV→home `3.37 kW`, PV→grid `0.43 kW`, PV→battery `0 kW`, grid→home `0 kW`, and battery→home `1.80 kW`, the card MUST show home `5.17 kW` and battery power `1.80 kW` beside the battery with “Discharging”. The PV→battery edge and label MUST be inactive; the duplicate battery→home label MUST be suppressed while its edge remains active. Charging with `C=1.80` and `D=0` MUST show battery power `−1.80 kW`, “Charging”, and symmetric duplicate-label suppression. Both scenarios MUST be verified in wide and compact layouts.
+- **REQ-ACC-059** — Direction status MUST follow REQ-CARD-020 for zero, exact `0.01` boundaries, simultaneous flows, and unavailable or incompatible inputs. A manually selected battery value MUST remain unchanged; a differing value MUST prevent duplicate-label suppression. An unavailable battery node MUST not suppress an active wide-layout route label. Verification MUST cover state transitions, localization fallback, accessible battery identity, and readable layout in both sizes.
+
 - **REQ-ACC-020** — Fresh install with only live daily value displays one bucket for day/month/year. Current-day recorder rows are replaced, not added.
 - **REQ-ACC-021** — Month/year boundaries keep completed previous period totals and start current period from live day. Missing data yields empty chart.
 - **REQ-ACC-022** — Date labels follow Home Assistant preferences, relabel cached data without refetch, and expose matching keyboard/tooltip labels.

@@ -70,7 +70,7 @@ Artifact ownership identifies executable evidence; validation results must be re
 
 | Test artifact | Governing requirements |
 |---|---|
-| `cmd/cmd_api_test.go` | `REQ-API-002`, `007`–`009`; `REQ-XCUT-002`–`004` |
+| `cmd/cmd_api_test.go` | `REQ-API-002`, `007`–`009`; `REQ-XCUT-002`–`004`; `REQ-CFG-001` |
 | `cmd/failure_class_test.go` | `REQ-ADDON-008`–`012`; `REQ-XCUT-019`, `021`; `REQ-ACC-028`, `038` |
 | `iSolarCloud/recovery_test.go` | `REQ-API-007`–`009`, `028`–`029`; `REQ-XCUT-002`–`004`, `017`, `019`; `REQ-ACC-002`, `029` |
 | `iSolarCloud/highlevel_ps_test.go` | `REQ-API-022`–`024`, `031`–`032`; `REQ-ACC-032`, `044` |
@@ -104,12 +104,15 @@ Artifact ownership identifies executable evidence; validation results must be re
 | `cmd/dashboard_source_mapping_test.go` | `REQ-SRC-001`–`016`, `026`, `REQ-DASH-027`; `REQ-ACC-015`–`017`, `019`, `031`, `042` |
 | `cmd/dashboard_i18n_test.go` | `REQ-DASH-014`–`016`; `REQ-ACC-018` |
 | `tools/preview/gosungrow-source-mapping-card.test.cjs` | `REQ-SRC-017`–`025`; `REQ-CARD-001`–`002` |
-| `tools/test_energy_summary_card.mjs` | `REQ-CARD-008`–`018`; `REQ-ACC-020`–`022` |
+| `tools/test_energy_summary_card.mjs` | `REQ-CARD-003`–`020`; `REQ-ACC-020`–`022`, `058`–`059`: battery direction, route suppression, manual values, unavailable inputs, transitions, localization, and accessible identity |
+| Live Flow battery layout review (wide and compact) | `REQ-CARD-019`; `REQ-ACC-058`–`059`: browser review of caption, power, direction status, SOC, and active route labels without overlap, including all supported locales |
 | `tools/ha-e2e/dashboard_resource_smoke.mjs`, `tools/ha-e2e/local_route_bootstrap.mjs`, `tools/ha-e2e/local_route_bootstrap.sh` | `REQ-CARD-018`; `REQ-DASH-037`; `REQ-REL-011`, `013`; `REQ-ACC-033`, `036`, `038` |
 | `addon/gosungrow/recovery_policy_test.sh` | `REQ-ADDON-008`–`012`; `REQ-XCUT-019`, `021`; `REQ-ACC-028`, `038` |
 | `addon/gosungrow/configuration_test.sh` | `REQ-ADDON-002`, `013`; `REQ-CFG-003`; `REQ-ACC-023` |
 
 ## Non-test verification
+
+The issue #15 battery layout review exercised 48 combinations: wide/compact layouts, four supported locales, and discharge, charge, idle, balanced, unavailable, and manual-source states. Browser bounding-box checks found no overlap or clipping of the battery power, caption, or direction status. Wide discharge and compact charge screenshots were visually reviewed; generated screenshots remain under ignored `tools/preview/screenshots/issue-15/`. These synthetic checks do not claim verification against the reporter's live hardware. Current working-tree validation results are reported separately.
 
 | Verification | Requirements |
 |---|---|

@@ -111,10 +111,16 @@ var defaultDashboardLocaleBundle = dashboardLocaleBundle{
 		"name_battery":             "Battery",
 	},
 	FlowCard: map[string]string{
-		"node_pv":      "PV",
-		"node_grid":    "Grid",
-		"node_home":    "Home",
-		"node_battery": "Battery",
+		"node_pv":                    "PV",
+		"node_grid":                  "Grid",
+		"node_home":                  "Home",
+		"node_battery":               "Battery",
+		"battery_power_caption":      "Battery power",
+		"battery_status_charging":    "Charging",
+		"battery_status_discharging": "Discharging",
+		"battery_status_idle":        "Idle",
+		"battery_status_balanced":    "Balanced flows",
+		"battery_status_unavailable": "Direction unavailable",
 	},
 }
 

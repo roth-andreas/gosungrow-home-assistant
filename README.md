@@ -100,3 +100,11 @@ The app documentation is in `addon/gosungrow/DOCS.md`.
 
 - Original GoSungrow reverse engineering and codebase: MickMake
 - Home Assistant app packaging and maintenance in this repository: [Andreas Roth](https://github.com/roth-andreas)
+
+## Battery power in Live Flow
+
+The reading beside the battery icon is captioned **Battery power**. For automatic values calculated from directional flows, positive means net discharge and negative means net charge. The published legacy MQTT `battery_power` sensor uses the opposite sign. A manually selected battery sensor keeps its own value and sign.
+
+The direction text uses the solar-to-battery and battery-to-home flows independently of the selected battery reading. It shows Charging, Discharging, Idle, Balanced flows, or Direction unavailable. Matching route values are hidden when the other battery route is available and inactive; distinct active route values remain visible in the wide layout. Compact layouts retain battery information while omitting route labels.
+
+When reporting a battery flow problem, capture the Live Flow display and the Data Sources selections for Battery power, Solar to battery power, and Battery to home power together. Include each selected entity ID, its current value and unit, whether it is automatic or manual, and the displayed battery value and direction. Use Home Assistant entity details to capture live values; avoid sharing credentials or tokens.
