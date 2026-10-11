@@ -26,6 +26,18 @@ The specification is authoritative; this map helps locate derived artifacts.
 | `REQ-COMP-*` | `specs/completeness.md`, `specs/source-inventory.md`, `scripts/check_specs.py`, contributor review |
 | `REQ-CFG-*` | CLI framework bindings, `iSolarCloud/api/web.go`, `cmd/cmd_ha_install_dashboard.go`, `addon/gosungrow/run.sh`, Dockerfile |
 
+## Canonical daily dashboard resolution
+
+`cmd/dashboard_daily_resolution.go` carries one canonical daily result through template composition, saved-source preservation, capability pruning, source mapping, and final diagnostics. `cmd/dashboard_entity_resolver.go`, `cmd/dashboard_semantic_matcher.go`, `cmd/dashboard_capability_pruner.go`, `cmd/dashboard_source_mapping.go`, and `cmd/cmd_ha_install_dashboard.go` derive `REQ-RES-001`, `004`, `010`, `015`, `021`–`022`; `REQ-SRC-001`, `005`–`007`, `019`, `027`; and `REQ-DASH-011`, `013`, `038`. The bundled source card verifies matcher-version equality before saving.
+
+| Verification | Requirements and evidence |
+|---|---|
+| `cmd/dashboard_daily_resolution_test.go` | `REQ-ACC-052`–`057`: real API decoding and MQTT discovery/state identities through the complete dashboard template; renamed/native daily sources, zero, unsafe lifetime/export fallback, partial/absent registry, invalid/stale/ambiguous sources, saved missing/stale selections, separate bindings, and bounded final diagnostics |
+| `cmd/dashboard_entity_resolver_test.go`, `cmd/dashboard_semantic_matcher_test.go`, `cmd/dashboard_capability_pruner_test.go`, `cmd/dashboard_source_mapping_test.go` | Canonical eligibility, trusted identity, daily period, scope/confidence, pruning, source recommendations, and compatibility under the updated requirements |
+| `tools/preview/gosungrow-source-mapping-card.test.cjs` | `REQ-SRC-019`, `REQ-ACC-056`: matching-version recommendation adoption and selection/reset rejection when the fresh matcher version differs |
+
+User guidance is in `README.md` and `addon/gosungrow/DOCS.md`; release changes are recorded under 3.3.7 in `CHANGELOG.md`. These synthetic cases do not claim verification of a reporter's live hardware. Existing source-inventory patterns classify both new Go artifacts.
+
 ## Reliable plant PV aggregation
 
 The approved contract and producer-coverage amendment are derived into normalization, independent discovery, topology validation, plant-scoped aggregation, MQTT publication diagnostics, and dashboard resolution. Specifications remain the behavioral authority. Synthetic API fixtures provide regression evidence; they do not claim verification against the reporter's live plant.

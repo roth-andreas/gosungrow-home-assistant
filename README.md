@@ -90,6 +90,7 @@ The app documentation is in `addon/gosungrow/DOCS.md`.
 - This is not a native Home Assistant integration. MQTT must be working before the app starts.
 - Temporary iSolarCloud login or gateway failures recover automatically on later sync attempts. GoSungrow retains the last successful gateway and MQTT values, authenticates again when required, and refreshes device discovery before publishing resumes.
 - The app manages its own dashboard automatically.
+- Daily dashboard values use verified Sungrow measurement meanings, including when Home Assistant entities are renamed. Missing, ambiguous, or unverified daily sources are omitted instead of being replaced by lifetime totals or feed-in values. Existing selected sources remain available for review; accept a safer recommendation explicitly in **Data Sources**.
 - Multi-inverter plants use `sensor.gosungrow_virtual_<plant-id>_pv_power` when GoSungrow can establish a complete, single-basis plant total. Existing manual dashboard sources remain unchanged and pinned automatic sources receive a reviewable recommendation.
 - Microinverters (type 55) are included. Device sums require every independently discovered producer leaf; missing readings never become zero or a partial total. The `Plant PV aggregation:` info log explains publication or suppression without enabling HTTP tracing.
 - If you are updating from an older version with more options, open the app configuration once and save it to clear legacy fields.

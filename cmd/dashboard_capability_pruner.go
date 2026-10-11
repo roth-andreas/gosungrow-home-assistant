@@ -7,11 +7,17 @@ func pruneDashboardForUnavailableMetrics(config map[string]any, targets []haDash
 }
 
 func pruneDashboardForUnavailableMetricsWithPinned(config map[string]any, targets []haDashboardTarget, states []haState, pinned map[string]map[string]string) map[string]any {
+	_, report := remapDashboardEntitiesWithReport(config, targets, states)
+	traces, _ := prepareDashboardSourceTraces(report.Traces, targets, states, pinned, nil, nil)
+	return pruneDashboardForUnavailableMetricsWithTraces(config, targets, states, traces)
+}
+
+func pruneDashboardForUnavailableMetricsWithTraces(config map[string]any, targets []haDashboardTarget, states []haState, traces []dashboardMetricTrace) map[string]any {
 	if len(config) == 0 || len(targets) == 0 || len(states) == 0 {
 		return config
 	}
 
-	unsupportedByTarget := dashboardUnsupportedMetricsByTargetWithPinned(config, targets, states, pinned)
+	unsupportedByTarget := dashboardUnsupportedMetricsByTargetWithTraces(config, targets, states, traces)
 	if len(unsupportedByTarget) == 0 {
 		return config
 	}
@@ -70,6 +76,12 @@ func dashboardUnsupportedMetricsByTarget(config map[string]any, targets []haDash
 }
 
 func dashboardUnsupportedMetricsByTargetWithPinned(config map[string]any, targets []haDashboardTarget, states []haState, pinned map[string]map[string]string) map[string]map[string]struct{} {
+	_, report := remapDashboardEntitiesWithReport(config, targets, states)
+	traces, _ := prepareDashboardSourceTraces(report.Traces, targets, states, pinned, nil, nil)
+	return dashboardUnsupportedMetricsByTargetWithTraces(config, targets, states, traces)
+}
+
+func dashboardUnsupportedMetricsByTargetWithTraces(config map[string]any, targets []haDashboardTarget, states []haState, traces []dashboardMetricTrace) map[string]map[string]struct{} {
 	refs := collectLegacyDashboardEntityRefs(config, targets)
 	if len(refs) == 0 {
 		return nil
@@ -92,7 +104,14 @@ func dashboardUnsupportedMetricsByTargetWithPinned(config map[string]any, target
 	}
 
 	singleTarget := len(targets) == 1
-	stateByID := dashboardStateByEntityID(states)
+	resolved := make(map[string]map[string]string)
+	for _, trace := range traces {
+		key := strings.ToLower(strings.TrimSpace(trace.TargetPsKey))
+		if resolved[key] == nil {
+			resolved[key] = make(map[string]string)
+		}
+		resolved[key][trace.Metric] = trace.Resolved
+	}
 	ret := make(map[string]map[string]struct{})
 	for _, target := range targets {
 		psKey := strings.ToLower(strings.TrimSpace(target.PsKey))
@@ -108,14 +127,7 @@ func dashboardUnsupportedMetricsByTargetWithPinned(config map[string]any, target
 				unsupported[metric] = struct{}{}
 				continue
 			}
-			if metric == "p13116" {
-				match := dashboardSemanticRecommendation(target, metric, states, singleTarget)
-				if len(match.Candidates) == 0 && strings.TrimSpace(pinned[dashboardSourceMappingID(target)][metric]) == "" {
-					unsupported[metric] = struct{}{}
-					continue
-				}
-			}
-			if resolveDashboardMetricEntity(target, metric, states, stateByID, singleTarget) == "" {
+			if resolved[psKey][metric] == "" {
 				unsupported[metric] = struct{}{}
 			}
 		}

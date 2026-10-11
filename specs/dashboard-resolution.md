@@ -5,10 +5,10 @@ Scope: Placeholder discovery, candidate compatibility, scoring, canonical semant
 
 ## Candidate gate
 
-- **REQ-RES-001** — Only `sensor.*` entities containing `gosungrow` are automatic candidates. Placeholders have form `sensor.gosungrow_virtual_<ps_key|ps_id>_<metric>`.
+- **REQ-RES-001** — Automatic candidates MUST be `sensor.*` entities with GoSungrow identity. For the canonical daily metrics in REQ-RES-021, GoSungrow identity and target affinity MUST use the registry unique ID whenever any registry metadata is available; a renamed or translated entity ID need not contain GoSungrow words or target identifiers. Otherwise the existing GoSungrow entity-ID gate applies. Placeholders retain the form `sensor.gosungrow_virtual_<ps_key|ps_id>_<metric>`.
 - **REQ-RES-002** — On multiple targets, a candidate MUST contain the target key or plant ID as a bounded identifier. On a single target, an otherwise compatible GoSungrow entity receives weak fallback affinity.
 - **REQ-RES-003** — Candidate state MUST be finite numeric and not empty, unknown, unavailable, none, or null. Present units MUST match metric kind; absent units are accepted with a penalty.
-- **REQ-RES-004** — Exact usable virtual entity by target key, then plant ID, MUST win with score `9999`.
+- **REQ-RES-004** — Except for the canonical daily metrics in REQ-RES-021 and the plant-PV precedence in REQ-RES-016, an exact usable virtual entity by target key, then plant ID, MUST win with score `9999`. Canonical daily metrics MUST satisfy their canonical contract and use REQ-RES-011–013; an exact virtual name MUST NOT bypass canonical eligibility or confidence.
 
 ## General scoring
 
@@ -64,12 +64,12 @@ The ordered aliases below are normative; tokens are alternatives within `/` grou
 
 ## Canonical daily matching
 
-- **REQ-RES-010** — Registry unique ID MUST be used for canonical matching when any registry metadata is available; entity ID is used only when registry data is globally unavailable, and the result is unverified/non-confident.
+- **REQ-RES-010** — Registry unique ID MUST be used for canonical matching when any registry metadata is available; entity ID is used only when registry data is globally unavailable, and the result is unverified/non-confident. The same trusted identity MUST govern candidate membership, target affinity, canonical matching, and override compatibility. When registry metadata is globally available but absent for an individual entity, that entity MUST NOT regain canonical eligibility through its entity ID.
 - **REQ-RES-011** — Canonical terminal IDs and base scores are: `p13112` 1000 plant, `p83022` 980 plant, `p83009` 920 inverter, `p1` 900 inverter, verified yield aliases 880/870; `p13116` 1000 plant, `p83097` 980 plant; `p13173` 1000, `p83119` 980, export aliases 950/940/930; `p13147` 1000, `p83102` 980, import aliases 950/940/930; `p13199` 1000 followed by verified daily-total/load aliases 960 down to 910.
 - **REQ-RES-012** — Canonical plant scope gains +80 and inverter role gains +30. Candidates sort score descending then entity ID ascending.
 - **REQ-RES-013** — Canonical match is confident only when registry metadata exists and the winner leads the next non-equivalent result by at least 20, unless there is only one/equivalent duplicate. Inverter-scoped `p13112` additionally requires exactly one inverter in the target plant.
 - **REQ-RES-014** — A legacy semantic winner is confident with one candidate, a lead of at least 20, or an equivalent `_2` duplicate having equal state/unit.
-- **REQ-RES-015** — Daily semantics require an identity containing one of `_today`, `today_`, `_daily`, `daily_`, `_p13112`, `_p13116`, `_p13147`, `_p13173`, `_p13199`, or a valid RFC3339 `last_reset` between 6 hours in the future and 48 hours old.
+- **REQ-RES-015** — Verified native daily point identifiers enumerated in REQ-RES-011 establish their documented daily period without requiring a daily word in the entity ID or a `last_reset`. Other daily identities require one of `_today`, `today_`, `_daily`, `daily_`, `_p13112`, `_p13116`, `_p13147`, `_p13173`, `_p13199`, or a valid RFC3339 `last_reset` between 6 hours in the future and 48 hours old. A friendly name MUST NOT establish or veto canonical meaning.
 
 ## Canonical live PV matching
 
@@ -78,6 +78,11 @@ The ordered aliases below are normative; tokens are alternatives within `/` grou
 - **REQ-RES-018** — PV candidate diagnostics MUST distinguish canonical plant aggregate, device AC, device DC, mixed-basis rejection, and incomplete-contributor rejection. Candidate ordering remains deterministic under `REQ-RES-006`.
 - **REQ-RES-019** — Inverter-like diagnostic counts include types 1, 14, and 55, plus unknown-role devices explicitly named as inverters. Plant, meter, and communication roles MUST be excluded regardless of name. Such counts MUST NOT be presented as proof of aggregation completeness.
 - **REQ-RES-020** — Automatic PV resolution MUST reject grid-channel and phase-power candidates regardless of their units, current values, or plant affinity. Existing accepted manual selections remain governed by the override compatibility rules.
+
+## Complete daily composition
+
+- **REQ-RES-021** — Canonical daily metrics are `p13112`, `p13116`, `p13173`, `p13147`, and `p13199`. Their automatic resolution MUST enforce canonical identity, target affinity, metric meaning, direction, daily period, applicable scope restrictions, numeric validity, unit compatibility, freshness under REQ-SRC-010, and confidence under REQ-RES-013. Legacy alias, token, suffix, or exact-entity matching MUST NOT supply a fallback that fails this contract. Without a confident eligible canonical candidate, the automatic source MUST remain unresolved; saved selections remain governed by REQ-SRC-005, 007, 013, and 014.
+- **REQ-RES-022** — Every target-specific template metric MUST retain its original metric and placeholder identity through canonical resolution, including when legacy matching finds nothing. The same final resolution outcome, candidates, confidence, and reason MUST govern capability pruning, generated defaults and recommendations, source candidates, binding construction, override validation, and diagnostic traces. A successful legacy match MUST NOT be a prerequisite for considering a canonical source.
 
 ## Prohibited behavior
 

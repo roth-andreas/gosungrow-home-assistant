@@ -51,12 +51,26 @@ type dashboardMetricCandidate struct {
 }
 
 type dashboardMetricTrace struct {
-	Placeholder string
-	Metric      string
-	TargetPsKey string
-	Resolved    string
-	Source      string
-	Candidates  []dashboardMetricCandidate
+	Placeholder  string
+	Metric       string
+	TargetPsKey  string
+	Resolved     string
+	Source       string
+	Candidates   []dashboardMetricCandidate
+	Resolution   *dashboardDailyResolution
+	BindingCount int
+	Reason       string
+}
+
+// A daily result is carried through pruning, mapping, and diagnostics so none
+// of those stages can restore an unchecked legacy automatic source.
+type dashboardDailyResolution struct {
+	Match                 dashboardSemanticMatch
+	Default               string
+	Override              string
+	Pinned                bool
+	NeedsReview           bool
+	UnsupportedCalculated bool
 }
 
 type dashboardRemapReport struct {
@@ -88,17 +102,6 @@ func remapDashboardEntitiesWithReport(config map[string]any, targets []haDashboa
 	if len(refs) == 0 {
 		return config, report
 	}
-	if len(states) == 0 {
-		for _, ref := range refs {
-			report.Unresolved = append(report.Unresolved, dashboardUnresolvedEntityRef{
-				Entity: ref.Entity,
-				Metric: ref.Metric,
-				Reason: "no Home Assistant states were available",
-			})
-		}
-		return config, report
-	}
-
 	stateByID := dashboardStateByEntityID(states)
 
 	replacements := make(map[string]string)
@@ -107,10 +110,15 @@ func remapDashboardEntitiesWithReport(config map[string]any, targets []haDashboa
 		resolved, trace := resolveDashboardEntityRefWithTrace(ref, states, stateByID, singleTarget)
 		report.Traces = append(report.Traces, trace)
 		if resolved == "" {
+			reason := dashboardResolveFailureReason(ref, states, singleTarget)
+			if trace.Resolution != nil {
+				reason = trace.Resolution.Match.Reason
+			}
+			report.Traces[len(report.Traces)-1].Reason = reason
 			report.Unresolved = append(report.Unresolved, dashboardUnresolvedEntityRef{
 				Entity: ref.Entity,
 				Metric: ref.Metric,
-				Reason: dashboardResolveFailureReason(ref, states, singleTarget),
+				Reason: reason,
 			})
 			continue
 		}
@@ -224,6 +232,20 @@ func resolveDashboardMetricEntityWithTrace(target haDashboardTarget, metric stri
 		Metric:      metric,
 		TargetPsKey: target.PsKey,
 		Candidates:  make([]dashboardMetricCandidate, 0),
+	}
+	if dashboardIsCanonicalDailyMetric(metric) {
+		match := dashboardSemanticRecommendation(target, metric, states, singleTarget)
+		trace.Resolution = &dashboardDailyResolution{Match: match}
+		trace.Source = "unavailable"
+		if match.Confident {
+			trace.Resolution.Default = match.Entity
+			trace.Resolved, trace.Source = match.Entity, "canonical"
+		}
+		trace.Candidates = append(trace.Candidates, match.Candidates...)
+		if len(trace.Candidates) > dashboardSourceRecommendedLimit {
+			trace.Candidates = trace.Candidates[:dashboardSourceRecommendedLimit]
+		}
+		return trace.Resolved, trace
 	}
 
 	legacy := []string{

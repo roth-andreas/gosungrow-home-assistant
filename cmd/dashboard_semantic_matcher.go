@@ -7,7 +7,7 @@ import (
 	"unicode"
 )
 
-const dashboardSemanticMatcherVersion = 3
+const dashboardSemanticMatcherVersion = 4
 
 type dashboardSemanticSourceSpec struct {
 	Identifier     string
@@ -127,49 +127,23 @@ func dashboardSemanticRecommendation(target haDashboardTarget, metric string, st
 }
 
 func dashboardCanonicalRecommendation(target haDashboardTarget, metric string, contract dashboardSemanticContract, states []haState, singleTarget bool) dashboardSemanticMatch {
-	profile := dashboardMetricProfileFor(metric)
 	values := make([]dashboardMetricCandidate, 0)
 	registryAvailable := dashboardRegistryMetadataAvailable(states)
+	now := time.Now()
 	for _, state := range states {
-		if dashboardPVForbidden(state, metric) || dashboardMetricStateRejectionReason(state, profile) != "" || !dashboardSourceStateRecent(state, metric, time.Now()) || !dashboardSemanticStateMatchesTargetStable(target, state, singleTarget, registryAvailable) {
-			continue
-		}
-		var source dashboardSemanticSourceSpec
-		var ok bool
-		if registryAvailable {
-			source, ok = dashboardSemanticSource(state.RegistryUniqueID, contract.sources)
-		} else {
-			source, ok = dashboardSemanticSourceState(state, contract.sources)
-		}
+		candidate, ok := dashboardCanonicalSourceCandidate(target, metric, contract, state, singleTarget, registryAvailable, now)
 		if !ok {
 			continue
 		}
-		role := dashboardCandidateDeviceRoleState(target, state)
-		scope := source.Scope
-		if scope == "" {
-			scope = role
-		}
-		score := source.Score
-		if scope == "plant" {
-			score += 80
-		} else if role == "inverter" {
-			score += 30
-		}
-		compatibility := "compatible"
-		reason := "Canonical Sungrow point with compatible daily semantics"
-		if !registryAvailable {
-			compatibility = "unverified"
-			reason = "Canonical-looking entity; registry metadata unavailable, review before selecting"
-		}
-		values = append(values, dashboardMetricCandidate{
-			Entity: strings.TrimSpace(state.EntityID), Metric: metric, Score: score, State: state.State,
-			Unit: dashboardStateUnit(state), Source: "canonical", Reason: reason,
-			PointID: source.CanonicalPoint, Provenance: source.Provenance, Period: source.Period, Scope: scope, Role: role, Compatibility: compatibility,
-		})
+		values = append(values, candidate)
 	}
 	dashboardSortSemanticCandidates(values)
 	if len(values) == 0 {
-		return dashboardSemanticMatch{}
+		reason := "No eligible canonical daily source"
+		if !registryAvailable {
+			reason = "Canonical registry verification unavailable"
+		}
+		return dashboardSemanticMatch{Reason: reason, Candidates: values}
 	}
 	confident := true
 	if len(values) > 1 && values[0].Score-values[1].Score < 20 && !dashboardEquivalentDuplicate(values[0], values[1]) {
@@ -181,7 +155,114 @@ func dashboardCanonicalRecommendation(target haDashboardTarget, metric string, c
 	if !registryAvailable {
 		confident = false
 	}
-	return dashboardSemanticMatch{Entity: values[0].Entity, Score: values[0].Score, Confident: confident, Candidates: values, Reason: values[0].Reason}
+	reason := values[0].Reason
+	if !confident {
+		reason = "Ambiguous canonical daily candidates"
+		if !registryAvailable {
+			reason = "Canonical registry verification unavailable"
+		}
+	}
+	return dashboardSemanticMatch{Entity: values[0].Entity, Score: values[0].Score, Confident: confident, Candidates: values, Reason: reason}
+}
+
+func dashboardIsCanonicalDailyMetric(metric string) bool {
+	contract, ok := dashboardSemanticContractFor(metric)
+	return ok && contract.daily && len(contract.sources) > 0
+}
+
+// Canonical matching and new override validation share this eligibility gate.
+// Entity and friendly names are presentation; only the selected stable identity
+// establishes meaning when the registry is available.
+func dashboardCanonicalSourceCandidate(target haDashboardTarget, metric string, contract dashboardSemanticContract, state haState, singleTarget, registryAvailable bool, now time.Time) (dashboardMetricCandidate, bool) {
+	identity := state.EntityID
+	if registryAvailable {
+		identity = state.RegistryUniqueID
+	}
+	identity = strings.ToLower(strings.TrimSpace(identity))
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(state.EntityID)), "sensor.") || !strings.Contains(identity, "gosungrow") {
+		return dashboardMetricCandidate{}, false
+	}
+	// A canonical counter's declared plant/device scope must be verified. The
+	// weak single-target legacy name fallback cannot establish that scope.
+	if !dashboardCanonicalTargetAffinity(identity, target, false) {
+		return dashboardMetricCandidate{}, false
+	}
+	source, ok := dashboardSemanticSource(identity, contract.sources)
+	if !ok || dashboardMetricStateRejectionReason(state, dashboardMetricProfileFor(metric)) != "" || !dashboardSourceStateRecent(state, metric, now) {
+		return dashboardMetricCandidate{}, false
+	}
+	// The approved terminal point establishes meaning; opaque plant/device
+	// identifiers and presentation names do not establish direction or period.
+	role := dashboardCanonicalDeviceRole(target, identity)
+	if source.Scope == "inverter" && role != "inverter" {
+		if (role != "unknown" && role != "plant") || !dashboardCandidateHasInverterContext("sensor."+strings.TrimPrefix(dashboardSemanticNormalize(identity), "sensor_")) {
+			return dashboardMetricCandidate{}, false
+		}
+		role = "inverter"
+	}
+	if source.Provenance != "native" && !dashboardCandidateIsDailyIdentity(dashboardSemanticNormalize(identity), state, now) {
+		return dashboardMetricCandidate{}, false
+	}
+	scope := source.Scope
+	if metric == "p13112" && role == "inverter" {
+		scope = "inverter"
+	}
+	score := source.Score
+	if scope == "plant" {
+		score += 80
+	} else if role == "inverter" {
+		score += 30
+	}
+	compatibility, reason := "compatible", "Canonical Sungrow point with compatible daily semantics"
+	if !registryAvailable {
+		compatibility, reason = "unverified", "Canonical-looking entity; registry metadata unavailable, review before selecting"
+	}
+	return dashboardMetricCandidate{
+		Entity: strings.TrimSpace(state.EntityID), Metric: metric, Score: score, State: state.State,
+		Unit: dashboardStateUnit(state), Source: "canonical", Reason: reason,
+		PointID: source.CanonicalPoint, Provenance: source.Provenance, Period: source.Period,
+		Scope: scope, Role: role, Compatibility: compatibility,
+	}, true
+}
+
+// Registry IDs use MQTT wire separators, while entity IDs use underscores.
+// Compare the opaque identifier itself before any semantic normalization.
+func dashboardCanonicalIdentityContains(identity, identifier string) bool {
+	identifier = strings.ToLower(strings.TrimSpace(identifier))
+	if identifier == "" {
+		return false
+	}
+	for start := 0; start < len(identity); {
+		index := strings.Index(identity[start:], identifier)
+		if index < 0 {
+			return false
+		}
+		index += start
+		end := index + len(identifier)
+		if (index == 0 || strings.ContainsRune("_.-", rune(identity[index-1]))) && (end == len(identity) || strings.ContainsRune("_.-", rune(identity[end]))) {
+			return true
+		}
+		start = index + 1
+	}
+	return false
+}
+
+func dashboardCanonicalTargetAffinity(identity string, target haDashboardTarget, singleTarget bool) bool {
+	return dashboardCanonicalIdentityContains(identity, target.PsKey) || dashboardCanonicalIdentityContains(identity, target.PsID) || singleTarget
+}
+
+func dashboardCanonicalDeviceRole(target haDashboardTarget, identity string) string {
+	role, longest := "unknown", 0
+	for _, device := range target.PlantDevices {
+		key := strings.TrimSpace(device.PsKey)
+		if len(key) > longest && dashboardCanonicalIdentityContains(identity, key) {
+			role, longest = dashboardDeviceRole(device.DeviceType), len(key)
+		}
+	}
+	if longest == 0 && dashboardCanonicalIdentityContains(identity, target.PsID) {
+		role = "plant"
+	}
+	return role
 }
 
 func dashboardLegacySemanticRecommendation(target haDashboardTarget, metric string, contract dashboardSemanticContract, states []haState, singleTarget bool) dashboardSemanticMatch {
@@ -284,7 +365,10 @@ func dashboardDeviceRole(deviceType int64) string {
 }
 
 func dashboardCandidateIsDaily(state haState) bool {
-	identity := dashboardSemanticStateIdentity(state)
+	return dashboardCandidateIsDailyIdentity(dashboardSemanticStateIdentity(state), state, time.Now())
+}
+
+func dashboardCandidateIsDailyIdentity(identity string, state haState, now time.Time) bool {
 	for _, marker := range []string{"_today", "today_", "_daily", "daily_", "_p13112", "_p13116", "_p13147", "_p13173", "_p13199"} {
 		if strings.Contains(identity, marker) {
 			return true
@@ -295,7 +379,7 @@ func dashboardCandidateIsDaily(state haState) bool {
 	if reset == "" || err != nil {
 		return false
 	}
-	age := time.Since(when)
+	age := now.Sub(when)
 	return age >= -6*time.Hour && age <= 48*time.Hour
 }
 
@@ -321,15 +405,6 @@ func dashboardSemanticNormalize(value string) string {
 func dashboardSemanticSource(identity string, sources []dashboardSemanticSourceSpec) (dashboardSemanticSourceSpec, bool) {
 	for _, source := range sources {
 		if dashboardSemanticTerminalIdentifier(identity, source.Identifier) {
-			return source, true
-		}
-	}
-	return dashboardSemanticSourceSpec{}, false
-}
-
-func dashboardSemanticSourceState(state haState, sources []dashboardSemanticSourceSpec) (dashboardSemanticSourceSpec, bool) {
-	for _, identity := range []string{state.RegistryUniqueID, state.EntityID} {
-		if source, ok := dashboardSemanticSource(identity, sources); ok {
 			return source, true
 		}
 	}
@@ -366,18 +441,6 @@ func dashboardSemanticStateMatchesTarget(target haDashboardTarget, state haState
 	return false
 }
 
-func dashboardSemanticStateMatchesTargetStable(target haDashboardTarget, state haState, singleTarget, registryAvailable bool) bool {
-	if !registryAvailable {
-		return dashboardSemanticStateMatchesTarget(target, state, singleTarget)
-	}
-	identity := strings.ToLower(strings.TrimSpace(state.RegistryUniqueID))
-	if identity == "" {
-		return false
-	}
-	_, ok := dashboardEntityPlantAffinity(identity, target, singleTarget)
-	return ok
-}
-
 func dashboardRegistryMetadataAvailable(states []haState) bool {
 	for _, state := range states {
 		if strings.TrimSpace(state.RegistryUniqueID) != "" {
@@ -403,7 +466,11 @@ func dashboardEquivalentDuplicate(a, b dashboardMetricCandidate) bool {
 }
 
 func dashboardIsUnsupportedCalculatedDirectSolar(state haState) bool {
-	for _, identity := range []string{state.RegistryUniqueID, state.EntityID} {
+	identities := []string{state.EntityID}
+	if strings.TrimSpace(state.RegistryUniqueID) != "" {
+		identities = []string{state.RegistryUniqueID}
+	}
+	for _, identity := range identities {
 		if dashboardSemanticTerminalIdentifier(identity, "pv_consumption_energy") || dashboardSemanticTerminalIdentifier(identity, "pv_to_load_energy") {
 			return true
 		}
@@ -415,6 +482,15 @@ func dashboardManualCandidateCompatible(target haDashboardTarget, metric string,
 	if metric == "p13116" && dashboardIsUnsupportedCalculatedDirectSolar(state) {
 		return false
 	}
+	if dashboardIsCanonicalDailyMetric(metric) {
+		identity := strings.ToLower(strings.TrimSpace(state.RegistryUniqueID))
+		allowLegacyAffinity := false
+		if identity == "" {
+			identity = strings.ToLower(strings.TrimSpace(state.EntityID))
+			allowLegacyAffinity = singleTarget
+		}
+		return strings.HasPrefix(strings.ToLower(strings.TrimSpace(state.EntityID)), "sensor.") && strings.Contains(identity, "gosungrow") && dashboardCanonicalTargetAffinity(identity, target, allowLegacyAffinity) && dashboardMetricStateRejectionReason(state, dashboardMetricProfileFor(metric)) == ""
+	}
 	identity := strings.ToLower(strings.TrimSpace(state.RegistryUniqueID + " " + state.EntityID))
 	if !strings.Contains(identity, "gosungrow") || !dashboardSemanticStateMatchesTarget(target, state, singleTarget) {
 		return false
@@ -424,16 +500,9 @@ func dashboardManualCandidateCompatible(target haDashboardTarget, metric string,
 
 func dashboardCanonicalCandidateCompatible(target haDashboardTarget, metric string, state haState, singleTarget, registryAvailable bool) bool {
 	contract, ok := dashboardSemanticContractFor(metric)
-	if !ok || len(contract.sources) == 0 || dashboardMetricStateRejectionReason(state, dashboardMetricProfileFor(metric)) != "" {
+	if !ok || len(contract.sources) == 0 {
 		return false
 	}
-	if !dashboardSemanticStateMatchesTargetStable(target, state, singleTarget, registryAvailable) {
-		return false
-	}
-	identity := state.EntityID
-	if registryAvailable {
-		identity = state.RegistryUniqueID
-	}
-	_, ok = dashboardSemanticSource(identity, contract.sources)
+	_, ok = dashboardCanonicalSourceCandidate(target, metric, contract, state, singleTarget, registryAvailable, time.Now())
 	return ok
 }

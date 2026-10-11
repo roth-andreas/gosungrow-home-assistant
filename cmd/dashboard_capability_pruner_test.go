@@ -131,10 +131,10 @@ func TestPruneDashboardForMissingBatteryPrunesSummaryBatteryRows(t *testing.T) {
 		{PsID: "100", PsKey: "100_14_1_1"},
 	}
 	states := []haState{
-		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_pv_information_pv_daily_energy", "9.0", "kWh"),
-		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_load_information_total_load_energy", "7.2", "kWh"),
-		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_grid_information_pv_to_grid_energy", "2.1", "kWh"),
-		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_grid_information_grid_to_load_energy", "1.8", "kWh"),
+		dashboardTestCanonicalState("sensor.gosungrow_100_sungrow_gosungrow_pv_information_pv_daily_energy", "gosungrow_100_p13112", "9.0", "kWh"),
+		dashboardTestCanonicalState("sensor.gosungrow_100_sungrow_gosungrow_load_information_total_load_energy", "gosungrow_100_p13199", "7.2", "kWh"),
+		dashboardTestCanonicalState("sensor.gosungrow_100_sungrow_gosungrow_grid_information_pv_to_grid_energy", "gosungrow_100_p13173", "2.1", "kWh"),
+		dashboardTestCanonicalState("sensor.gosungrow_100_sungrow_gosungrow_grid_information_grid_to_load_energy", "gosungrow_100_p13147", "1.8", "kWh"),
 	}
 
 	pruned := pruneDashboardForMissingBattery(config, targets, states)
@@ -270,7 +270,7 @@ func TestPruneDashboardForMissingBatteryDoesNotTreatPvToBatteryEnergyAsBatteryCa
 		dashboardTestState("sensor.gosungrow_1610907_sungrow_gosungrow_pv_information_total_dc_power", "1.23", "kW"),
 		dashboardTestState("sensor.gosungrow_1610907_sungrow_gosungrow_load_information_load_power", "0.72", "kW"),
 		dashboardTestState("sensor.gosungrow_1610907_sungrow_gosungrow_grid_information_grid_to_load_power", "0.10", "kW"),
-		dashboardTestState("sensor.gosungrow_1610907_sungrow_gosungrow_pv_information_pv_daily_energy", "47.70", "kWh"),
+		dashboardTestCanonicalState("sensor.gosungrow_1610907_sungrow_gosungrow_pv_information_pv_daily_energy", "gosungrow_1610907_p13112", "47.70", "kWh"),
 		dashboardTestState("sensor.gosungrow_1610907_sungrow_gosungrow_pv_information_pv_to_battery_energy", "47.70", "kWh"),
 	}
 
@@ -349,8 +349,8 @@ func TestPruneDashboardForUnavailableMetricsPrunesUnsupportedLegacyDirectionalFl
 		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83076_map", "3.10", "kW"),
 		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83106_map", "1.40", "kW"),
 		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83549", "0.30", "kW"),
-		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83022y", "18.60", "kWh"),
-		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83119_map", "5.10", "kWh"),
+		dashboardTestCanonicalState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83022y", "gosungrow_100_p83022", "18.60", "kWh"),
+		dashboardTestCanonicalState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83119_map", "gosungrow_100_p83119", "5.10", "kWh"),
 	}
 
 	pruned := pruneDashboardForUnavailableMetrics(config, targets, states)

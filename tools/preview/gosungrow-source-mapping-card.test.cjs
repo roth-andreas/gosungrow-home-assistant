@@ -36,7 +36,7 @@ function fixture() {
     { entity_id: "sensor.advanced_production", recommended: false, confidence: "medium", reason: "Compatible advanced result" },
   ];
   const config = {
-    schema_version: 1, mapping_id: "source-100", dashboard_url_path: "gosungrow-flow",
+    schema_version: 1, matcher_version: 4, mapping_id: "source-100", dashboard_url_path: "gosungrow-flow",
     defaults: { p13112: oldEntity }, pinned_defaults: { p13112: oldEntity }, overrides: {}, recommendations: { p13112: newEntity },
     bindings: { p13112: ["/views/0/cards/0/entity"] }, metrics: [metric], candidates: { p13112: candidates }, labels: {},
   };
@@ -150,4 +150,30 @@ test("save failure leaves local mapping unchanged", async () => {
   assert.equal(card._config.defaults.p13112, oldEntity);
   assert.deepEqual(card._config.overrides, {});
   assert.match(card._notice, /save rejected/);
+});
+
+test("matcher drift aborts selection and reset before any save", async () => {
+  for (const [localVersion, freshVersion] of [[3, 4], [4, 3], [undefined, 4], [4, undefined]]) {
+    for (const reset of [false, true]) {
+      const { config, dashboard, oldEntity, newEntity } = fixture();
+      config.matcher_version = localVersion;
+      dashboard.views[1].cards[0].matcher_version = freshVersion;
+      const calls = [];
+      const card = new MappingCard();
+      card.setConfig(structuredClone(config));
+      const before = structuredClone(card._config);
+      card._hass = {
+        user: { is_admin: true }, states: { [oldEntity]: state(4), [newEntity]: state(5) },
+        callWS: async (request) => {
+          calls.push(request.type);
+          if (request.type === "lovelace/config") return structuredClone(dashboard);
+          throw new Error("unexpected mutation after matcher drift");
+        },
+      };
+      await card._save("p13112", reset ? "" : newEntity);
+      assert.deepEqual(calls, ["lovelace/config"]);
+      assert.deepEqual(card._config, before);
+      assert.match(card._notice, /Dashboard changed/);
+    }
+  }
 });

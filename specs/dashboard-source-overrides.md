@@ -25,16 +25,16 @@ Scope: Mapping-card schema, candidates, validation, persistence, binding, and br
 | `p13199` | `energy_summary` | `mdi:home-lightning-bolt` |
 | `p13029` | `energy_summary` | `mdi:battery-arrow-down-outline` |
 
-- **REQ-SRC-001** — Every target Data Sources card MUST use type `custom:gosungrow-source-mapping-card-v1`, schema 1, validation schema 1, matcher version 3, mapping ID equal to normalized target `ps_key`, and the managed dashboard URL path. Metric group and icon metadata MUST match the table above; group display order is live power, today's energy, battery, energy summary.
+- **REQ-SRC-001** — Every target Data Sources card MUST use type `custom:gosungrow-source-mapping-card-v1`, schema 1, validation schema 1, matcher version 4, mapping ID equal to normalized target `ps_key`, and the managed dashboard URL path. Metric group and icon metadata MUST match the table above; group display order is live power, today's energy, battery, energy summary.
 - **REQ-SRC-002** — It MUST contain per-metric defaults, pinned defaults, recommendations, accepted overrides, localized metric configuration, candidates, and JSON Pointer bindings. Candidate snapshots MUST NOT contain live state values; the browser reads current Home Assistant state.
 - **REQ-SRC-003** — Bindings MUST identify every matching entity string outside mapping cards. JSON Pointer escapes `~` as `~0` and `/` as `~1`. Metrics that resolve to the same entity MUST retain distinct placeholder-derived binding paths.
 - **REQ-SRC-004** — Flow cards MUST receive `automatic_entities` only for fields currently equal to generated defaults so manual node sources remain distinguishable.
 
 ## Defaults and recommendations
 
-- **REQ-SRC-005** — Existing pinned defaults take precedence across reconciliation. Otherwise a confident semantic recommendation becomes the default.
-- **REQ-SRC-006** — For `p13116`, if no canonical candidate exists, use the generated entity only when it is a native canonical point and not an unsupported calculation; otherwise leave it unavailable and mark review required.
-- **REQ-SRC-007** — A confident safer entity differing from a pinned default MUST be offered as a recommendation, not silently adopted. Unconfident/missing canonical verification MUST mark review when the current choice cannot be verified.
+- **REQ-SRC-005** — Existing nonempty pinned defaults MUST take precedence across reconciliation. Otherwise a confident semantic recommendation becomes the default. For canonical daily metrics, that recommendation MUST satisfy REQ-RES-021. An unresolved automatic source MUST NOT acquire a default from legacy matching. Existing accepted overrides retain their specified precedence and preservation rules.
+- **REQ-SRC-006** — A new automatic `p13116` default MUST be a confident eligible native canonical source under REQ-RES-021. Without one, the automatic metric remains unresolved; unsupported calculations MUST NOT supply its default. Existing pinned or previously accepted legacy selections remain governed by REQ-SRC-007, 011, 013, and 014.
+- **REQ-SRC-007** — A confident safer entity differing from a pinned default MUST be offered as a recommendation, not silently adopted. Unconfident/missing canonical verification MUST mark review when the current choice cannot be verified. A preserved canonical-daily selection that cannot be verified MUST retain its identity and be marked for review, even when no generated automatic source exists.
 - **REQ-SRC-008** — Candidate ordering is current default first, then score descending/entity ascending. Maximum is 20 per metric: first five recommended and 15 additional. Total candidates per target MUST not exceed 340.
 - **REQ-SRC-009** — Candidate confidence is high at score ≥200, medium at ≥100, low below 100; explicit manual candidates report manual confidence.
 - **REQ-SRC-010** — Non-default stale candidates MUST be omitted. The default remains visible with low confidence and stale reason. Freshness is 30 minutes for non-energy and 36 hours for energy; missing timestamps count as recent, unparsable/future beyond five minutes count as stale.
@@ -52,7 +52,7 @@ Scope: Mapping-card schema, candidates, validation, persistence, binding, and br
 
 - **REQ-SRC-017** — Non-administrators MAY inspect sources but MUST NOT open a mutating workflow or call save APIs.
 - **REQ-SRC-018** — Selecting a candidate is a preview. Mutation occurs only after `Use this source`; a warned choice requires explicit confirmation.
-- **REQ-SRC-019** — Before mutation the card MUST fetch fresh Lovelace config and verify schema, mapping ID, defaults, overrides, recommendations, bindings, allowed/selectable candidate membership, and every bound path's current entity. Any mismatch is stale and MUST abort.
+- **REQ-SRC-019** — Before mutation the card MUST fetch fresh Lovelace config and verify schema, mapping ID, defaults, overrides, recommendations, bindings, allowed/selectable candidate membership, and every bound path's current entity. Any mismatch is stale and MUST abort. Before mutation, the card MUST also verify that the fresh dashboard matcher version equals its loaded configuration's matcher version.
 - **REQ-SRC-020** — Save MUST clone the dashboard, update all metric bindings and the override. Selecting the current recommendation as a first-time choice adopts it into defaults/pinned defaults and clears recommendation/review flags instead of creating a manual override.
 - **REQ-SRC-021** — After save, the card MUST re-fetch and verify effective source plus every binding before changing local UI state. Read, save, or verification failure leaves local mapping unchanged and displays an error.
 - **REQ-SRC-022** — Success MUST issue a Home Assistant notification and bubbling/composed `config-refresh` event. Reset follows the same transaction.
@@ -63,6 +63,10 @@ Scope: Mapping-card schema, candidates, validation, persistence, binding, and br
 - **REQ-SRC-024** — Candidate search is case-insensitive across friendly name, entity ID, device, point, source, and reason. Shared friendly-name prefixes MAY be visually shortened, but title/ARIA identity MUST preserve full name and entity ID.
 - **REQ-SRC-025** — Dialog MUST support Escape close, keyboard focus trapping/restoration, minimum touch targets, scroll/focus preservation during live rerender, and mobile bottom-sheet layout.
 - **REQ-SRC-026** — A fresh or unpinned dashboard MUST adopt canonical plant `pv_power` automatically. An existing manual override MUST remain unchanged. An existing pinned automatic device source MUST remain selected, be marked for review, and receive the canonical plant aggregate as its preferred recommendation; accepting it uses the verified transaction in `REQ-SRC-019`–`REQ-SRC-022` and adopts it as the new pinned default.
+
+## Complete source composition
+
+- **REQ-SRC-027** — A known target metric MUST NOT be treated as unknown solely because legacy matching or automatic resolution produced no entity. A final confident canonical source or saved selection requiring preservation MUST retain its source-mapping entry, applicable candidates, and metric-specific bindings. Pruning-induced changes to JSON Pointer positions MUST preserve the original target and metric ownership.
 
 ## Prohibited behavior
 

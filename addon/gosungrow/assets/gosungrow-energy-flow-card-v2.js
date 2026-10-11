@@ -2179,7 +2179,7 @@ class GoSungrowSourceMappingCard extends HTMLElement {
       const dashboard = await this._hass.callWS({ type: "lovelace/config", url_path: this._config.dashboard_url_path, force: true });
       const card = this._findMappingCard(dashboard, this._config.mapping_id);
       const stale = () => new Error(this._label("source_stale", "Dashboard changed; reload and try again."));
-      if (!card || Number(card.schema_version) !== 1 || !this._sameMap(card.defaults, this._config.defaults) || !this._sameMap(card.overrides || {}, this._config.overrides || {}) || !this._sameMap(card.recommendations || {}, this._config.recommendations || {}) || !this._sameValue(card.bindings, this._config.bindings)) throw stale();
+      if (!card || Number(card.schema_version) !== 1 || card.matcher_version !== this._config.matcher_version || !this._sameMap(card.defaults, this._config.defaults) || !this._sameMap(card.overrides || {}, this._config.overrides || {}) || !this._sameMap(card.recommendations || {}, this._config.recommendations || {}) || !this._sameValue(card.bindings, this._config.bindings)) throw stale();
       if (entityID) {
         const cardMetric = Array.isArray(card.metrics) ? card.metrics.find((entry) => entry.key === metricKey) : null;
         const localCandidates = this._candidates(metric);

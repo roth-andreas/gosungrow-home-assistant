@@ -62,24 +62,33 @@ var dashboardFlowEntityMetrics = map[string]string{
 }
 
 func applyDashboardSourceMappings(config map[string]any, current map[string]any, persisted map[string]map[string]string, targets []haDashboardTarget, states []haState, traces []dashboardMetricTrace, dashboardURL string, locale dashboardLocaleBundle) (map[string]any, map[string]map[string]string) {
-	requestedOverrides := extractDashboardSourceOverrides(current)
+	traces, accepted := prepareDashboardSourceTraces(traces, targets, states, extractDashboardSourceDefaults(current), extractDashboardSourceOverrides(current), persisted)
+	return applyDashboardSourceMappingsWithTraces(config, current, targets, states, traces, accepted, dashboardURL, locale)
+}
+
+func applyDashboardSourceMappingsWithTraces(config map[string]any, current map[string]any, targets []haDashboardTarget, states []haState, traces []dashboardMetricTrace, acceptedOverrides map[string]map[string]string, dashboardURL string, locale dashboardLocaleBundle) (map[string]any, map[string]map[string]string) {
 	currentDefaults := extractDashboardSourceDefaults(current)
-	acceptedOverrides := make(map[string]map[string]string)
 	singleTarget := len(targets) == 1
 
 	defaultsByTarget := make(map[string]map[string]string, len(targets))
 	placeholdersByTarget := make(map[string]map[string]string, len(targets))
+	resolutionsByTarget := make(map[string]map[string]*dashboardDailyResolution)
 	for _, trace := range traces {
 		key := strings.ToLower(strings.TrimSpace(trace.TargetPsKey))
 		metric := strings.ToLower(strings.TrimSpace(trace.Metric))
-		if key == "" || metric == "" || trace.Resolved == "" {
+		if key == "" || metric == "" || (trace.Resolved == "" && trace.Resolution == nil) {
 			continue
 		}
 		if defaultsByTarget[key] == nil {
 			defaultsByTarget[key] = make(map[string]string)
 			placeholdersByTarget[key] = make(map[string]string)
+			resolutionsByTarget[key] = make(map[string]*dashboardDailyResolution)
 		}
 		defaultsByTarget[key][metric] = trace.Resolved
+		if trace.Resolution != nil {
+			defaultsByTarget[key][metric] = trace.Resolution.Default
+			resolutionsByTarget[key][metric] = trace.Resolution
+		}
 		placeholdersByTarget[key][metric] = trace.Placeholder
 	}
 
@@ -112,33 +121,23 @@ func applyDashboardSourceMappings(config map[string]any, current map[string]any,
 		unsupportedCalculated := make(map[string]bool)
 		pinned := currentDefaults[mappingID]
 		stateByID := dashboardStateByEntityID(states)
-		registryAvailable := dashboardRegistryMetadataAvailable(states)
 		for metric, generated := range generatedDefaults {
+			if resolution := resolutionsByTarget[key][metric]; resolution != nil {
+				defaults[metric] = resolution.Default
+				needsReview[metric] = resolution.NeedsReview
+				unsupportedCalculated[metric] = resolution.UnsupportedCalculated
+				if match := resolution.Match; match.Confident && match.Entity != "" && !strings.EqualFold(match.Entity, resolution.Default) {
+					recommendations[metric], recommendationReasons[metric] = match.Entity, match.Reason
+				}
+				continue
+			}
 			match := dashboardSemanticRecommendation(target, metric, states, singleTarget)
 			if existing := strings.TrimSpace(pinned[metric]); existing != "" {
 				defaults[metric] = existing
-				if metric == "p13116" {
-					if state, ok := stateByID[strings.ToLower(existing)]; ok && dashboardIsUnsupportedCalculatedDirectSolar(state) {
-						unsupportedCalculated[metric] = true
-						needsReview[metric] = true
-					}
-				}
 			} else if match.Confident && match.Entity != "" {
 				defaults[metric] = match.Entity
-			} else if metric == "p13116" && len(match.Candidates) == 0 {
-				generatedState, present := stateByID[strings.ToLower(strings.TrimSpace(generated))]
-				_, nativeGenerated := dashboardSemanticSourceState(generatedState, mustDashboardSemanticContract(metric).sources)
-				if present && nativeGenerated && !dashboardIsUnsupportedCalculatedDirectSolar(generatedState) {
-					defaults[metric] = generated
-				} else {
-					defaults[metric] = ""
-				}
-				needsReview[metric] = true
 			}
 			if _, contracted := dashboardSemanticContractFor(metric); contracted {
-				if contract := mustDashboardSemanticContract(metric); contract.daily && !registryAvailable {
-					needsReview[metric] = true
-				}
 				if match.Confident && match.Entity != "" && !strings.EqualFold(match.Entity, defaults[metric]) {
 					recommendations[metric] = match.Entity
 					recommendationReasons[metric] = match.Reason
@@ -152,7 +151,7 @@ func applyDashboardSourceMappings(config map[string]any, current map[string]any,
 					}
 				}
 			}
-			if defaults[metric] == "" && metric != "p13116" {
+			if defaults[metric] == "" {
 				defaults[metric] = generated
 			}
 		}
@@ -178,13 +177,19 @@ func applyDashboardSourceMappings(config map[string]any, current map[string]any,
 		}
 		setDashboardFlowAutomaticEntities(config, viewIndexes, defaults)
 		candidatesByMetric := make(map[string][]any, len(defaults))
+		validOverrides := acceptedOverrides[mappingID]
 		remainingCandidates := dashboardSourceTargetLimit
 		for _, def := range dashboardSourceMetricDefinitions {
 			defaultEntity := defaults[def.Metric]
-			if (defaultEntity == "" && def.Metric != "p13116") || remainingCandidates <= 0 {
+			if (defaultEntity == "" && validOverrides[def.Metric] == "" && def.Metric != "p13116") || remainingCandidates <= 0 {
 				continue
 			}
-			candidates := dashboardSourceCandidates(target, def.Metric, defaultEntity, states, singleTarget)
+			var candidates []any
+			if resolution := resolutionsByTarget[key][def.Metric]; resolution != nil {
+				candidates = dashboardSourceCandidatesWithSemantic(target, def.Metric, defaultEntity, states, singleTarget, resolution.Match)
+			} else {
+				candidates = dashboardSourceCandidates(target, def.Metric, defaultEntity, states, singleTarget)
+			}
 			if recommendation := recommendations[def.Metric]; recommendation != "" {
 				candidates = ensureDashboardRecommendedCandidate(candidates, def.Metric, recommendation, recommendationReasons[def.Metric], states)
 			}
@@ -195,10 +200,6 @@ func applyDashboardSourceMappings(config map[string]any, current map[string]any,
 			candidatesByMetric[def.Metric] = candidates
 		}
 
-		validOverrides := validateDashboardSourceOverrides(mappingID, defaults, requestedOverrides[mappingID], persisted[mappingID], target, singleTarget, states)
-		if len(validOverrides) > 0 {
-			acceptedOverrides[mappingID] = validOverrides
-		}
 		for metric, entity := range validOverrides {
 			candidatesByMetric[metric] = ensureDashboardSourceCandidate(candidatesByMetric[metric], metric, entity)
 			if metric == "p13116" {
@@ -215,6 +216,9 @@ func applyDashboardSourceMappings(config map[string]any, current map[string]any,
 			if override := validOverrides[metric]; override != "" {
 				next = override
 			}
+			if next == "" {
+				continue
+			}
 			for _, rawPath := range paths {
 				_ = setDashboardJSONPointer(config, stringValue(rawPath), next)
 			}
@@ -226,6 +230,12 @@ func applyDashboardSourceMappings(config map[string]any, current map[string]any,
 		card["metrics"] = dashboardSourceMetricConfigs(defaults, validOverrides, candidatesByMetric, recommendations, recommendationReasons, needsReview, unsupportedCalculated, locale)
 		card["candidates"] = candidateMapToAny(candidatesByMetric)
 		card["bindings"] = bindings
+		for i := range traces {
+			if strings.EqualFold(traces[i].TargetPsKey, target.PsKey) {
+				paths, _ := bindings[traces[i].Metric].([]any)
+				traces[i].BindingCount = len(paths)
+			}
+		}
 	}
 
 	return config, acceptedOverrides
@@ -315,7 +325,7 @@ func dashboardSourceMetricConfigs(defaults, overrides map[string]string, candida
 	ret := make([]any, 0, len(defaults))
 	for _, def := range dashboardSourceMetricDefinitions {
 		defaultEntity := defaults[def.Metric]
-		if defaultEntity == "" && def.Metric != "p13116" {
+		if defaultEntity == "" && overrides[def.Metric] == "" && def.Metric != "p13116" {
 			continue
 		}
 		metric := map[string]any{
@@ -360,26 +370,24 @@ func dashboardSourceMetricConfigs(defaults, overrides map[string]string, candida
 }
 
 func dashboardSourceCandidates(target haDashboardTarget, metric, defaultEntity string, states []haState, singleTarget bool) []any {
+	return dashboardSourceCandidatesWithSemantic(target, metric, defaultEntity, states, singleTarget, dashboardSemanticRecommendation(target, metric, states, singleTarget))
+}
+
+func dashboardSourceCandidatesWithSemantic(target haDashboardTarget, metric, defaultEntity string, states []haState, singleTarget bool, semantic dashboardSemanticMatch) []any {
 	profile := dashboardMetricProfileFor(metric)
 	values := make([]dashboardMetricCandidate, 0)
-	semantic := dashboardSemanticRecommendation(target, metric, states, singleTarget)
 	values = append(values, semantic.Candidates...)
 	contract, contracted := dashboardSemanticContractFor(metric)
 	canonicalContract := contracted && len(contract.sources) > 0
-	registryAvailable := dashboardRegistryMetadataAvailable(states)
 	for _, state := range states {
 		legacyCalculated := metric == "p13116" && dashboardIsUnsupportedCalculatedDirectSolar(state)
 		if legacyCalculated && !strings.EqualFold(state.EntityID, defaultEntity) {
 			continue
 		}
+		// All new canonical candidates already passed the shared gate. Only a
+		// saved default may additionally remain visible for compatibility.
 		if canonicalContract && !strings.EqualFold(state.EntityID, defaultEntity) {
-			identity := state.RegistryUniqueID
-			if !registryAvailable {
-				identity = state.EntityID
-			}
-			if _, ok := dashboardSemanticSource(identity, contract.sources); !ok {
-				continue
-			}
+			continue
 		}
 		entity, score, reason, ok := dashboardScoreMetricCandidate(target, metric, profile, state, singleTarget)
 		if !ok || entity == "" {
@@ -406,6 +414,18 @@ func dashboardSourceCandidates(target haDashboardTarget, metric, defaultEntity s
 			}
 		}
 		candidate := dashboardMetricCandidate{Entity: entity, Metric: metric, Score: score, State: state.State, Unit: dashboardStateUnit(state), Source: dashboardMetricSourceCategory(target, metric, entity), Reason: reason}
+		if canonicalContract {
+			eligible := false
+			for _, accepted := range semantic.Candidates {
+				if strings.EqualFold(accepted.Entity, entity) {
+					eligible = true
+					break
+				}
+			}
+			if !eligible {
+				candidate.Score, candidate.Compatibility, candidate.Reason = 0, "unsupported", "Preserved unverified daily source"
+			}
+		}
 		if legacyCalculated {
 			candidate.Provenance = "calculated_legacy"
 			candidate.Period = "day"
@@ -478,6 +498,9 @@ func dashboardSourceCandidates(target haDashboardTarget, metric, defaultEntity s
 	}
 	if !foundDefault && defaultEntity != "" {
 		fallback := map[string]any{"entity_id": defaultEntity, "point_id": metric, "score": 0, "confidence": "low", "reason": "Current automatic match", "recommended": true}
+		if canonicalContract {
+			fallback["reason"], fallback["compatibility"], fallback["selectable"] = "Preserved unverified daily source", "unsupported", false
+		}
 		if state, ok := stateByID[strings.ToLower(defaultEntity)]; ok && metric == "p13116" && dashboardIsUnsupportedCalculatedDirectSolar(state) {
 			fallback["reason"] = "Unsupported calculated legacy source"
 			fallback["provenance"] = "calculated_legacy"
@@ -639,12 +662,16 @@ func setDashboardFlowAutomaticEntities(config map[string]any, viewIndexes []int,
 }
 
 func validateDashboardSourceOverrides(mappingID string, defaults, requested, persisted map[string]string, target haDashboardTarget, singleTarget bool, states []haState) map[string]string {
+	return validateDashboardSourceOverridesWithMatches(mappingID, defaults, requested, persisted, target, singleTarget, states, nil)
+}
+
+func validateDashboardSourceOverridesWithMatches(mappingID string, defaults, requested, persisted map[string]string, target haDashboardTarget, singleTarget bool, states []haState, matches map[string]dashboardSemanticMatch) map[string]string {
 	ret := make(map[string]string)
 	stateByID := dashboardStateByEntityID(states)
 	registryAvailable := dashboardRegistryMetadataAvailable(states)
 	for metric, rawEntity := range requested {
 		entity := strings.TrimSpace(rawEntity)
-		if defaults[metric] == "" || entity == "" {
+		if _, known := defaults[metric]; !known || entity == "" {
 			fmtDashboardSourceWarning(mappingID, metric, entity, "unknown metric or empty entity")
 			continue
 		}
@@ -655,11 +682,26 @@ func validateDashboardSourceOverrides(mappingID string, defaults, requested, per
 		if currentlyPresent {
 			resolved, _, _, ok := dashboardScoreMetricCandidate(target, metric, dashboardMetricProfileFor(metric), state, singleTarget)
 			structurallyCompatible = (ok && strings.EqualFold(resolved, entity)) || dashboardManualCandidateCompatible(target, metric, state, singleTarget)
+			if dashboardIsCanonicalDailyMetric(metric) {
+				structurallyCompatible = dashboardManualCandidateCompatible(target, metric, state, singleTarget)
+			}
 			currentlyCompatible = structurallyCompatible
 			if contract, contracted := dashboardSemanticContractFor(metric); contracted && len(contract.sources) > 0 {
-				currentlyCompatible = dashboardCanonicalCandidateCompatible(target, metric, state, singleTarget, registryAvailable)
+				if match, shared := matches[metric]; shared {
+					currentlyCompatible = false
+					for _, candidate := range match.Candidates {
+						if strings.EqualFold(candidate.Entity, entity) {
+							currentlyCompatible = true
+							break
+						}
+					}
+				} else {
+					currentlyCompatible = dashboardCanonicalCandidateCompatible(target, metric, state, singleTarget, registryAvailable)
+				}
 			}
-			currentlyCompatible = currentlyCompatible && dashboardSourceStateRecent(state, metric, time.Now())
+			if _, shared := matches[metric]; !shared {
+				currentlyCompatible = currentlyCompatible && dashboardSourceStateRecent(state, metric, time.Now())
+			}
 		}
 		previouslyAccepted := strings.EqualFold(strings.TrimSpace(persisted[metric]), entity)
 		legacyCalculated := currentlyPresent && metric == "p13116" && dashboardIsUnsupportedCalculatedDirectSolar(state)

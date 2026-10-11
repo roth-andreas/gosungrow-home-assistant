@@ -325,10 +325,8 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		TargetDiagnostics:   buildDashboardTargetDiagnostics(targets, nil),
 	}
 	states, listErr := client.ListStates(ctx)
-	var remapReport dashboardRemapReport
 	if listErr != nil {
 		diagnostics.HAStatesLoadError = listErr.Error()
-		_, remapReport = remapDashboardEntitiesWithReport(config, targets, nil)
 	} else {
 		if registry, registryErr := client.ListEntityRegistry(ctx); registryErr == nil {
 			states = enrichDashboardStatesWithRegistry(states, registry)
@@ -341,22 +339,17 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		diagnostics.BatteryTargetsFound = countDashboardBatteryTargets(targets, states)
 		diagnostics.TargetDiagnostics = buildDashboardTargetDiagnostics(targets, states)
 		diagnostics.AggregateHints = buildDashboardAggregateHints(targets, states)
-		// Keep the metric-specific placeholders in the generated config until
-		// source bindings are built. Two metrics may resolve to the same entity;
-		// replacing strings here would make their binding paths indistinguishable.
-		_, remapReport = remapDashboardEntitiesWithReport(config, targets, states)
-		config = pruneDashboardForUnavailableMetricsWithPinned(config, targets, states, extractDashboardSourceDefaults(currentConfig))
 	}
+	persistedOverrides := map[string]map[string]string(nil)
+	if state != nil {
+		persistedOverrides = state.SourceOverrides
+	}
+	config, sourceOverrides, remapReport := composeDashboardSources(config, currentConfig, persistedOverrides, targets, states, opts.DashboardURLPath, localeBundle)
 	diagnostics.DashboardRefsFound = remapReport.TotalRefs
 	diagnostics.RemappedRefs = len(remapReport.Remapped)
 	diagnostics.RemappedPreview = dashboardRemapPreview(remapReport.Remapped, 5)
 	diagnostics.UnresolvedRefs = remapReport.Unresolved
 	diagnostics.MetricTraces = remapReport.Traces
-	persistedOverrides := map[string]map[string]string(nil)
-	if state != nil {
-		persistedOverrides = state.SourceOverrides
-	}
-	config, sourceOverrides := applyDashboardSourceMappings(config, currentConfig, persistedOverrides, targets, states, remapReport.Traces, opts.DashboardURLPath, localeBundle)
 
 	metadata, err := client.ListDashboards(ctx)
 	if err != nil {
@@ -1230,13 +1223,22 @@ func writeDashboardInstallDiagnostics(w io.Writer, diagnostics dashboardInstallD
 	if diagnostics.Debug && len(diagnostics.MetricTraces) > 0 {
 		fmt.Fprintln(w, "Dashboard metric candidates:")
 		for _, trace := range diagnostics.MetricTraces {
-			fmt.Fprintf(w, "- metric=%s target=%s placeholder=%s resolved=%s source=%s\n",
-				trace.Metric,
-				trace.TargetPsKey,
-				trace.Placeholder,
-				trace.Resolved,
-				trace.Source,
-			)
+			if resolution := trace.Resolution; resolution != nil {
+				reason := resolution.Match.Reason
+				if trace.Resolved != "" && (resolution.Pinned || resolution.Override != "") && resolution.NeedsReview {
+					reason = "Preserved selection requires review; " + reason
+				}
+				fmt.Fprintf(w, "- metric=%s target=%s resolved=%s source=%s confident=%t eligible_candidates=%d reason=%q bindings=%d\n",
+					trace.Metric, trace.TargetPsKey, trace.Resolved, trace.Source, resolution.Match.Confident, len(resolution.Match.Candidates), reason, trace.BindingCount)
+			} else {
+				fmt.Fprintf(w, "- metric=%s target=%s placeholder=%s resolved=%s source=%s\n",
+					trace.Metric,
+					trace.TargetPsKey,
+					trace.Placeholder,
+					trace.Resolved,
+					trace.Source,
+				)
+			}
 			for _, candidate := range trace.Candidates {
 				unitSuffix := ""
 				if candidate.Unit != "" {

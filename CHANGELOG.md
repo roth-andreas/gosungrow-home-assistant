@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.3.7
+
+- Resolve daily dashboard sources through canonical Sungrow meanings before capability pruning, retaining valid renamed entities and their source-selection bindings.
+- Leave missing, ambiguous, or unverified automatic daily sources unresolved instead of falling back to lifetime consumption or feed-in energy; preserve saved choices for explicit review.
+- Report final daily-source composition decisions in debug diagnostics and reject source edits when the dashboard matcher version changed after preview.
+
 ## 3.3.6
 
 - Recover MQTT synchronization after failed iSolarCloud login sequences without restarting the app, beginning recovery at the last successful gateway.

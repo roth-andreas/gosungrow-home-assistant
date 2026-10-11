@@ -176,8 +176,8 @@ func TestRemapDashboardEntitiesMapsDailyEnergyPointAliases(t *testing.T) {
 		{PsID: "1610907", PsKey: "1610907_22_247_1"},
 	}
 	states := []haState{
-		dashboardTestState("sensor.gosungrow_1610907_sungrow_gosungrow_pv_information_pv_daily_energy", "47.70", "kWh"),
-		dashboardTestState("sensor.gosungrow_1610907_sungrow_gosungrow_grid_information_grid_to_load_energy", "2.40", "kWh"),
+		dashboardTestCanonicalState("sensor.gosungrow_1610907_sungrow_gosungrow_pv_information_pv_daily_energy", "gosungrow_1610907_p13112", "47.70", "kWh"),
+		dashboardTestCanonicalState("sensor.gosungrow_1610907_sungrow_gosungrow_grid_information_grid_to_load_energy", "gosungrow_1610907_p13147", "2.40", "kWh"),
 	}
 
 	remapped := remapDashboardEntities(config, targets, states)
@@ -213,7 +213,7 @@ func TestRemapDashboardEntitiesMapsEnergySummaryAliases(t *testing.T) {
 		{PsID: "1610907", PsKey: "1610907_22_247_1"},
 	}
 	states := []haState{
-		dashboardTestState("sensor.gosungrow_1610907_sungrow_gosungrow_load_information_total_load_energy", "17.20", "kWh"),
+		dashboardTestCanonicalState("sensor.gosungrow_1610907_sungrow_gosungrow_load_information_total_load_energy", "gosungrow_1610907_p13199", "17.20", "kWh"),
 		dashboardTestState("sensor.gosungrow_1610907_sungrow_gosungrow_battery_information_battery_discharge_energy", "4.60", "kWh"),
 	}
 
@@ -277,10 +277,10 @@ func TestRemapDashboardEntitiesMapsLegacyPlantPointAliases(t *testing.T) {
 		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83106_map", "1.40", "kW"),
 		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83549", "0.30", "kW"),
 		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83081_map", "0.45", "kW"),
-		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83022y", "18.60", "kWh"),
-		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83097_map", "7.40", "kWh"),
-		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83119_map", "5.10", "kWh"),
-		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83102_map", "1.80", "kWh"),
+		dashboardTestCanonicalState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83022y", "gosungrow_100_p83022", "18.60", "kWh"),
+		dashboardTestCanonicalState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83097_map", "gosungrow_100_p83097", "7.40", "kWh"),
+		dashboardTestCanonicalState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83119_map", "gosungrow_100_p83119", "5.10", "kWh"),
+		dashboardTestCanonicalState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83102_map", "gosungrow_100_p83102", "1.80", "kWh"),
 		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83129", "72", "%"),
 	}
 
@@ -473,8 +473,9 @@ func TestRemapDashboardEntitiesPrefersLegacyInverterYieldForDailyPvYield(t *test
 	}
 	states := []haState{
 		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_plant_information_p83022y", "29.20", "kWh"),
-		dashboardTestState("sensor.gosungrow_100_sungrow_gosungrow_inverter1_information_yield_today", "30.60", "kWh"),
+		dashboardTestCanonicalState("sensor.gosungrow_100_sungrow_gosungrow_inverter1_information_yield_today", "gosungrow_100_1_1_1_p1", "30.60", "kWh"),
 	}
+	targets[0].PlantDevices = []dashboardPlantDevice{{PsKey: "100_1_1_1", DeviceType: 1}}
 
 	remapped := remapDashboardEntities(config, targets, states)
 	views := remapped["views"].([]any)
@@ -506,6 +507,7 @@ func TestRemapDashboardEntitiesMapsReportedInverterP1ForDailyPvYield(t *testing.
 		dashboardTestState("sensor.gosungrow_1203332_sungrow_gosungrow_plant_information_p83022y", "29.20", "kWh"),
 		dashboardTestState("sensor.gosungrow_virtual_1203332_1_1_1_p1", "30.60", "kWh"),
 	}
+	targets[0].PlantDevices = []dashboardPlantDevice{{PsKey: "1203332_1_1_1", DeviceType: 1}}
 
 	remapped := remapDashboardEntities(config, targets, states)
 	views := remapped["views"].([]any)
@@ -535,7 +537,7 @@ func TestRemapDashboardEntitiesDoesNotMapNonInverterP1ForDailyPvYield(t *testing
 	}
 	states := []haState{
 		dashboardTestState("sensor.gosungrow_virtual_1203332_7_1_1_p1", "30.60", "kWh"),
-		dashboardTestState("sensor.gosungrow_1203332_sungrow_gosungrow_plant_information_p83022y", "29.20", "kWh"),
+		dashboardTestCanonicalState("sensor.gosungrow_1203332_sungrow_gosungrow_plant_information_p83022y", "gosungrow_1203332_p83022", "29.20", "kWh"),
 	}
 
 	remapped := remapDashboardEntities(config, targets, states)
