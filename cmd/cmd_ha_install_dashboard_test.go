@@ -1243,9 +1243,9 @@ func TestWriteDashboardInstallDiagnosticsIncludesSummaryAndUnresolvedRefs(t *tes
 		"Remapped dashboard refs:",
 		"- pv_power [inverter-level]: sensor.gosungrow_virtual_123_pv_power -> sensor.gosungrow_123_pv_information_pv_power",
 		"Potential aggregate sources:",
-		"- pv_power [inverter-level] state=2.60 kW entity=sensor.gosungrow_123_pv_information_pv_power",
+		"- pv_power [inverter-level] unit=kW entity=sensor.gosungrow_123_pv_information_pv_power",
 		"Dashboard metric candidates:",
-		"candidate score=240 source=inverter-level state=2.60 kW entity=sensor.gosungrow_123_pv_information_pv_power reason=usable candidate",
+		"candidate score=240 source=inverter-level unit=kW entity=sensor.gosungrow_123_pv_information_pv_power reason=usable candidate",
 		"Unresolved dashboard refs:",
 		"- sensor.gosungrow_virtual_123_pv_power: no usable candidate entity matched metric \"pv_power\"",
 	} {

@@ -24,15 +24,18 @@ func TestDashboardSourceMappingsKeepAutomaticEntityReferences(t *testing.T) {
 	psKey := "100_14_1_1"
 	config := sourceMappingTestConfig(psKey)
 	states := []haState{
-		{EntityID: "sensor.gosungrow_virtual_" + psKey + "_p13112", State: "42.8", Attributes: map[string]any{"unit_of_measurement": "kWh"}},
-		{EntityID: "sensor.gosungrow_virtual_" + psKey + "_p13116", State: "30.5", Attributes: map[string]any{"unit_of_measurement": "kWh"}},
+		{EntityID: "sensor.gosungrow_virtual_" + psKey + "_p13112", RegistryUniqueID: "gosungrow_" + psKey + "_p13112", State: "42.8", Attributes: map[string]any{"unit_of_measurement": "kWh"}},
+		{EntityID: "sensor.gosungrow_virtual_" + psKey + "_p13116", RegistryUniqueID: "gosungrow_" + psKey + "_p13116", State: "30.5", Attributes: map[string]any{"unit_of_measurement": "kWh"}},
 	}
 	traces := []dashboardMetricTrace{
 		{Metric: "p13112", TargetPsKey: psKey, Resolved: states[0].EntityID},
 		{Metric: "p13116", TargetPsKey: psKey, Resolved: states[1].EntityID},
 	}
 
-	result, overrides := applyDashboardSourceMappings(config, nil, nil, []haDashboardTarget{{PsKey: psKey, ViewPath: "roof"}}, states, traces, "gosungrow-flow", defaultDashboardLocaleBundle)
+	result, overrides, sourceErr := applyDashboardSourceMappings(config, nil, nil, []haDashboardTarget{{PsKey: psKey, ViewPath: "roof"}}, states, traces, "gosungrow-flow", defaultDashboardLocaleBundle)
+	if sourceErr != nil {
+		t.Fatal(sourceErr)
+	}
 	if len(overrides) != 0 {
 		t.Fatalf("expected no overrides, got %#v", overrides)
 	}
@@ -64,10 +67,17 @@ func TestDashboardSourceMappingPinsExistingChoiceAndOffersSemanticUpgrade(t *tes
 		"matcher_version": 2, "defaults": map[string]any{"pv_power": oldEntity}, "pinned_defaults": map[string]any{"pv_power": oldEntity},
 	}}}}}
 
-	existing, _ := applyDashboardSourceMappings(makeConfig(), current, nil, []haDashboardTarget{target}, states, trace, "gosungrow", defaultDashboardLocaleBundle)
+	existing, _, sourceErr := applyDashboardSourceMappings(makeConfig(), current, nil, []haDashboardTarget{target}, states, trace, "gosungrow", defaultDashboardLocaleBundle)
+	if sourceErr != nil {
+		t.Fatal(sourceErr)
+	}
 	existingViews := existing["views"].([]any)
-	if got := existingViews[0].(map[string]any)["cards"].([]any)[0].(map[string]any)["entity"]; got != oldEntity {
+	display := existingViews[0].(map[string]any)["cards"].([]any)[0].(map[string]any)
+	if got, _ := getDashboardJSONPointer(display, "/source_policy/native_template/entity"); got != oldEntity {
 		t.Fatalf("existing automatic choice changed without consent: got %v want %s", got, oldEntity)
+	}
+	if display["type"] != "vertical-stack" {
+		t.Fatal("unverified pinned PV source was rendered without review")
 	}
 	card := findDashboardSourceMappingCard(existing, mappingID)
 	if got := intValue(card["matcher_version"]); got != dashboardSemanticMatcherVersion {
@@ -81,7 +91,10 @@ func TestDashboardSourceMappingPinsExistingChoiceAndOffersSemanticUpgrade(t *tes
 		t.Fatalf("existing questionable source was not marked for review: %#v", metric)
 	}
 
-	fresh, _ := applyDashboardSourceMappings(makeConfig(), nil, nil, []haDashboardTarget{target}, states, trace, "gosungrow", defaultDashboardLocaleBundle)
+	fresh, _, sourceErr := applyDashboardSourceMappings(makeConfig(), nil, nil, []haDashboardTarget{target}, states, trace, "gosungrow", defaultDashboardLocaleBundle)
+	if sourceErr != nil {
+		t.Fatal(sourceErr)
+	}
 	freshViews := fresh["views"].([]any)
 	if got := freshViews[0].(map[string]any)["cards"].([]any)[0].(map[string]any)["entity"]; got != betterEntity {
 		t.Fatalf("new dashboard did not use confident semantic match: got %v want %s", got, betterEntity)
@@ -112,7 +125,10 @@ func TestDashboardSourceMappingOffersCanonicalPlantPVUpgrade(t *testing.T) {
 		"defaults": map[string]any{"pv_power": oldEntity}, "pinned_defaults": map[string]any{"pv_power": oldEntity},
 	}}}}}
 
-	existing, _ := applyDashboardSourceMappings(makeConfig(), current, nil, []haDashboardTarget{target}, states, trace, "gosungrow", defaultDashboardLocaleBundle)
+	existing, _, sourceErr := applyDashboardSourceMappings(makeConfig(), current, nil, []haDashboardTarget{target}, states, trace, "gosungrow", defaultDashboardLocaleBundle)
+	if sourceErr != nil {
+		t.Fatal(sourceErr)
+	}
 	card := findDashboardSourceMappingCard(existing, mappingID)
 	if got := anyMapToStringMap(card["defaults"])["pv_power"]; got != oldEntity {
 		t.Fatalf("pinned source = %q, want %q", got, oldEntity)
@@ -121,7 +137,10 @@ func TestDashboardSourceMappingOffersCanonicalPlantPVUpgrade(t *testing.T) {
 		t.Fatalf("plant recommendation = %q, want %q", got, plantEntity)
 	}
 
-	fresh, _ := applyDashboardSourceMappings(makeConfig(), nil, nil, []haDashboardTarget{target}, states, trace, "gosungrow", defaultDashboardLocaleBundle)
+	fresh, _, sourceErr := applyDashboardSourceMappings(makeConfig(), nil, nil, []haDashboardTarget{target}, states, trace, "gosungrow", defaultDashboardLocaleBundle)
+	if sourceErr != nil {
+		t.Fatal(sourceErr)
+	}
 	if got := fresh["views"].([]any)[0].(map[string]any)["cards"].([]any)[0].(map[string]any)["entity"]; got != plantEntity {
 		t.Fatalf("fresh pv source = %v, want %q", got, plantEntity)
 	}
@@ -143,7 +162,10 @@ func TestDashboardSourceMappingSeparatesMetricsThatPreviouslySharedEntity(t *tes
 		{Metric: "p13173", TargetPsKey: target.PsKey, Placeholder: exportPlaceholder, Resolved: oldShared},
 		{Metric: "p13147", TargetPsKey: target.PsKey, Placeholder: importPlaceholder, Resolved: oldShared},
 	}
-	result, _ := applyDashboardSourceMappings(config, nil, nil, []haDashboardTarget{target}, states, traces, "gosungrow", defaultDashboardLocaleBundle)
+	result, _, sourceErr := applyDashboardSourceMappings(config, nil, nil, []haDashboardTarget{target}, states, traces, "gosungrow", defaultDashboardLocaleBundle)
+	if sourceErr != nil {
+		t.Fatal(sourceErr)
+	}
 	cards := result["views"].([]any)[0].(map[string]any)["cards"].([]any)
 	if got := cards[0].(map[string]any)["entity"]; got != "sensor.gosungrow_1498605_11_0_0_feed_in_energy_today" {
 		t.Fatalf("export source changed incorrectly: %v", got)
@@ -153,13 +175,14 @@ func TestDashboardSourceMappingSeparatesMetricsThatPreviouslySharedEntity(t *tes
 	}
 	card := findDashboardSourceMappingCard(result, dashboardSourceMappingID(target))
 	bindings := card["bindings"].(map[string]any)
-	if !reflect.DeepEqual(bindings["p13173"], []any{"/views/0/cards/0/entity"}) || !reflect.DeepEqual(bindings["p13147"], []any{"/views/0/cards/1/entity"}) {
+	if !reflect.DeepEqual(bindings["p13173"], []any{"/views/0/cards/0/source_policy/metrics/p13173/entity_id", "/views/0/cards/0/source_policy/native_template/entity", "/views/0/cards/0/entity"}) || !reflect.DeepEqual(bindings["p13147"], []any{"/views/0/cards/1/source_policy/metrics/p13147/entity_id", "/views/0/cards/1/source_policy/native_template/entity", "/views/0/cards/1/entity"}) {
 		t.Fatalf("metric bindings were conflated: %#v", bindings)
 	}
 }
 
 func TestDashboardSourceMappingBindsLiveFlowEntityMap(t *testing.T) {
 	psKey := "100_14_1_1"
+	target := haDashboardTarget{PsID: "100", PsKey: psKey}
 	defaultEntity := "sensor.gosungrow_virtual_" + psKey + "_pv_power"
 	config := map[string]any{
 		"views": []any{
@@ -184,12 +207,15 @@ func TestDashboardSourceMappingBindsLiveFlowEntityMap(t *testing.T) {
 			},
 		},
 	}
-	states := []haState{{EntityID: defaultEntity, State: "4.2", Attributes: map[string]any{"unit_of_measurement": "kW"}}}
+	states := []haState{{EntityID: defaultEntity, RegistryUniqueID: dashboardPlantPVUniqueID(target), State: "4.2", Attributes: map[string]any{"unit_of_measurement": "kW"}}}
 	traces := []dashboardMetricTrace{{Metric: "pv_power", TargetPsKey: psKey, Resolved: defaultEntity}}
-	result, _ := applyDashboardSourceMappings(config, nil, nil, []haDashboardTarget{{PsKey: psKey}}, states, traces, "gosungrow", defaultDashboardLocaleBundle)
-	card := findDashboardSourceMappingCard(result, dashboardSourceMappingID(haDashboardTarget{PsKey: psKey}))
+	result, _, sourceErr := applyDashboardSourceMappings(config, nil, nil, []haDashboardTarget{target}, states, traces, "gosungrow", defaultDashboardLocaleBundle)
+	if sourceErr != nil {
+		t.Fatal(sourceErr)
+	}
+	card := findDashboardSourceMappingCard(result, dashboardSourceMappingID(target))
 	paths := card["bindings"].(map[string]any)["pv_power"].([]any)
-	want := []any{"/views/0/sections/0/cards/0/entities/solar_power"}
+	want := []any{"/views/0/sections/0/cards/0/entities/solar_power", "/views/0/sections/0/cards/0/source_policy/metrics/pv_power/entity_id"}
 	if !reflect.DeepEqual(paths, want) {
 		t.Fatalf("live flow source was not bound: got %#v want %#v", paths, want)
 	}
@@ -202,7 +228,10 @@ func TestDashboardSourceMappingBindsLiveFlowEntityMap(t *testing.T) {
 
 func TestDashboardSourceMappingHashesIdentifierEvenWithoutResolvedMetrics(t *testing.T) {
 	target := haDashboardTarget{PsID: "100", PsKey: "100_14_1_1"}
-	result, overrides := applyDashboardSourceMappings(sourceMappingTestConfig(target.PsKey), nil, nil, []haDashboardTarget{target}, nil, nil, "gosungrow", defaultDashboardLocaleBundle)
+	result, overrides, sourceErr := applyDashboardSourceMappings(sourceMappingTestConfig(target.PsKey), nil, nil, []haDashboardTarget{target}, nil, nil, "gosungrow", defaultDashboardLocaleBundle)
+	if sourceErr != nil {
+		t.Fatal(sourceErr)
+	}
 	if len(overrides) != 0 {
 		t.Fatalf("unexpected overrides: %#v", overrides)
 	}
@@ -227,19 +256,27 @@ func TestDashboardSourceMappingsPreserveAndApplyOverride(t *testing.T) {
 	}
 	traces := []dashboardMetricTrace{{Metric: "p13116", TargetPsKey: psKey, Resolved: defaultEntity}}
 
-	result, overrides := applyDashboardSourceMappings(config, current, nil, []haDashboardTarget{{PsKey: psKey}}, states, traces, "gosungrow-flow", defaultDashboardLocaleBundle)
+	result, overrides, sourceErr := applyDashboardSourceMappings(config, current, nil, []haDashboardTarget{{PsKey: psKey}}, states, traces, "gosungrow-flow", defaultDashboardLocaleBundle)
+	if sourceErr != nil {
+		t.Fatal(sourceErr)
+	}
 	if got := overrides[dashboardSourceMappingID(haDashboardTarget{PsKey: psKey})]["p13116"]; got != overrideEntity {
 		t.Fatalf("override not preserved: %q", got)
 	}
 	views := result["views"].([]any)
 	cards := views[0].(map[string]any)["cards"].([]any)
-	if got := cards[1].(map[string]any)["entity"]; got != overrideEntity {
+	if got, _ := getDashboardJSONPointer(cards[1], "/source_policy/native_template/entity"); got != overrideEntity {
 		t.Fatalf("override not applied: %v", got)
 	}
 	card := findDashboardSourceMappingCard(result, dashboardSourceMappingID(haDashboardTarget{PsKey: psKey}))
 	paths := card["bindings"].(map[string]any)["p13116"].([]any)
-	if len(paths) != 1 {
-		t.Fatalf("expected one binding path, got %#v", paths)
+	if len(paths) != 3 {
+		t.Fatalf("expected rendered, template, and policy bindings, got %#v", paths)
+	}
+	for _, raw := range paths {
+		if value, ok := getDashboardJSONPointer(result, raw.(string)); !ok || value != overrideEntity {
+			t.Fatalf("override binding was not updated: %v", raw)
+		}
 	}
 }
 
@@ -253,7 +290,10 @@ func TestDashboardSourceMappingFlagsImpossibleDirectSolarConsumption(t *testing.
 		{EntityID: direct, State: "52.6", Attributes: map[string]any{"unit_of_measurement": "kWh"}},
 	}
 	traces := []dashboardMetricTrace{{Metric: "p13112", TargetPsKey: psKey, Resolved: production}, {Metric: "p13116", TargetPsKey: psKey, Resolved: direct}}
-	result, _ := applyDashboardSourceMappings(config, nil, nil, []haDashboardTarget{{PsKey: psKey}}, states, traces, "gosungrow-flow", defaultDashboardLocaleBundle)
+	result, _, sourceErr := applyDashboardSourceMappings(config, nil, nil, []haDashboardTarget{{PsKey: psKey}}, states, traces, "gosungrow-flow", defaultDashboardLocaleBundle)
+	if sourceErr != nil {
+		t.Fatal(sourceErr)
+	}
 	card := findDashboardSourceMappingCard(result, dashboardSourceMappingID(haDashboardTarget{PsKey: psKey}))
 	metrics := card["metrics"].([]any)
 	found := false
@@ -308,7 +348,10 @@ func TestDashboardSourceMappingShowsUnavailableWithoutNativeDirectSolar(t *testi
 	config := sourceMappingTestConfig(target.PsKey)
 	states := []haState{{EntityID: calculated, RegistryUniqueID: calculated, State: "12", Attributes: map[string]any{"unit_of_measurement": "kWh"}}}
 	traces := []dashboardMetricTrace{{Metric: "p13116", TargetPsKey: target.PsKey, Resolved: calculated}}
-	result, _ := applyDashboardSourceMappings(config, nil, nil, []haDashboardTarget{target}, states, traces, "gosungrow", defaultDashboardLocaleBundle)
+	result, _, sourceErr := applyDashboardSourceMappings(config, nil, nil, []haDashboardTarget{target}, states, traces, "gosungrow", defaultDashboardLocaleBundle)
+	if sourceErr != nil {
+		t.Fatal(sourceErr)
+	}
 	card := findDashboardSourceMappingCard(result, dashboardSourceMappingID(target))
 	if got := anyMapToStringMap(card["defaults"])["p13116"]; got != "" {
 		t.Fatalf("calculated source remained a new default: %q", got)
@@ -333,7 +376,10 @@ func TestDashboardSourceMappingPreservesLegacyCalculatedDefaultWithBlockingWarni
 	currentCard["pinned_defaults"] = map[string]any{"p13116": calculated}
 	states := []haState{{EntityID: calculated, RegistryUniqueID: calculated, State: "12", Attributes: map[string]any{"unit_of_measurement": "kWh"}}}
 	traces := []dashboardMetricTrace{{Metric: "p13116", TargetPsKey: target.PsKey, Resolved: calculated}}
-	result, _ := applyDashboardSourceMappings(config, current, nil, []haDashboardTarget{target}, states, traces, "gosungrow", defaultDashboardLocaleBundle)
+	result, _, sourceErr := applyDashboardSourceMappings(config, current, nil, []haDashboardTarget{target}, states, traces, "gosungrow", defaultDashboardLocaleBundle)
+	if sourceErr != nil {
+		t.Fatal(sourceErr)
+	}
 	card := findDashboardSourceMappingCard(result, dashboardSourceMappingID(target))
 	if got := anyMapToStringMap(card["defaults"])["p13116"]; got != calculated {
 		t.Fatalf("legacy source was not preserved: %q", got)
@@ -364,7 +410,10 @@ func TestDashboardSourceMappingPreservesLegacyCalculatedManualOverrideWithBlocki
 	}
 	traces := []dashboardMetricTrace{{Metric: "p13116", TargetPsKey: target.PsKey, Resolved: automatic}}
 	persisted := map[string]map[string]string{dashboardSourceMappingID(target): {"p13116": calculated}}
-	result, accepted := applyDashboardSourceMappings(config, current, persisted, []haDashboardTarget{target}, states, traces, "gosungrow", defaultDashboardLocaleBundle)
+	result, accepted, sourceErr := applyDashboardSourceMappings(config, current, persisted, []haDashboardTarget{target}, states, traces, "gosungrow", defaultDashboardLocaleBundle)
+	if sourceErr != nil {
+		t.Fatal(sourceErr)
+	}
 	if accepted[dashboardSourceMappingID(target)]["p13116"] != calculated {
 		t.Fatalf("legacy manual override was not preserved: %#v", accepted)
 	}
@@ -403,7 +452,7 @@ func TestDashboardSourceMappingsAreIsolatedWhenTargetsShareDefaultEntity(t *test
 	override := "sensor.gosungrow_a_14_1_1_p13116"
 	config := map[string]any{"views": []any{
 		map[string]any{"path": "roof-overview", "cards": []any{map[string]any{"type": "tile", "entity": shared}}},
-		map[string]any{"path": "roof-trends", "cards": []any{map[string]any{"type": "history-graph", "entity": shared}}},
+		map[string]any{"path": "roof-trends", "cards": []any{map[string]any{"type": "history-graph", "entities": []any{shared}}}},
 		map[string]any{"path": "roof-data-sources", "cards": []any{map[string]any{"type": dashboardSourceMappingCardType, "schema_version": 1, "mapping_id": targetA.PsKey}}},
 		map[string]any{"path": "garage-overview", "cards": []any{map[string]any{"type": "tile", "entity": shared}}},
 		map[string]any{"path": "garage-data-sources", "cards": []any{map[string]any{"type": dashboardSourceMappingCardType, "schema_version": 1, "mapping_id": targetB.PsKey}}},
@@ -425,23 +474,35 @@ func TestDashboardSourceMappingsAreIsolatedWhenTargetsShareDefaultEntity(t *test
 		{Metric: "p13116", TargetPsKey: targetB.PsKey, Resolved: shared},
 	}
 
-	result, accepted := applyDashboardSourceMappings(config, currentConfig, nil, []haDashboardTarget{targetA, targetB}, states, traces, "gosungrow", defaultDashboardLocaleBundle)
+	result, accepted, sourceErr := applyDashboardSourceMappings(config, currentConfig, nil, []haDashboardTarget{targetA, targetB}, states, traces, "gosungrow", defaultDashboardLocaleBundle)
+	if sourceErr != nil {
+		t.Fatal(sourceErr)
+	}
 	if accepted[dashboardSourceMappingID(targetA)]["p13116"] != override {
 		t.Fatalf("override was not accepted: %#v", accepted)
 	}
 	views := result["views"].([]any)
-	if got := views[0].(map[string]any)["cards"].([]any)[0].(map[string]any)["entity"]; got != override {
+	if got, _ := getDashboardJSONPointer(views[0], "/cards/0/source_policy/native_template/entity"); got != override {
 		t.Fatalf("target A not updated: %v", got)
 	}
-	if got := views[1].(map[string]any)["cards"].([]any)[0].(map[string]any)["entity"]; got != override {
+	if got, _ := getDashboardJSONPointer(views[1], "/cards/0/source_policy/native_template/entities/0"); got != override {
 		t.Fatalf("target A repeated view not updated: %v", got)
 	}
-	if got := views[3].(map[string]any)["cards"].([]any)[0].(map[string]any)["entity"]; got != shared {
+	if got, _ := getDashboardJSONPointer(views[3], "/cards/0/source_policy/native_template/entity"); got != "" {
 		t.Fatalf("target B was incorrectly updated: %v", got)
 	}
 	bindings := findDashboardSourceMappingCard(result, dashboardSourceMappingID(targetA))["bindings"].(map[string]any)["p13116"].([]any)
-	if !reflect.DeepEqual(bindings, []any{"/views/0/cards/0/entity", "/views/1/cards/0/entity"}) {
-		t.Fatalf("bindings escaped target A: %#v", bindings)
+	if len(bindings) != 6 {
+		t.Fatalf("missing repeated native bindings: %#v", bindings)
+	}
+	for _, raw := range bindings {
+		path := raw.(string)
+		if !(strings.HasPrefix(path, "/views/0/") || strings.HasPrefix(path, "/views/1/")) {
+			t.Fatalf("bindings escaped target A: %#v", bindings)
+		}
+		if value, ok := getDashboardJSONPointer(result, path); !ok || value != override {
+			t.Fatalf("target A binding was not updated: %s", path)
+		}
 	}
 }
 
@@ -476,7 +537,10 @@ func TestDashboardSourceResetWinsOverPersistedDiagnosticCopy(t *testing.T) {
 	mappingID := dashboardSourceMappingID(haDashboardTarget{PsKey: psKey})
 	findDashboardSourceMappingCard(current, psKey)["mapping_id"] = mappingID
 	defaultEntity := "sensor.gosungrow_virtual_" + psKey + "_p13112"
-	result, accepted := applyDashboardSourceMappings(config, current, map[string]map[string]string{mappingID: {"p13112": "sensor.old_manual_p13112"}}, []haDashboardTarget{{PsKey: psKey}}, []haState{{EntityID: defaultEntity, State: "4", Attributes: map[string]any{"unit_of_measurement": "kWh"}}}, []dashboardMetricTrace{{Metric: "p13112", TargetPsKey: psKey, Resolved: defaultEntity}}, "gosungrow", defaultDashboardLocaleBundle)
+	result, accepted, sourceErr := applyDashboardSourceMappings(config, current, map[string]map[string]string{mappingID: {"p13112": "sensor.old_manual_p13112"}}, []haDashboardTarget{{PsKey: psKey}}, []haState{{EntityID: defaultEntity, State: "4", Attributes: map[string]any{"unit_of_measurement": "kWh"}}}, []dashboardMetricTrace{{Metric: "p13112", TargetPsKey: psKey, Resolved: defaultEntity}}, "gosungrow", defaultDashboardLocaleBundle)
+	if sourceErr != nil {
+		t.Fatal(sourceErr)
+	}
 	if len(accepted) != 0 {
 		t.Fatalf("persisted diagnostic override defeated UI reset: %#v", accepted)
 	}
@@ -581,7 +645,7 @@ func TestDashboardSourceCandidatesAreDeterministicLimitedAndContainNoLiveValues(
 		if _, ok := candidate["name"]; ok {
 			t.Fatalf("candidate embeds live friendly name: %#v", candidate)
 		}
-		if got := candidate["recommended"]; got != (index < dashboardSourceRecommendedLimit) {
+		if got := candidate["recommended"]; got != false {
 			t.Fatalf("unexpected recommended flag at %d: %v", index, got)
 		}
 	}

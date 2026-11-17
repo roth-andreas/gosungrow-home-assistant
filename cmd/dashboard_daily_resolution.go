@@ -1,15 +1,20 @@
 package cmd
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 // composeDashboardSources keeps placeholders until the final capability
 // decision, then builds bindings at their post-pruning positions.
 func composeDashboardSources(config, current map[string]any, persisted map[string]map[string]string, targets []haDashboardTarget, states []haState, dashboardURL string, locale dashboardLocaleBundle) (map[string]any, map[string]map[string]string, dashboardRemapReport) {
 	_, report := remapDashboardEntitiesWithReport(config, targets, states)
-	traces, accepted := prepareDashboardSourceTraces(report.Traces, targets, states, extractDashboardSourceDefaults(current), extractDashboardSourceOverrides(current), persisted)
+	traces, accepted := prepareDashboardSourceTraces(report.Traces, targets, states, extractDashboardSourceDefaults(current), extractDashboardSourceOverrides(current), acceptedDashboardSourceOverrides(current, persisted))
 	config = pruneDashboardForUnavailableMetricsWithTraces(config, targets, states, traces)
-	config, accepted = applyDashboardSourceMappingsWithTraces(config, current, targets, states, traces, accepted, dashboardURL, locale)
-	return config, accepted, dashboardReportFromTraces(traces)
+	config, accepted, err := applyDashboardSourceMappingsWithTraces(config, current, targets, states, traces, accepted, dashboardURL, locale)
+	finalReport := dashboardReportFromTraces(traces)
+	finalReport.SourcePolicyError = err
+	return config, accepted, finalReport
 }
 
 func prepareDashboardSourceTraces(traces []dashboardMetricTrace, targets []haDashboardTarget, states []haState, pinned, requested, persisted map[string]map[string]string) ([]dashboardMetricTrace, map[string]map[string]string) {
@@ -17,7 +22,6 @@ func prepareDashboardSourceTraces(traces []dashboardMetricTrace, targets []haDas
 	accepted := make(map[string]map[string]string)
 	stateByID := dashboardStateByEntityID(states)
 	singleTarget := len(targets) == 1
-	registryAvailable := dashboardRegistryMetadataAvailable(states)
 	for _, target := range targets {
 		key := strings.ToLower(strings.TrimSpace(target.PsKey))
 		mappingID := dashboardSourceMappingID(target)
@@ -32,7 +36,7 @@ func prepareDashboardSourceTraces(traces []dashboardMetricTrace, targets []haDas
 			if trace.Placeholder == "" {
 				trace.Placeholder = trace.Resolved
 			}
-			if !dashboardIsCanonicalDailyMetric(metric) {
+			if !dashboardIsCanonicalDailyMetric(metric) && metric != "pv_power" {
 				if trace.Resolved != "" {
 					defaults[metric] = trace.Resolved
 					if existing := strings.TrimSpace(pinned[mappingID][metric]); existing != "" {
@@ -76,14 +80,11 @@ func prepareDashboardSourceTraces(traces []dashboardMetricTrace, targets []haDas
 			if resolution.Override != "" {
 				trace.Resolved, trace.Source = resolution.Override, "manual"
 			}
-			verified := false
-			for _, candidate := range resolution.Match.Candidates {
-				if registryAvailable && candidate.Compatibility == "compatible" && strings.EqualFold(candidate.Entity, trace.Resolved) {
-					verified = true
-					break
-				}
+			resolution.Policy = assessDashboardSource(target, trace.Metric, trace.Resolved, resolution.Override != "", states, time.Now())
+			resolution.NeedsReview = resolution.Policy.Verification != "verified" || (resolution.Match.Confident && !strings.EqualFold(resolution.Match.Entity, resolution.Default))
+			if state, ok := stateByID[strings.ToLower(trace.Resolved)]; !ok || !dashboardStateHasUsableNumericValue(state) || !dashboardSourceStateRecent(state, trace.Metric, time.Now()) {
+				resolution.NeedsReview = true
 			}
-			resolution.NeedsReview = !verified || (resolution.Match.Confident && !strings.EqualFold(resolution.Match.Entity, resolution.Default))
 			if state, ok := stateByID[strings.ToLower(trace.Resolved)]; ok && trace.Metric == "p13116" && dashboardIsUnsupportedCalculatedDirectSolar(state) {
 				resolution.UnsupportedCalculated, resolution.NeedsReview = true, true
 			}

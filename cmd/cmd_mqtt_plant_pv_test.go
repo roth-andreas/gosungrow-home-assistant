@@ -12,6 +12,7 @@ import (
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/queryDeviceList"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/WebAppService/getDevicePointAttrs"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct"
 	"log"
 	"strings"
 	"testing"
@@ -221,6 +222,17 @@ func TestDecodedPVPublicationOutcomesAndCounts(t *testing.T) {
 			data := decodedNinePVCommandSnapshot(t, tc.count, true)
 			var err error
 			logs := capturePVCommandLogs(t, func() { err = c.publishPlantPVPower(&data, false) })
+			for _, evidence := range []string{"app_version=", "matcher_version=5", "observed_at=", "unique_id=GoSungrow-virtual-100-pv_power", "discovery_topic=", "state_topic=", "config_publication=", "state_publication=", "ha_observation=not_checked", "dashboard_binding=not_checked"} {
+				if !strings.Contains(logs, evidence) {
+					t.Fatalf("missing correlation evidence %q: %s", evidence, logs)
+				}
+			}
+			if tc.name == "discovery_failure" && !strings.Contains(logs, "config_publication=failed state_publication=not_attempted") {
+				t.Fatal(logs)
+			}
+			if tc.name == "state_failure" && !strings.Contains(logs, "config_publication=completed state_publication=failed") {
+				t.Fatal(logs)
+			}
 			if strings.Count(logs, "INFO: Plant PV aggregation:") != 1 || !strings.Contains(logs, "outcome="+tc.outcome) || !strings.Contains(logs, "reason="+tc.reason) {
 				t.Fatalf("final logs = %s", logs)
 			}
@@ -268,6 +280,95 @@ func TestDecodedPVPublicationOutcomesAndCounts(t *testing.T) {
 				t.Fatal("canonical remains eligible for double publication")
 			}
 		})
+	}
+}
+
+func TestCanonicalPVDiscoveryReuseIsNotReportedAsNewPublication(t *testing.T) {
+	transport := &pvTestTransport{}
+	c := pvCommand(t, transport)
+	for _, status := range []string{"completed", "reused_previous_success"} {
+		data := decodedNinePVCommandSnapshot(t, 9, false)
+		logs := capturePVCommandLogs(t, func() {
+			if err := c.publishPlantPVPower(&data, false); err != nil {
+				t.Fatal(err)
+			}
+		})
+		if !strings.Contains(logs, "config_publication="+status+" state_publication=completed") || !strings.Contains(logs, "outcome=published") {
+			t.Fatal(logs)
+		}
+	}
+	if len(transport.publications) != 3 {
+		t.Fatalf("unchanged discovery was republished: %#v", transport.publications)
+	}
+}
+
+func TestNormalizedSourceCaptureIsCombinedBoundedAndContainsNoMeasurements(t *testing.T) {
+	c := pvCommand(t, &pvTestTransport{})
+	c.log.SetLogLevel("debug")
+	capture := &normalizedSourceCapture{}
+	capture.add(c, decodedNinePVCommandSnapshot(t, 104, true))
+	capture.add(c, decodedNinePVCommandSnapshot(t, 9, false))
+	rows := capture.byPlant["100"]
+	if len(rows) != 100 || capture.totals["100"] <= 100 {
+		t.Fatalf("capture is not bounded across results: %d/%d", len(rows), capture.totals["100"])
+	}
+	for i := 1; i < len(rows); i++ {
+		if normalizedSourceRecordKey(rows[i-1]) > normalizedSourceRecordKey(rows[i]) {
+			t.Fatal("normalized capture is not sorted")
+		}
+	}
+	logs := capturePVCommandLogs(t, func() { capture.write(c, 2) })
+	for _, required := range []string{"Dashboard source point:", "app_version=", "matcher_version=5", "cycle=17 attempt=2", "endpoint=", "point_id=", "role=", "period=", "source_timestamp=", "provenance=", "filter_reason=", "publication=not_observed", "omitted="} {
+		if !strings.Contains(logs, required) {
+			t.Fatalf("missing %q: %s", required, logs)
+		}
+	}
+	for _, forbidden := range []string{"SYNTHETIC_SECRET", "SYNTHETIC_PRIVATE_SERIAL", "value=", "\"sn\"", "access_token", "password"} {
+		if strings.Contains(logs, forbidden) {
+			t.Fatalf("unsafe normalized capture: %s", forbidden)
+		}
+	}
+}
+
+func TestNormalizedSourceCaptureKeepsOriginGapsExplicit(t *testing.T) {
+	c := pvCommand(t, &pvTestTransport{})
+	data := decodedNinePVCommandSnapshot(t, 9, false)
+	for i := range data.Measurements {
+		if data.Measurements[i].Current != nil {
+			data.Measurements[i].Current.Source = GoStruct.MeasurementSource{}
+		}
+	}
+	for _, entries := range data.Map {
+		if entry := entries.GetEntry(api.LastEntry); entry != nil && entry.Current != nil {
+			entry.Current.Source = GoStruct.MeasurementSource{}
+		}
+	}
+	capture := &normalizedSourceCapture{}
+	capture.add(c, data)
+	found := false
+	for _, rows := range capture.byPlant {
+		for _, row := range rows {
+			found = true
+			if row.Point != "not_observed" || row.OriginalObserved || row.Provenance != "origin_not_observed" || row.NormalizedPoint == "" {
+				t.Fatalf("normalization fabricated raw provenance: %#v", row)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("observed normalized points disappeared when raw provenance was missing")
+	}
+}
+
+func TestSourceCapturePlantLookupPreservesOpaqueIDsAndRejectsAmbiguity(t *testing.T) {
+	c := &CmdMqtt{dashboardTargets: []haDashboardTarget{{PsID: "opaque_plant:100", PsKey: "opaque_device:leaf_1", DeviceType: 55}}}
+	parent := api.ParentDevice{Key: "opaque_device:leaf_1", PsId: "legacy_truncated_prefix"}
+	plant, role := normalizedSourcePlant(c, parent)
+	if plant != "opaque_plant:100" || role != 55 {
+		t.Fatalf("opaque source identity changed: %s/%d", plant, role)
+	}
+	c.dashboardTargets = append(c.dashboardTargets, haDashboardTarget{PsID: "other_plant", PsKey: parent.Key, DeviceType: 55})
+	if plant, _ := normalizedSourcePlant(c, parent); plant != "not_observed" {
+		t.Fatalf("ambiguous source assigned to %q", plant)
 	}
 }
 func TestDecodedPVDiscoveryRetriesAndRetainedStatePreservation(t *testing.T) {
@@ -341,7 +442,7 @@ func TestDecodedPVPlantDashboardComposition(t *testing.T) {
 	if dashboardTargetInverterCount(target) != 9 {
 		t.Fatalf("inverter-like count=%d", dashboardTargetInverterCount(target))
 	}
-	states := []haState{{EntityID: "sensor.gosungrow_virtual_100_pv_power", State: fmt.Sprint(transport.publications[1].payload["value"]), Attributes: map[string]any{"unit_of_measurement": "kW"}}}
+	states := []haState{{EntityID: "sensor.gosungrow_virtual_100_pv_power", RegistryUniqueID: stringValue(transport.publications[0].payload["unique_id"]), State: fmt.Sprint(transport.publications[1].payload["value"]), Attributes: map[string]any{"unit_of_measurement": "kW"}}}
 	for _, phase := range []string{"phase_a", "phase_b", "phase_c"} {
 		var reading *api.DataEntry
 		for i := range data.Measurements {
@@ -373,7 +474,10 @@ func TestDecodedPVPlantDashboardComposition(t *testing.T) {
 	if !found {
 		t.Fatalf("composed dashboard did not use published aggregate: %#v", report)
 	}
-	composed, _ := applyDashboardSourceMappings(remapped, nil, nil, []haDashboardTarget{target}, states, report.Traces, "gosungrow", defaultDashboardLocaleBundle)
+	composed, _, sourceErr := applyDashboardSourceMappings(remapped, nil, nil, []haDashboardTarget{target}, states, report.Traces, "gosungrow", defaultDashboardLocaleBundle)
+	if sourceErr != nil {
+		t.Fatal(sourceErr)
+	}
 	card := findDashboardSourceMappingCard(composed, dashboardSourceMappingID(target))
 	if got := anyMapToStringMap(card["defaults"])["pv_power"]; got != states[0].EntityID {
 		t.Fatalf("fresh mapping=%q", got)
@@ -401,7 +505,10 @@ func TestDecodedPVPlantDashboardComposition(t *testing.T) {
 			t.Fatal(err)
 		}
 		next, nextReport := remapDashboardEntitiesWithReport(base, []haDashboardTarget{target}, states)
-		kept, overrides := applyDashboardSourceMappings(next, current, nil, []haDashboardTarget{target}, states, nextReport.Traces, "gosungrow", defaultDashboardLocaleBundle)
+		kept, overrides, sourceErr := applyDashboardSourceMappings(next, current, nil, []haDashboardTarget{target}, states, nextReport.Traces, "gosungrow", defaultDashboardLocaleBundle)
+		if sourceErr != nil {
+			t.Fatal(sourceErr)
+		}
 		saved := findDashboardSourceMappingCard(kept, mappingID)
 		if manual {
 			if overrides[mappingID]["pv_power"] != oldEntity {

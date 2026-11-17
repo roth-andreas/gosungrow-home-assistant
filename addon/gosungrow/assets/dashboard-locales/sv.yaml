@@ -1,4 +1,16 @@
 dashboard:
+  source_withheld: Källan visas inte. Granska datakällor.
+  source_manual_unverified: Overifierad manuell källa. Granska datakällor.
+  source_unverified: Overifierad manuell källa
+  source_meaning_verified: Källans betydelse har verifierats
+  source_meaning_unverified: Källans betydelse kunde inte verifieras
+  source_no_source: Ingen källa vald
+  source_not_observed: Den valda källan hittades inte
+  source_unit_conflict: Källans enhet stämmer inte med mätvärdet
+  source_target_conflict: Källan tillhör en annan anläggning
+  source_meaning_conflict: Den kanoniska källans betydelse stämmer inte med mätvärdet
+  source_unit_missing: Källans enhet hittades inte
+  source_review: Granska datakällor.
   native_fallback_source_notice: De avancerade panelkorten ar tillfalligt otillgangliga. Livedata visas fortfarande; kallredigering kan saknas tills automatisk aterstallning ar klar.
   view_overview: "\u00d6versikt"
   view_aggregates: Aggregat

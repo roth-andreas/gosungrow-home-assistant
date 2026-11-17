@@ -54,6 +54,10 @@ const metricEntities = {
   to_battery: "sensor.gosungrow_daily_to_battery",
   from_battery: "sensor.gosungrow_daily_from_battery",
 };
+const summaryMetricKeys = { production: "p13112", consumption: "p13199", to_grid: "p13173", from_grid: "p13147", to_battery: "p13174", from_battery: "p13029" };
+function verifiedPolicy(entities) {
+  return { mapping_id: "source-test", metrics: Object.fromEntries(Object.entries(entities).map(([key, entity_id]) => [summaryMetricKeys[key], { entity_id, selection_origin: "automatic", verification: "verified", display_decision: "normal", reason: "Source meaning verified" }])) };
+}
 
 test("bundle registration is synchronous and idempotent across compatible upgrades", () => {
   assert.deepEqual([...registry.keys()].sort(), [
@@ -75,6 +79,7 @@ function createCard(now, liveValue) {
   card._config = {
     buckets: { day: 14, month: 12, year: 5 },
     entities: { production: entityID },
+    source_policy: verifiedPolicy({ production: entityID }),
   };
   card._labels = {};
   card._hass = {
@@ -97,6 +102,7 @@ function createMultiMetricCard(now, liveValues) {
   card._config = {
     buckets: { day: 14, month: 12, year: 5 },
     entities: metricEntities,
+    source_policy: verifiedPolicy(metricEntities),
   };
   card._labels = {};
   card._hass = {
@@ -120,6 +126,113 @@ function createMultiMetricCard(now, liveValues) {
 function stateRow(date, state) {
   return { start: `${date}T00:00:00.000Z`, state };
 }
+
+test("automatic unverified daily values are withheld from totals, history and tooltips", async () => {
+  const card = createMultiMetricCard("2026-05-17T12:00:00Z", { production: 4, consumption: 9.92 });
+  const policy = card._config.source_policy.metrics.p13199;
+  Object.assign(policy, { verification: "unverified", display_decision: "withheld", reason: "Daily meaning not verified" });
+  card._hass.states[metricEntities.consumption].attributes.unit_of_measurement = "MWh";
+  for (const period of ["day", "month", "year"]) {
+    card._statsCache[card._cacheKey(period)] = card._parseStatistics({ [metricEntities.production]: [stateRow("2026-05-16", 3)], [metricEntities.consumption]: [stateRow("2026-05-16", 1234)] }, Object.values(metricEntities), period);
+    const metrics = card._metricDefinitions();
+    const consumption = card._metricDisplay(metrics.find((metric) => metric.key === "consumption"), period);
+    assert.equal(consumption.available, false);
+    assert.match(consumption.warning, /Review Data Sources/);
+    const chart = card._chartDisplay(period, metrics);
+    assert.equal(chart.series.some((series) => series.key === "consumption"), false);
+    assert.equal(card._tooltipRows(chart, 0).some((row) => row.label === "Consumption"), false);
+    assert.equal(card._metricDisplay(metrics.find((metric) => metric.key === "production"), period).available, true);
+  }
+  const requested = [];
+  card._statsCache = {};
+  card._hass.callWS = async (request) => { requested.push(request); return {}; };
+  card._ensureStatistics();
+  await Promise.resolve();
+  assert.equal(requested.length, 1);
+  assert.equal(requested[0].statistic_ids.includes(metricEntities.consumption), false);
+});
+
+test("manual unverified daily sources retain warnings, while incompatible ones remain withheld", () => {
+  const card = createCard("2026-05-17T12:00:00Z", 0);
+  const policy = card._config.source_policy.metrics.p13112;
+  Object.assign(policy, { selection_origin: "manual", verification: "unverified", display_decision: "warned" });
+  const metric = card._metricDefinitions()[0];
+  assert.equal(card._metricDisplay(metric, "day").available, true);
+  assert.match(card._metricDisplay(metric, "day").warning, /Unverified manual source/);
+  const chart = card._liveChartDisplay("day", [metric]);
+  assert.match(chart.series[0].label, /Unverified manual source/);
+  assert.match(card._tooltipRows(chart, 0)[0].label, /Unverified manual source/);
+  Object.assign(policy, { verification: "incompatible", display_decision: "withheld" });
+  assert.equal(card._metricDisplay(metric, "day").available, false);
+  assert.equal(card._chartDisplay("day", [metric]).series.length, 0);
+  delete card._config.source_policy;
+  assert.equal(card._metricDisplay(metric, "day").available, false, "legacy metadata must not imply verified meaning");
+});
+
+test("source changes discard stale recorder responses and capture the requested period", async () => {
+  const card = new SummaryCard();
+  card._now = () => new Date("2026-05-17T12:00:00Z");
+  card.setConfig({ entities: { production: entityID }, source_policy: verifiedPolicy({ production: entityID }) });
+  const resolvers = [];
+  card._hass = { states: {}, callWS: () => new Promise((resolve) => resolvers.push(resolve)) };
+  card._period = "month";
+  card._ensureStatistics();
+  const oldKey = card._cacheKey("month");
+  const replacement = "sensor.replacement_daily";
+  card.setConfig({ entities: { production: replacement }, source_policy: verifiedPolicy({ production: replacement }) });
+  card._period = "year";
+  card._ensureStatistics();
+  const yearKey = card._cacheKey("year");
+  card._period = "day";
+  resolvers[0]({ [entityID]: [stateRow("2026-05-16", 999)] });
+  resolvers[1]({ [replacement]: [stateRow("2026-05-16", 2)] });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(card._statsCache[oldKey], undefined);
+  assert.ok(card._statsCache[yearKey]);
+  assert.ok(card._statsCache[yearKey].buckets.some((bucket) => bucket.key === "2026" && bucket.values[replacement] === 2));
+  assert.equal(JSON.stringify(card._statsCache).includes("999"), false);
+});
+
+test("partial directional flows use only a verified direct fallback, including genuine zero", () => {
+  const card = new FlowCard();
+  card._config = { entities: { solar_power: "sensor.plant_pv", pv_to_load_power: "sensor.one_flow" }, source_policy: { mapping_id: "source-test", metrics: { pv_power: { entity_id: "sensor.plant_pv", selection_origin: "automatic", verification: "verified", display_decision: "normal", reason: "Source meaning verified" } } } };
+  // The one observed directional operand cannot stand in for a complete sum.
+  card._hass = { states: { "sensor.plant_pv": { state: "0", attributes: { unit_of_measurement: "kW" } }, "sensor.one_flow": { state: "7", attributes: { unit_of_measurement: "kW" } } } };
+  let nodes = card._nodeDisplays(card._flowDisplays());
+  assert.equal(nodes.solar.available, true);
+  assert.equal(nodes.solar.numericValue, 0);
+  assert.equal(nodes.home.available, false);
+  card._config.source_policy.metrics.pv_power.verification = "unverified";
+  card._config.source_policy.metrics.pv_power.display_decision = "withheld";
+  nodes = card._nodeDisplays(card._flowDisplays());
+  assert.equal(nodes.solar.available, false);
+});
+
+test("complete flows convert compatible power units and never infer a legacy battery sign", () => {
+  const card = new FlowCard();
+  card._config = { entities: { solar_power: "sensor.pv", battery_power: "sensor.legacy_battery" } };
+  card._hass = { states: { "sensor.legacy_battery": { state: "4", attributes: { unit_of_measurement: "kW" } } } };
+  const display = (numericValue, unit) => ({ numericValue, unit, available: true, numericValid: true });
+  const flows = { pv_to_load_power: display(500, "W"), pv_to_grid_power: display(0, "kW"), pv_to_battery_power: display(0.5, "kW"), grid_to_load_power: display(NaN, "kW"), battery_to_load_power: display(NaN, "kW") };
+  const nodes = card._nodeDisplays(flows);
+  assert.equal(nodes.solar.numericValue, 1000);
+  assert.equal(nodes.solar.unit, "W");
+  assert.equal(nodes.battery.available, false);
+  card._config.automatic_entities = { solar_power: "sensor.automatic" };
+  const manualMissing = card._nodeDisplays(flows);
+  assert.equal(manualMissing.solar.available, false, "missing manual source must remain authoritative");
+});
+
+test("non-numeric manual values stay unavailable without creating a zero", () => {
+  const card = new FlowCard();
+  card._config = { entities: { solar_power: "sensor.manual" }, automatic_entities: { solar_power: "sensor.automatic" } };
+  for (const value of ["unknown", "unavailable", "none", "", "12 garbage", "0x10"]) {
+    card._hass = { states: { "sensor.manual": { state: value, attributes: { unit_of_measurement: "kW" } } } };
+    const nodes = card._nodeDisplays(card._flowDisplays());
+    assert.equal(nodes.solar.available, false, value);
+    assert.equal(nodes.solar.formatted, "--", value);
+  }
+});
 
 test("live flow node values use manually selected sources before directional sums", () => {
   const card = new FlowCard();
@@ -334,7 +447,7 @@ test("source mapping card JSON pointers update only declared bindings", () => {
 
 test("source mapping card exposes warning text and admin-only controls", () => {
   const card = new SourceCard();
-  card.setConfig({ schema_version: 1, mapping_id: "target", defaults: { p13116: "sensor.direct", p13112: "sensor.production" }, overrides: {}, metrics: [{ key: "p13112", group: "today_energy", label: "Solar production", default: "sensor.production", candidates: [] }, { key: "p13116", group: "today_energy", label: "Direct solar consumption", default: "sensor.direct", validation: { schema_version: 1, rules: [{ type: "not_materially_greater_than", metric: "p13112", relative_tolerance: 0.05, absolute_tolerance: 0.1 }] }, candidates: [] }], labels: { groups: { today_energy: "Today's energy" }, readonly: "Administrators only" } });
+  card.setConfig({ schema_version: 1, mapping_id: "target", defaults: { p13116: "sensor.direct", p13112: "sensor.production" }, overrides: {}, metrics: [{ key: "p13112", group: "today_energy", label: "Solar production", default: "sensor.production", candidates: [] }, { key: "p13116", group: "today_energy", label: "Direct solar consumption", default: "sensor.direct", validation: { schema_version: 2, rules: [{ type: "not_materially_greater_than", metric: "p13112", relative_tolerance: 0.05, absolute_tolerance: 0.1 }] }, candidates: [] }], labels: { groups: { today_energy: "Today's energy" }, readonly: "Administrators only" } });
   card.hass = { user: { is_admin: false }, states: { "sensor.production": { state: "42.8", attributes: { unit_of_measurement: "kWh" } }, "sensor.direct": { state: "52.6", attributes: { unit_of_measurement: "kWh" } } } };
   assert.match(card.shadowRoot.innerHTML, /Needs review/);
   assert.match(card.shadowRoot.innerHTML, /exceeds solar production/);
@@ -345,16 +458,17 @@ test("source mapping card exposes warning text and admin-only controls", () => {
 function sourceSaveFixture() {
   const config = {
     schema_version: 1,
+    matcher_version: 5,
     mapping_id: "source-test",
     dashboard_url_path: "gosungrow",
     defaults: { p13112: "sensor.auto" },
     overrides: {},
-    candidates: { p13112: [{ entity_id: "sensor.auto", confidence: "high", reason: "Current automatic match", recommended: true }, { entity_id: "sensor.manual", confidence: "medium", reason: "Compatible same-plant source", recommended: true }] },
-    bindings: { p13112: ["/views/0/cards/0/entity", "/views/0/cards/1/entity"] },
-    metrics: [{ key: "p13112", group: "today_energy", label: "Solar production", default: "sensor.auto", confidence: "high", reason: "Current automatic match" }],
+    candidates: { p13112: [{ entity_id: "sensor.auto", confidence: "high", reason: "Current automatic match", recommended: true, verification: "verified", compatibility: "compatible" }, { entity_id: "sensor.manual", confidence: "medium", reason: "Compatible same-plant source", recommended: true, verification: "verified", compatibility: "compatible" }] },
+    bindings: { p13112: ["/views/0/cards/0/entity", "/views/0/cards/1/entity", "/views/0/cards/0/source_policy/metrics/p13112/entity_id", "/views/0/cards/1/source_policy/metrics/p13112/entity_id"] },
+    metrics: [{ key: "p13112", group: "today_energy", label: "Solar production", default: "sensor.auto", confidence: "high", ...verifiedPolicy({ production: "sensor.auto" }).metrics.p13112, validation: { schema_version: 2, rules: [] } }],
     labels: { groups: { today_energy: "Today's energy" } },
   };
-  const dashboard = { views: [{ cards: [{ entity: "sensor.auto" }, { entity: "sensor.auto" }, { entity: "sensor.auto" }] }, { cards: [{ type: "custom:gosungrow-source-mapping-card-v1", ...structuredClone(config) }] }] };
+  const dashboard = { views: [{ cards: [{ entity: "sensor.auto", source_policy: verifiedPolicy({ production: "sensor.auto" }) }, { entity: "sensor.auto", source_policy: verifiedPolicy({ production: "sensor.auto" }) }, { entity: "sensor.auto" }] }, { cards: [{ type: "custom:gosungrow-source-mapping-card-v1", ...structuredClone(config) }] }] };
   return { config, dashboard };
 }
 
@@ -388,7 +502,7 @@ test("source mapping save mutates exactly its bindings and commits only after we
   const events = [];
   card.setConfig(config);
   card.dispatchEvent = (event) => { events.push(event.type); return true; };
-  card.hass = { user: { is_admin: true }, states: { "sensor.auto": { state: "4", attributes: {} }, "sensor.manual": { state: "5", attributes: {} } }, callWS: transactionalWS(dashboard, (config) => { saved = config; }) };
+  card.hass = { user: { is_admin: true }, states: { "sensor.auto": { state: "4", attributes: { unit_of_measurement: "kWh" } }, "sensor.manual": { state: "5", attributes: { unit_of_measurement: "kWh" } } }, callWS: transactionalWS(dashboard, (config) => { saved = config; }) };
   await card._save("p13112", "sensor.manual");
   await Promise.resolve();
   assert.equal(saved.views[0].cards[0].entity, "sensor.manual");
@@ -405,12 +519,15 @@ test("source mapping reset restores automatic and removes the override transacti
   const card = new SourceCard();
   const { config, dashboard } = sourceSaveFixture();
   config.overrides.p13112 = "sensor.manual";
+  Object.assign(config.metrics[0], { entity_id: "sensor.manual", selection_origin: "manual" });
   dashboard.views[0].cards[0].entity = "sensor.manual";
   dashboard.views[0].cards[1].entity = "sensor.manual";
   dashboard.views[1].cards[0].overrides.p13112 = "sensor.manual";
+  Object.assign(dashboard.views[1].cards[0].metrics[0], { entity_id: "sensor.manual", selection_origin: "manual" });
+  for (const display of dashboard.views[0].cards.slice(0, 2)) Object.assign(display.source_policy.metrics.p13112, { entity_id: "sensor.manual", selection_origin: "manual" });
   let saved;
   card.setConfig(config);
-  card.hass = { user: { is_admin: true }, states: { "sensor.auto": { state: "4", attributes: {} }, "sensor.manual": { state: "5", attributes: {} } }, callWS: transactionalWS(dashboard, (config) => { saved = config; }) };
+  card.hass = { user: { is_admin: true }, states: { "sensor.auto": { state: "4", attributes: { unit_of_measurement: "kWh" } }, "sensor.manual": { state: "5", attributes: { unit_of_measurement: "kWh" } } }, callWS: transactionalWS(dashboard, (config) => { saved = config; }) };
   await card._save("p13112", null);
   assert.equal(saved.views[0].cards[0].entity, "sensor.auto");
   assert.equal(saved.views[0].cards[1].entity, "sensor.auto");
@@ -494,7 +611,7 @@ test("source mapping authorization and save failures keep local state unchanged"
     const card = new SourceCard();
     const { config, dashboard } = sourceSaveFixture();
     card.setConfig(config);
-    card.hass = { user: { is_admin: true }, states: {}, callWS: async (request) => { if (failureAt === "read" || request.type === "lovelace/config/save") throw new Error("Not authorized"); return structuredClone(dashboard); } };
+    card.hass = { user: { is_admin: true }, states: { "sensor.manual": { state: "5", attributes: { unit_of_measurement: "kWh" } } }, callWS: async (request) => { if (failureAt === "read" || request.type === "lovelace/config/save") throw new Error("Not authorized"); return structuredClone(dashboard); } };
     await card._save("p13112", "sensor.manual");
     assert.equal(JSON.stringify(card._config.overrides), "{}", failureAt);
     assert.match(card._notice, /Not authorized/);
@@ -503,7 +620,7 @@ test("source mapping authorization and save failures keep local state unchanged"
 
 test("source mapping candidate values and warnings follow live Home Assistant state", () => {
   const card = new SourceCard();
-  card.setConfig({ schema_version: 1, mapping_id: "target", defaults: { p13112: "sensor.production", p13116: "sensor.direct" }, overrides: {}, metrics: [{ key: "p13112", group: "today_energy", default: "sensor.production", candidates: [] }, { key: "p13116", group: "today_energy", default: "sensor.direct", candidates: [{ entity_id: "sensor.direct", reason: "Compatible" }], validation: { schema_version: 1, rules: [{ type: "not_materially_greater_than", metric: "p13112", relative_tolerance: 0.05, absolute_tolerance: 0.1 }] } }], labels: { groups: { today_energy: "Today" } } });
+  card.setConfig({ schema_version: 1, mapping_id: "target", defaults: { p13112: "sensor.production", p13116: "sensor.direct" }, overrides: {}, metrics: [{ key: "p13112", group: "today_energy", default: "sensor.production", candidates: [] }, { key: "p13116", group: "today_energy", default: "sensor.direct", candidates: [{ entity_id: "sensor.direct", reason: "Compatible" }], validation: { schema_version: 2, rules: [{ type: "not_materially_greater_than", metric: "p13112", relative_tolerance: 0.05, absolute_tolerance: 0.1 }] } }], labels: { groups: { today_energy: "Today" } } });
   card.hass = { user: { is_admin: true }, states: { "sensor.production": { state: "42.8", attributes: { unit_of_measurement: "kWh" } }, "sensor.direct": { state: "52.6", attributes: { unit_of_measurement: "kWh", friendly_name: "Live direct solar" } } } };
   assert.equal(card._status(card._metric("p13116")), "needs_review");
   assert.match(card._candidate(card._metric("p13116"), card._metric("p13116").candidates[0]), /Live direct solar/);
@@ -559,7 +676,7 @@ test("source mapping verifies the persisted dashboard before changing local stat
   const card = new SourceCard();
   const { config, dashboard } = sourceSaveFixture();
   card.setConfig(config);
-  card.hass = { user: { is_admin: true }, states: {}, callWS: async (request) => request.type === "lovelace/config" ? structuredClone(dashboard) : undefined };
+  card.hass = { user: { is_admin: true }, states: { "sensor.manual": { state: "5", attributes: { unit_of_measurement: "kWh" } } }, callWS: async (request) => request.type === "lovelace/config" ? structuredClone(dashboard) : undefined };
   await card._save("p13112", "sensor.manual");
   assert.equal(card._config.overrides.p13112, undefined);
   assert.match(card._notice, /Could not save/);
@@ -578,7 +695,7 @@ test("source mapping requests a native Lovelace configuration refresh", () => {
 
 test("source mapping stale warning follows live timestamps and clears after an update", () => {
   const card = new SourceCard();
-  card.setConfig({ schema_version: 1, mapping_id: "target", defaults: { pv_power: "sensor.power" }, overrides: {}, metrics: [{ key: "pv_power", group: "live_power", default: "sensor.power", validation: { schema_version: 1, rules: [{ type: "freshness", max_age_seconds: 1800 }] } }], labels: { groups: { live_power: "Live power" } } });
+  card.setConfig({ schema_version: 1, mapping_id: "target", defaults: { pv_power: "sensor.power" }, overrides: {}, metrics: [{ key: "pv_power", group: "live_power", default: "sensor.power", validation: { schema_version: 2, rules: [{ type: "freshness", max_age_seconds: 1800 }] } }], labels: { groups: { live_power: "Live power" } } });
   card.hass = { user: { is_admin: true }, states: { "sensor.power": { state: "3.2", last_updated: new Date(Date.now() - 3600000).toISOString(), attributes: { unit_of_measurement: "kW" } } } };
   assert.equal(card._status(card._metric("pv_power")), "needs_review");
   assert.match(card._warning(card._metric("pv_power")), /not updated recently/);

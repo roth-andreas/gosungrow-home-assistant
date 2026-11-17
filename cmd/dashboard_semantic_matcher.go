@@ -7,7 +7,7 @@ import (
 	"unicode"
 )
 
-const dashboardSemanticMatcherVersion = 4
+const dashboardSemanticMatcherVersion = 5
 
 type dashboardSemanticSourceSpec struct {
 	Identifier     string
@@ -46,7 +46,7 @@ func dashboardSemanticContractFor(metric string) (dashboardSemanticContract, boo
 	contracts := map[string]dashboardSemanticContract{
 		"pv_power": {
 			metric: "pv_power", aliases: []string{"plant_active_power", "inverter_active_power", "pv_active_power"},
-			requiredMeaning: []string{"pv", "solar", "generation", "active_power"},
+			requiredMeaning: []string{"pv", "solar", "generation", "active_power", "total_dc_power", "dc_power", "plant_power", "p13003", "p83076", "p83033", "p83002"},
 			forbidden:       []string{"phase_a", "phase_b", "phase_c"},
 			allowedRoles:    map[string]bool{"inverter": true, "ess": true, "plant": true},
 		},
@@ -107,29 +107,32 @@ func dashboardSemanticProfile(metric string, contract dashboardSemanticContract)
 }
 
 func dashboardSemanticRecommendation(target haDashboardTarget, metric string, states []haState, singleTarget bool) dashboardSemanticMatch {
+	return dashboardSemanticRecommendationAt(target, metric, states, singleTarget, time.Now())
+}
+
+func dashboardSemanticRecommendationAt(target haDashboardTarget, metric string, states []haState, singleTarget bool, now time.Time) dashboardSemanticMatch {
 	contract, ok := dashboardSemanticContractFor(metric)
 	if !ok {
 		return dashboardSemanticMatch{}
 	}
 	if strings.EqualFold(metric, "pv_power") {
-		entity := "sensor.gosungrow_virtual_" + strings.ToLower(strings.TrimSpace(target.PsID)) + "_pv_power"
-		for _, state := range states {
-			if strings.EqualFold(strings.TrimSpace(state.EntityID), entity) && !dashboardPVForbidden(state, metric) && dashboardMetricStateRejectionReason(state, dashboardMetricProfileFor(metric)) == "" {
-				candidate := dashboardMetricCandidate{Entity: state.EntityID, Metric: metric, Score: 9999, State: state.State, Unit: dashboardStateUnit(state), Source: "plant-aggregate", Reason: "Canonical plant PV aggregate", Scope: "plant", Compatibility: "compatible"}
-				return dashboardSemanticMatch{Entity: state.EntityID, Score: 9999, Reason: candidate.Reason, Confident: true, Candidates: []dashboardMetricCandidate{candidate}}
-			}
+		if match := dashboardPlantPVRecommendation(target, states, now); match.Entity != "" {
+			return match
 		}
 	}
 	if len(contract.sources) > 0 {
-		return dashboardCanonicalRecommendation(target, metric, contract, states, singleTarget)
+		return dashboardCanonicalRecommendationAt(target, metric, contract, states, singleTarget, now)
 	}
 	return dashboardLegacySemanticRecommendation(target, metric, contract, states, singleTarget)
 }
 
 func dashboardCanonicalRecommendation(target haDashboardTarget, metric string, contract dashboardSemanticContract, states []haState, singleTarget bool) dashboardSemanticMatch {
+	return dashboardCanonicalRecommendationAt(target, metric, contract, states, singleTarget, time.Now())
+}
+
+func dashboardCanonicalRecommendationAt(target haDashboardTarget, metric string, contract dashboardSemanticContract, states []haState, singleTarget bool, now time.Time) dashboardSemanticMatch {
 	values := make([]dashboardMetricCandidate, 0)
 	registryAvailable := dashboardRegistryMetadataAvailable(states)
-	now := time.Now()
 	for _, state := range states {
 		candidate, ok := dashboardCanonicalSourceCandidate(target, metric, contract, state, singleTarget, registryAvailable, now)
 		if !ok {
@@ -174,6 +177,13 @@ func dashboardIsCanonicalDailyMetric(metric string) bool {
 // Entity and friendly names are presentation; only the selected stable identity
 // establishes meaning when the registry is available.
 func dashboardCanonicalSourceCandidate(target haDashboardTarget, metric string, contract dashboardSemanticContract, state haState, singleTarget, registryAvailable bool, now time.Time) (dashboardMetricCandidate, bool) {
+	if dashboardMetricStateRejectionReason(state, dashboardMetricProfileFor(metric)) != "" || !dashboardSourceStateRecent(state, metric, now) {
+		return dashboardMetricCandidate{}, false
+	}
+	return dashboardCanonicalMeaningCandidate(target, metric, contract, state, registryAvailable, now)
+}
+
+func dashboardCanonicalMeaningCandidate(target haDashboardTarget, metric string, contract dashboardSemanticContract, state haState, registryAvailable bool, now time.Time) (dashboardMetricCandidate, bool) {
 	identity := state.EntityID
 	if registryAvailable {
 		identity = state.RegistryUniqueID
@@ -188,7 +198,7 @@ func dashboardCanonicalSourceCandidate(target haDashboardTarget, metric string, 
 		return dashboardMetricCandidate{}, false
 	}
 	source, ok := dashboardSemanticSource(identity, contract.sources)
-	if !ok || dashboardMetricStateRejectionReason(state, dashboardMetricProfileFor(metric)) != "" || !dashboardSourceStateRecent(state, metric, now) {
+	if !ok || dashboardMetricUnitRejectionReason(state, dashboardMetricProfileFor(metric)) != "" {
 		return dashboardMetricCandidate{}, false
 	}
 	// The approved terminal point establishes meaning; opaque plant/device
@@ -269,6 +279,11 @@ func dashboardLegacySemanticRecommendation(target haDashboardTarget, metric stri
 	profile := dashboardSemanticProfile(metric, contract)
 	values := make([]dashboardMetricCandidate, 0)
 	for _, state := range states {
+		if metric == "pv_power" && strings.EqualFold(state.EntityID, "sensor.gosungrow_virtual_"+target.PsID+"_pv_power") {
+			// A missing/mismatched canonical registry identity must not regain
+			// confident plant-total status through legacy name scoring.
+			continue
+		}
 		entity, score, reason, compatible := dashboardScoreMetricCandidate(target, metric, profile, state, singleTarget)
 		if !compatible || entity == "" || !dashboardSemanticCandidateAllowed(target, contract, state) {
 			continue
@@ -443,7 +458,7 @@ func dashboardSemanticStateMatchesTarget(target haDashboardTarget, state haState
 
 func dashboardRegistryMetadataAvailable(states []haState) bool {
 	for _, state := range states {
-		if strings.TrimSpace(state.RegistryUniqueID) != "" {
+		if state.RegistryObserved || strings.TrimSpace(state.RegistryUniqueID) != "" {
 			return true
 		}
 	}

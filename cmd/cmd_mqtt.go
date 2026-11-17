@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/go-co-op/gocron"
 	"github.com/roth-andreas/gosungrow-home-assistant/cmdHassio"
+	"github.com/roth-andreas/gosungrow-home-assistant/defaults"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/getDeviceList"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/queryDeviceList"
@@ -80,10 +82,15 @@ type CmdMqtt struct {
 	CmdDefault
 
 	// HASSIO MQTT
-	Username string
-	Password string
-	Host     string
-	Port     string
+	Username             string
+	Password             string
+	Host                 string
+	Port                 string
+	DashboardEnabled     bool
+	DashboardForceUpdate bool
+	dashboardTargets     []haDashboardTarget
+	dashboardRuntime     *dashboardCoordinator
+	runContext           context.Context
 
 	Client    *cmdHassio.Mqtt
 	endpoints MqttEndPoints
@@ -98,6 +105,7 @@ type CmdMqtt struct {
 	dockerDNSOutageAt   time.Time
 	now                 func() time.Time
 	syncCycle           uint64
+	collectionAttempt   uint64
 	currentSyncEndpoint string
 	plantTopologies     map[string]iSolarCloud.PlantTopology
 	plantInventories    map[string]iSolarCloud.PlantInventory
@@ -220,6 +228,10 @@ func (c *CmdMqtt) AttachFlags(cmd *cobra.Command, viper *viper.Viper) {
 		viper.SetDefault(flagMqttHost, "")
 		cmd.PersistentFlags().StringVarP(&c.Port, flagMqttPort, "", "", "HASSIO: mqtt port.")
 		viper.SetDefault(flagMqttPort, "")
+		cmd.PersistentFlags().BoolVar(&c.DashboardEnabled, "dashboard-enabled", false, "Enable managed dashboard reconciliation and availability observation.")
+		cmd.PersistentFlags().BoolVar(&c.DashboardForceUpdate, "dashboard-force-update", false, "Permit replacement of externally modified managed dashboards.")
+		viper.SetDefault("dashboard-enabled", false)
+		viper.SetDefault("dashboard-force-update", false)
 	}
 }
 
@@ -334,7 +346,10 @@ func (c *CmdMqtt) CmdMqtt(cmd *cobra.Command, _ []string) error {
 	return cmd.Help()
 }
 
-func (c *CmdMqtt) CmdMqttRun(_ *cobra.Command, _ []string) error {
+func (c *CmdMqtt) CmdMqttRun(command *cobra.Command, _ []string) error {
+	c.runContext = command.Context()
+	join := c.startDashboardRuntime(c.runContext)
+	defer join()
 	for range Only.Once {
 		c.Error = c.Cron()
 		if c.Error != nil {
@@ -348,7 +363,12 @@ func (c *CmdMqtt) CmdMqttRun(_ *cobra.Command, _ []string) error {
 			delay := c.nextSyncDelay()
 			c.log.Debug("Next sync in %s\n", delay)
 			timer := time.NewTimer(delay)
-			<-timer.C
+			select {
+			case <-c.runContext.Done():
+				timer.Stop()
+				return nil
+			case <-timer.C:
+			}
 			c.log.Debug("Update: %s\n", c.now().String())
 			c.Error = c.Cron()
 			if c.Error != nil {
@@ -360,7 +380,8 @@ func (c *CmdMqtt) CmdMqttRun(_ *cobra.Command, _ []string) error {
 	return c.Error
 }
 
-func (c *CmdMqtt) CmdMqttSync(_ *cobra.Command, args []string) error {
+func (c *CmdMqtt) CmdMqttSync(command *cobra.Command, args []string) error {
+	c.runContext = command.Context()
 	cronString := "*/5 * * * *"
 	if len(args) > 0 {
 		if len(args) < 5 {
@@ -379,18 +400,24 @@ func (c *CmdMqtt) CmdMqttSync(_ *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	join := c.startDashboardRuntime(c.runContext)
+	defer join()
 	if err = c.Cron(); err != nil {
 		return err
 	}
 	scheduler.StartAsync()
 	defer scheduler.Stop()
 	c.log.Info("Created job schedule using '%s'\n", cronString)
-	return c.runScheduledSync(ticks, c.Cron, time.After)
+	return c.runScheduledSyncContext(c.runContext, ticks, c.Cron, time.After)
 }
 
 // runScheduledSync serializes cron and DNS attempts. Cron ticks cannot shorten
 // an active DNS deadline, and fatal cycle errors terminate the scheduler owner.
 func (c *CmdMqtt) runScheduledSync(ticks <-chan struct{}, attempt func() error, after func(time.Duration) <-chan time.Time) error {
+	return c.runScheduledSyncContext(context.Background(), ticks, attempt, after)
+}
+
+func (c *CmdMqtt) runScheduledSyncContext(ctx context.Context, ticks <-chan struct{}, attempt func() error, after func(time.Duration) <-chan time.Time) error {
 	for {
 		var retry <-chan time.Time
 		if c.dockerDNSErrorCount > 0 {
@@ -399,6 +426,8 @@ func (c *CmdMqtt) runScheduledSync(ticks <-chan struct{}, attempt func() error, 
 	wait:
 		for {
 			select {
+			case <-ctx.Done():
+				return nil
 			case <-ticks:
 				if retry == nil {
 					break wait
@@ -449,7 +478,17 @@ func (c *CmdMqtt) Cron() error {
 	if c.Client.IsFirstRun() {
 		c.Client.UnsetFirstRun()
 	} else if c.dockerDNSErrorCount == 0 {
-		time.Sleep(c.optionSleepDelay)
+		if c.runContext == nil {
+			time.Sleep(c.optionSleepDelay)
+		} else {
+			timer := time.NewTimer(c.optionSleepDelay)
+			select {
+			case <-c.runContext.Done():
+				timer.Stop()
+				return nil
+			case <-timer.C:
+			}
+		}
 	}
 	started := c.now()
 	c.syncCycle++
@@ -541,14 +580,23 @@ func (c *CmdMqtt) rediscover() error {
 	}
 	c.Client.SungrowDevices = devices
 	c.plantInventories, c.points, c.plantTopologies = staged.plantInventories, staged.points, staged.plantTopologies
+	c.dashboardTargets = staged.dashboardTargets
+	if c.dashboardRuntime != nil {
+		c.dashboardRuntime.updateTargets(c.dashboardTargets)
+	}
 	c.rediscoveryPending = false
 	return nil
 }
 
 func (c *CmdMqtt) collectAndPublish(newDay bool) error {
+	c.collectionAttempt++
+	capture := &normalizedSourceCapture{}
+	if c.log.IsDebug() {
+		defer capture.write(c, c.collectionAttempt)
+	}
 	batches := buildMqttEndpointBatches(c.endpoints.Names(), c.getRealtimePsKeyTargets())
 	for _, batch := range batches {
-		if err := c.collectAndPublishBatch(batch, newDay); err != nil {
+		if err := c.collectAndPublishBatch(batch, newDay, capture); err != nil {
 			return err
 		}
 	}
@@ -556,7 +604,7 @@ func (c *CmdMqtt) collectAndPublish(newDay bool) error {
 	return nil
 }
 
-func (c *CmdMqtt) collectAndPublishBatch(batch mqttEndpointBatch, newDay bool) error {
+func (c *CmdMqtt) collectAndPublishBatch(batch mqttEndpointBatch, newDay bool, capture *normalizedSourceCapture) error {
 	if len(batch.Endpoints) == 0 {
 		return nil
 	}
@@ -585,6 +633,9 @@ func (c *CmdMqtt) collectAndPublishBatch(batch mqttEndpointBatch, newDay bool) e
 	sort.Strings(resultKeys)
 	for _, key := range resultKeys {
 		result := data.Results[key]
+		if c.log.IsDebug() {
+			capture.add(c, result.Response.Data)
+		}
 		if result.EndPointName.String() == "queryDeviceList" {
 			if err := c.publishPlantPVPower(&result.Response.Data, newDay); err != nil {
 				return err
@@ -601,6 +652,11 @@ func (c *CmdMqtt) collectAndPublishBatch(batch mqttEndpointBatch, newDay bool) e
 
 func (c *CmdMqtt) refreshPlantTopologies() {
 	trees, err := mqttLoadPlantTrees()
+	if err == nil {
+		if targets, targetErr := discoverDashboardTargetsFromTrees(trees); targetErr == nil {
+			c.dashboardTargets = targets
+		}
+	}
 	if err != nil && cmds.Api.SunGrow != nil && !cmds.Api.SunGrow.NeedLogin {
 		// Topology failure is explicitly nonfatal; retire its operation error.
 		cmds.Api.SunGrow.Error = nil
@@ -677,6 +733,7 @@ func (c *CmdMqtt) publishPlantPVPower(data *api.DataMap, newDay bool) error {
 	}
 	result := iSolarCloud.AddCanonicalPlantPVPower(data, topology)
 	outcome, reason := "suppressed", result.Reason
+	receipt := c.Client.SensorPublicationReceipt(cmdHassio.EntityConfig{FullId: "virtual." + psID + ".pv_power"})
 	var err error
 	if result.Added {
 		key := "virtual." + psID + ".pv_power"
@@ -690,11 +747,13 @@ func (c *CmdMqtt) publishPlantPVPower(data *api.DataMap, newDay bool) error {
 			} else {
 				canonical := api.NewDataMap()
 				canonical.Map[key] = data.Map[key]
-				err = c.Update(queryDeviceList.EndPointName, canonical, newDay)
+				err = c.updateWithReceipt(queryDeviceList.EndPointName, canonical, newDay, &receipt)
 				if err != nil {
 					outcome, reason = "publication_failed", "publication_failed"
-				} else {
+				} else if receipt.State.Status == "completed" && (receipt.Config.Status == "completed" || receipt.Config.Status == "reused_previous_success") {
 					outcome, reason = "published", "none"
+				} else {
+					outcome, reason = "filtered", "publication_not_completed"
 				}
 			}
 		}
@@ -705,14 +764,22 @@ func (c *CmdMqtt) publishPlantPVPower(data *api.DataMap, newDay bool) error {
 	if result.ExpectedKnown {
 		expected = fmt.Sprint(result.Expected)
 	}
-	c.log.Info("Plant PV aggregation: ps_id=%s cycle=%d outcome=%s source=%s expected=%s received=%d valid_ac=%d valid_dc=%d reason=%s\n",
-		psID, c.syncCycle, outcome, result.Source, expected, result.Received, result.ValidAC, result.ValidDC, reason)
+	c.log.Info("Plant PV aggregation: ps_id=%s cycle=%d outcome=%s source=%s expected=%s received=%d valid_ac=%d valid_dc=%d reason=%s app_version=%s matcher_version=%d observed_at=%s unique_id=%s discovery_topic=%s state_topic=%s config_publication=%s state_publication=%s config_completed_at=%s state_completed_at=%s ha_observation=not_checked dashboard_binding=not_checked\n",
+		psID, c.syncCycle, outcome, result.Source, expected, result.Received, result.ValidAC, result.ValidDC, reason,
+		defaults.BinaryVersion, dashboardSemanticMatcherVersion, time.Now().UTC().Format(time.RFC3339Nano), receipt.UniqueID, receipt.Config.Topic, receipt.State.Topic, receipt.Config.Status, receipt.State.Status, dashboardPublicationTime(receipt.Config.CompletedAt), dashboardPublicationTime(receipt.State.CompletedAt))
 	for _, record := range result.Records {
 		c.log.Debug("Plant PV aggregation detail: device_key=%s device_type=%d point_id=%s unit=%s valid=%t rejection=%s\n",
 			record.DeviceKey, record.DeviceType, record.PointID, record.Unit, record.Valid, record.Reason)
 	}
 	c.log.Debug("Plant PV aggregation details: omitted=%d\n", result.OmittedRecords)
 	return err
+}
+
+func dashboardPublicationTime(stamp time.Time) string {
+	if stamp.IsZero() {
+		return "not_observed"
+	}
+	return stamp.UTC().Format(time.RFC3339Nano)
 }
 
 func (c *CmdMqtt) getRealtimePsKeyTargets() []realtimePsKeyTarget {
@@ -824,6 +891,10 @@ func (c *CmdMqtt) clearDockerDNSOutage() {
 }
 
 func (c *CmdMqtt) Update(endpoint string, data api.DataMap, newDay bool) error {
+	return c.updateWithReceipt(endpoint, data, newDay, nil)
+}
+
+func (c *CmdMqtt) updateWithReceipt(endpoint string, data api.DataMap, newDay bool, receipt *cmdHassio.SensorPublicationReceipt) error {
 	c.Error = nil
 	for range Only.Once {
 		// Also getPowerStatistics, getHouseholdStoragePsReport, getPsList, getUpTimePoint,
@@ -923,10 +994,16 @@ func (c *CmdMqtt) Update(endpoint string, data api.DataMap, newDay bool) error {
 					break
 				}
 
-				c.Error = c.Client.SensorPublishConfig(re)
+				configReceipt, err := c.Client.SensorPublishConfigWithReceipt(re)
+				c.Error = err
+				if receipt != nil {
+					receipt.UniqueID, receipt.Config = configReceipt.UniqueID, configReceipt.Config
+				}
 				if c.Error != nil {
 					break
 				}
+			} else if receipt != nil {
+				receipt.Config.Status = "reused_previous_success"
 			}
 
 			c.log.PlainInfo("U")
@@ -936,7 +1013,11 @@ func (c *CmdMqtt) Update(endpoint string, data api.DataMap, newDay bool) error {
 				break
 			}
 
-			c.Error = c.Client.SensorPublishValue(re)
+			stateReceipt, err := c.Client.SensorPublishValueWithReceipt(re)
+			c.Error = err
+			if receipt != nil {
+				receipt.UniqueID, receipt.State = stateReceipt.UniqueID, stateReceipt.State
+			}
 			if c.Error != nil {
 				break
 			}

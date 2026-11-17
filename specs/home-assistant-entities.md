@@ -50,7 +50,7 @@ Scope: MQTT discovery payloads, IDs, device hierarchy, metadata, and state paylo
 - **REQ-HA-015** — Friendly name MUST be `group - description` when both differ, otherwise the non-empty one, then point ID, then endpoint path. Duplicate group/description text MUST appear once.
 - **REQ-HA-016** — Missing point metadata MAY be filled from device-point attributes: unit first, then description/group, then value type. Existing normalized metadata MUST not be overwritten.
 - **REQ-HA-019** — A numeric peak-power sensor normalized to `kWp` MUST retain the `kWp` unit and its frequency-derived state metadata, MUST omit `device_class`, and MUST use `mdi:lightning-bolt`. Standard `W`, `kW`, and `MW` power sensors MUST continue to use device class `power`.
-- **REQ-HA-020** — Canonical plant PV power MUST be attached to the plant device and exposed as `sensor.gosungrow_virtual_<ps_id>_pv_power`. It MUST be a numeric `kW` sensor with device class `power`, state class `measurement`, and stable endpoint-path identity under `REQ-HA-003`.
+- **REQ-HA-020** — Canonical plant PV power MUST be attached to the plant device with default entity name `sensor.gosungrow_virtual_<ps_id>_pv_power`. It MUST be a numeric `kW` sensor with device class `power`, state class `measurement`, and stable endpoint-path discovery identity under REQ-HA-003. Home Assistant may retain a renamed or suffixed entity ID for that identity; GoSungrow MUST resolve it through the registry rather than rename, delete, or recreate the entity merely to enforce the default spelling. This clarification MUST NOT change MQTT unique IDs, discovery/state topics, or existing entity history.
 
 ## Select entities
 

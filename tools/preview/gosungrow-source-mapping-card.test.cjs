@@ -29,18 +29,19 @@ function state(value, unit = "kWh", name = "Entity") {
 function fixture() {
   const oldEntity = "sensor.gosungrow_100_11_0_0_p13112";
   const newEntity = "sensor.renamed_production";
-  const metric = { key: "p13112", group: "today_energy", label: "Solar production today", default: oldEntity, confidence: "low", reason: "Current automatic match", needs_review: true, recommendation: newEntity };
+  const policy = { entity_id: oldEntity, selection_origin: "automatic", verification: "unverified", display_decision: "withheld", reason: "Source meaning could not be verified" };
+  const metric = { key: "p13112", group: "today_energy", label: "Solar production today", default: oldEntity, confidence: "low", ...policy, validation: { schema_version: 2, rules: [] }, needs_review: true, recommendation: newEntity };
   const candidates = [
     { entity_id: oldEntity, recommended: true, confidence: "low", reason: "Current automatic match" },
-    { entity_id: newEntity, recommended: true, confidence: "high", reason: "Canonical Sungrow point", canonical_point: "p13112", provenance: "native", compatibility: "compatible" },
+    { entity_id: newEntity, recommended: true, confidence: "high", reason: "Canonical Sungrow point", canonical_point: "p13112", provenance: "native", compatibility: "compatible", verification: "verified" },
     { entity_id: "sensor.advanced_production", recommended: false, confidence: "medium", reason: "Compatible advanced result" },
   ];
   const config = {
-    schema_version: 1, matcher_version: 4, mapping_id: "source-100", dashboard_url_path: "gosungrow-flow",
+    schema_version: 1, matcher_version: 5, mapping_id: "source-100", dashboard_url_path: "gosungrow-flow",
     defaults: { p13112: oldEntity }, pinned_defaults: { p13112: oldEntity }, overrides: {}, recommendations: { p13112: newEntity },
-    bindings: { p13112: ["/views/0/cards/0/entity"] }, metrics: [metric], candidates: { p13112: candidates }, labels: {},
+    bindings: { p13112: ["/views/0/cards/0/entity", "/views/0/cards/0/source_policy/metrics/p13112/entity_id"] }, metrics: [metric], candidates: { p13112: candidates }, labels: {},
   };
-  const dashboard = { views: [{ cards: [{ entity: oldEntity }] }, { cards: [{ type: "custom:gosungrow-source-mapping-card-v1", ...structuredClone(config) }] }] };
+  const dashboard = { views: [{ cards: [{ entity: oldEntity, source_policy: { mapping_id: config.mapping_id, metrics: { p13112: structuredClone(policy) } } }] }, { cards: [{ type: "custom:gosungrow-source-mapping-card-v1", ...structuredClone(config) }] }] };
   return { oldEntity, newEntity, metric, candidates, config, dashboard };
 }
 
@@ -176,4 +177,169 @@ test("matcher drift aborts selection and reset before any save", async () => {
       assert.match(card._notice, /Dashboard changed/);
     }
   }
+});
+
+function nativeFixture(kind) {
+  const f = fixture();
+  const projector = new MappingCard();
+  const source = {
+    mapping_id: f.config.mapping_id,
+    metrics: { p13112: projector._policyFields(f.metric) },
+    native_template: { type: kind, title: "Preserved title", layout_options: { grid_columns: 6 } },
+    native_bindings: { p13112: ["/entity"] },
+  };
+  if (kind === "tile") source.native_template.entity = f.oldEntity;
+  else {
+    const other = { key: "p13199", default: f.oldEntity, entity_id: f.oldEntity, selection_origin: "automatic", verification: "verified", display_decision: "normal", reason: "Source meaning verified", validation: { schema_version: 2, rules: [] } };
+    f.config.metrics.push(other);
+    f.config.defaults.p13199 = f.oldEntity;
+    f.config.pinned_defaults.p13199 = f.oldEntity;
+    source.metrics.p13199 = projector._policyFields(other);
+    source.native_template.hours_to_show = 24;
+    source.native_template.entities = [{ entity: f.oldEntity, name: "Production" }, { entity: f.oldEntity, name: "Consumption" }];
+    source.native_bindings = { p13112: ["/entities/0/entity"], p13199: ["/entities/1/entity"] };
+  }
+  const rendered = projector._projectNative(source);
+  f.config.bindings = Object.fromEntries(Object.entries(rendered.bindings).map(([metric, paths]) => [metric, paths.map((path) => "/views/0/cards/0" + path)]));
+  f.dashboard.views[0].cards[0] = rendered.card;
+  f.dashboard.views[1].cards[0] = { type: "custom:gosungrow-source-mapping-card-v1", ...structuredClone(f.config) };
+  return f;
+}
+
+test("native tile and graph adoption restore only the owned metric and regenerate bindings atomically", async () => {
+  for (const kind of ["tile", "history-graph"]) {
+    const { config, dashboard, oldEntity, newEntity } = nativeFixture(kind);
+    let stored = structuredClone(dashboard);
+    const card = new MappingCard();
+    card.setConfig(config);
+    card._hass = { user: { is_admin: true }, states: { [oldEntity]: state(4), [newEntity]: state(5) }, callWS: async (request) => {
+      if (request.type === "lovelace/config") return structuredClone(stored);
+      stored = structuredClone(request.config);
+    } };
+    await card._save("p13112", newEntity);
+    assert.equal(card._config.defaults.p13112, newEntity, card._notice);
+    const native = stored.views[0].cards[0];
+    assert.equal(native.type, kind);
+    assert.equal(native.title, "Preserved title");
+    assert.deepEqual(native.layout_options, { grid_columns: 6 });
+    if (kind === "history-graph") {
+      assert.deepEqual(native.entities, [{ entity: newEntity, name: "Production" }, { entity: oldEntity, name: "Consumption" }]);
+      assert.equal(native.hours_to_show, 24);
+      assert.equal(native.source_policy.metrics.p13199.entity_id, oldEntity);
+      assert.ok(card._config.bindings.p13199.includes("/views/0/cards/0/entities/1/entity"));
+    } else assert.equal(native.entity, newEntity);
+    for (const path of card._config.bindings.p13112) assert.equal(card._getPointer(stored, path), newEntity, path);
+    assert.equal(native.source_policy.metrics.p13112.verification, "verified");
+    assert.equal(native.source_policy.metrics.p13112.selection_origin, "automatic");
+    assert.equal(native.source_policy.metrics.p13112.display_decision, "normal");
+    assert.equal(JSON.stringify(stored).includes('"type":"conditional"'), false);
+  }
+});
+
+test("native stale, missing, cross-card and multiply-owned templates cannot save", async () => {
+  for (const corrupt of [
+    (source) => { delete source.native_template; },
+    (source) => { delete source.native_bindings; },
+    (source) => { source.native_bindings.p13112 = ["/views/1/entity"]; },
+    (source) => { source.native_bindings.p13112 = ["/entities/1/entity"]; },
+    (source) => { source.native_template.entities[0].entity = "sensor.another_target"; },
+    (source) => { source.native_template.source_policy = {}; },
+  ]) {
+    const { config, dashboard, oldEntity, newEntity } = nativeFixture("history-graph");
+    corrupt(dashboard.views[0].cards[0].source_policy);
+    const card = new MappingCard();
+    card.setConfig(config);
+    const before = structuredClone(card._config);
+    let saves = 0;
+    card._hass = { user: { is_admin: true }, states: { [oldEntity]: state(4), [newEntity]: state(5) }, callWS: async (request) => {
+      if (request.type === "lovelace/config") return structuredClone(dashboard);
+      saves++;
+    } };
+    await card._save("p13112", newEntity);
+    assert.equal(saves, 0);
+    assert.deepEqual(card._config, before);
+    assert.match(card._notice, /Dashboard changed/);
+  }
+});
+
+test("policy migration and live eligibility are checked again before selection", async () => {
+  for (const mode of ["old_validation", "policy_drift", "missing_verification", "unavailable", "unit_changed", "stale"]) {
+    const { config, dashboard, oldEntity, newEntity } = fixture();
+    if (mode === "old_validation") config.metrics[0].validation.schema_version = dashboard.views[1].cards[0].metrics[0].validation.schema_version = 1;
+    if (mode === "policy_drift") dashboard.views[1].cards[0].metrics[0].verification = "verified";
+    if (mode === "missing_verification") delete dashboard.views[1].cards[0].metrics[0].verification;
+    const live = state(mode === "unavailable" ? "unavailable" : 5, mode === "unit_changed" ? "W" : "kWh");
+    if (mode === "stale") live.last_updated = new Date(Date.now() - 37 * 3600000).toISOString();
+    const card = new MappingCard();
+    card.setConfig(config);
+    const before = structuredClone(card._config);
+    let saves = 0;
+    card._hass = { user: { is_admin: true }, states: { [oldEntity]: state(4), [newEntity]: live }, callWS: async (request) => {
+      if (request.type === "lovelace/config") return structuredClone(dashboard);
+      saves++;
+    } };
+    await card._save("p13112", newEntity);
+    assert.equal(saves, 0, mode);
+    assert.deepEqual(card._config, before, mode);
+  }
+});
+
+test("a failed native save retains both saved projection and local mapping", async () => {
+  const { config, dashboard, oldEntity, newEntity } = nativeFixture("history-graph");
+  const before = structuredClone(dashboard);
+  const card = new MappingCard();
+  card.setConfig(config);
+  card._hass = { user: { is_admin: true }, states: { [oldEntity]: state(4), [newEntity]: state(5) }, callWS: async (request) => {
+    if (request.type === "lovelace/config") return structuredClone(dashboard);
+    throw new Error("save rejected");
+  } };
+  await card._save("p13112", newEntity);
+  assert.deepEqual(dashboard, before);
+  assert.deepEqual(card._config, config);
+  assert.match(card._notice, /save rejected/);
+});
+
+test("bindings cannot cross targets or metric ownership even when entities are identical", async () => {
+  for (const mode of ["other_target", "other_metric", "missing_owned_path"]) {
+    const { config, dashboard, oldEntity, newEntity } = nativeFixture("history-graph");
+    if (mode === "other_target") {
+      const other = structuredClone(dashboard.views[0].cards[0]);
+      other.source_policy.mapping_id = "another-target";
+      dashboard.views[0].cards.push(other);
+      config.bindings.p13112.push("/views/0/cards/1/source_policy/metrics/p13112/entity_id");
+    } else if (mode === "other_metric") {
+      config.bindings.p13112.push("/views/0/cards/0/source_policy/metrics/p13199/entity_id");
+    } else config.bindings.p13112 = config.bindings.p13112.slice(1);
+    dashboard.views[1].cards[0] = { type: "custom:gosungrow-source-mapping-card-v1", ...structuredClone(config) };
+    const card = new MappingCard();
+    card.setConfig(config);
+    let saves = 0;
+    card._hass = { user: { is_admin: true }, states: { [oldEntity]: state(4), [newEntity]: state(5) }, callWS: async (request) => {
+      if (request.type === "lovelace/config") return structuredClone(dashboard);
+      saves++;
+    } };
+    await card._save("p13112", newEntity);
+    assert.equal(saves, 0, mode);
+    assert.deepEqual(card._config, config, mode);
+    assert.match(card._notice, /Dashboard changed/, mode);
+  }
+});
+
+test("a concurrent dashboard edit during source preparation aborts the save", async () => {
+  const { config, dashboard, oldEntity, newEntity } = fixture();
+  const card = new MappingCard();
+  card.setConfig(config);
+  let reads = 0, saves = 0;
+  card._hass = { user: { is_admin: true }, states: { [oldEntity]: state(4), [newEntity]: state(5) }, callWS: async (request) => {
+    if (request.type === "lovelace/config") {
+      const current = structuredClone(dashboard);
+      if (++reads > 1) current.views[0].title = "Concurrent user edit";
+      return current;
+    }
+    saves++;
+  } };
+  await card._save("p13112", newEntity);
+  assert.equal(saves, 0);
+  assert.deepEqual(card._config, config);
+  assert.match(card._notice, /Dashboard changed/);
 });

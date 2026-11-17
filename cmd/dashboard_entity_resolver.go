@@ -71,13 +71,15 @@ type dashboardDailyResolution struct {
 	Pinned                bool
 	NeedsReview           bool
 	UnsupportedCalculated bool
+	Policy                dashboardSourcePolicy
 }
 
 type dashboardRemapReport struct {
-	TotalRefs  int
-	Remapped   []dashboardEntityRemap
-	Unresolved []dashboardUnresolvedEntityRef
-	Traces     []dashboardMetricTrace
+	SourcePolicyError error
+	TotalRefs         int
+	Remapped          []dashboardEntityRemap
+	Unresolved        []dashboardUnresolvedEntityRef
+	Traces            []dashboardMetricTrace
 }
 
 const (
@@ -233,7 +235,7 @@ func resolveDashboardMetricEntityWithTrace(target haDashboardTarget, metric stri
 		TargetPsKey: target.PsKey,
 		Candidates:  make([]dashboardMetricCandidate, 0),
 	}
-	if dashboardIsCanonicalDailyMetric(metric) {
+	if dashboardIsCanonicalDailyMetric(metric) || metric == "pv_power" {
 		match := dashboardSemanticRecommendation(target, metric, states, singleTarget)
 		trace.Resolution = &dashboardDailyResolution{Match: match}
 		trace.Source = "unavailable"
@@ -242,6 +244,19 @@ func resolveDashboardMetricEntityWithTrace(target haDashboardTarget, metric stri
 			trace.Resolved, trace.Source = match.Entity, "canonical"
 		}
 		trace.Candidates = append(trace.Candidates, match.Candidates...)
+		if len(trace.Candidates) == 0 {
+			for _, state := range states {
+				if candidate, rejected := dashboardRejectedMetricCandidate(target, metric, profile, state, singleTarget); rejected {
+					trace.Candidates = append(trace.Candidates, candidate)
+				}
+			}
+			dashboardSortSemanticCandidates(trace.Candidates)
+		}
+		trace.Reason = match.Reason
+		if trace.Reason == "" {
+			trace.Reason = dashboardResolveFailureReason(dashboardEntityRef{Target: target, Metric: metric}, states, singleTarget)
+		}
+		trace.Resolution.Match.Reason = trace.Reason
 		if len(trace.Candidates) > dashboardSourceRecommendedLimit {
 			trace.Candidates = trace.Candidates[:dashboardSourceRecommendedLimit]
 		}
@@ -610,7 +625,11 @@ func dashboardMetricStateRejectionReason(state haState, profile dashboardMetricP
 	if !dashboardStateHasUsableNumericValue(state) {
 		return "state is unavailable or non-numeric"
 	}
+	return dashboardMetricUnitRejectionReason(state, profile)
+}
 
+func dashboardMetricUnitRejectionReason(state haState, profile dashboardMetricProfile) string {
+	kind := strings.TrimSpace(profile.Kind)
 	unit := dashboardStateUnit(state)
 	if unit == "" {
 		return ""

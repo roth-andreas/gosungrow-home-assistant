@@ -484,7 +484,10 @@ func nativeDashboardFallback(config map[string]any, locale dashboardLocaleBundle
 	if err != nil {
 		return nil, err
 	}
-	converted := convertDashboardCardsToNative(copied, locale)
+	converted, err := convertDashboardCardsToNative(copied, locale)
+	if err != nil {
+		return nil, err
+	}
 	ret, ok := converted.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("native dashboard fallback has unexpected type %T", converted)
@@ -492,14 +495,18 @@ func nativeDashboardFallback(config map[string]any, locale dashboardLocaleBundle
 	return ret, nil
 }
 
-func convertDashboardCardsToNative(value any, locale dashboardLocaleBundle) any {
+func convertDashboardCardsToNative(value any, locale dashboardLocaleBundle) (any, error) {
 	switch typed := value.(type) {
 	case []any:
 		ret := make([]any, 0, len(typed))
 		for _, entry := range typed {
-			ret = append(ret, convertDashboardCardsToNative(entry, locale))
+			converted, err := convertDashboardCardsToNative(entry, locale)
+			if err != nil {
+				return nil, err
+			}
+			ret = append(ret, converted)
 		}
-		return ret
+		return ret, nil
 	case map[string]any:
 		cardType := stringValue(typed["type"])
 		switch cardType {
@@ -508,19 +515,47 @@ func convertDashboardCardsToNative(value any, locale dashboardLocaleBundle) any 
 		case "custom:gosungrow-energy-summary-card-v1":
 			return nativeDashboardEntitiesCard(typed, dashboardNativeSummaryEntityOrder, localeText(locale, "heading_energy_summary", "Energy Summary"), locale)
 		case dashboardSourceMappingCardType:
-			return map[string]any{
-				"type":    "markdown",
-				"content": localeText(locale, "native_fallback_source_notice", "Enhanced dashboard cards are temporarily unavailable. Live data remains available, but source editing may be unavailable until automatic recovery completes."),
+			retained := make(map[string]any)
+			for _, key := range []string{"schema_version", "matcher_version", "mapping_id", "dashboard_url_path", "defaults", "pinned_defaults", "overrides"} {
+				retained[key] = typed[key]
 			}
+			metrics := []any{}
+			if sourceMetrics, ok := typed["metrics"].([]any); ok {
+				for _, raw := range sourceMetrics {
+					metric, ok := raw.(map[string]any)
+					if !ok {
+						continue
+					}
+					policy := make(map[string]any)
+					for _, key := range []string{"key", "entity_id", "selection_origin", "verification", "display_decision", "reason"} {
+						policy[key] = metric[key]
+					}
+					metrics = append(metrics, policy)
+				}
+			}
+			retained["metrics"] = metrics
+			return map[string]any{
+				"type":                     "markdown",
+				"content":                  localeText(locale, "native_fallback_source_notice", "Enhanced dashboard cards are temporarily unavailable. Live data remains available, but source editing may be unavailable until automatic recovery completes."),
+				"gosungrow_source_mapping": retained,
+			}, nil
 		default:
 			ret := make(map[string]any, len(typed))
 			for key, entry := range typed {
-				ret[key] = convertDashboardCardsToNative(entry, locale)
+				if key == "source_policy" {
+					ret[key] = entry
+					continue
+				}
+				converted, err := convertDashboardCardsToNative(entry, locale)
+				if err != nil {
+					return nil, err
+				}
+				ret[key] = converted
 			}
-			return ret
+			return ret, nil
 		}
 	default:
-		return value
+		return value, nil
 	}
 }
 
@@ -542,23 +577,39 @@ var dashboardNativeEntityLabels = map[string]string{
 	"to_grid": "name_to_grid", "from_grid": "name_from_grid", "to_battery": "name_to_battery", "from_battery": "name_from_battery",
 }
 
-func nativeDashboardEntitiesCard(card map[string]any, order []string, title string, locale dashboardLocaleBundle) map[string]any {
+func nativeDashboardEntitiesCard(card map[string]any, order []string, title string, locale dashboardLocaleBundle) (map[string]any, error) {
 	ret := map[string]any{"type": "entities", "title": title}
 	if layout, ok := card["layout_options"]; ok {
 		ret["layout_options"] = layout
 	}
 	entities, _ := card["entities"].(map[string]any)
 	rows := make([]any, 0, len(order))
+	owned := make(map[string]any)
+	source, hasPolicy := card["source_policy"].(map[string]any)
+	metrics, _ := source["metrics"].(map[string]any)
+	summaryMetrics := map[string]string{"production": "p13112", "consumption": "p13199", "to_grid": "p13173", "from_grid": "p13147", "to_battery": "p13174", "from_battery": "p13029"}
 	for _, key := range order {
 		entity := strings.TrimSpace(stringValue(entities[key]))
 		if entity == "" {
 			continue
 		}
 		fallback := strings.ReplaceAll(key, "_", " ")
+		metric := dashboardFlowEntityMetrics[key]
+		if stringValue(card["type"]) != dashboardEnergyFlowCardType {
+			metric = summaryMetrics[key]
+		}
+		if _, ok := metrics[metric]; ok {
+			owned[metric] = []any{"/entities/" + strconv.Itoa(len(rows)) + "/entity"}
+		}
 		rows = append(rows, map[string]any{"entity": entity, "name": localeText(locale, dashboardNativeEntityLabels[key], fallback)})
 	}
 	ret["entities"] = rows
-	return ret
+	if !hasPolicy {
+		return ret, nil
+	}
+	projectionSource := map[string]any{"mapping_id": source["mapping_id"], "metrics": metrics, "native_template": ret, "native_bindings": owned}
+	rendered, _, err := renderDashboardNativeProjection(projectionSource)
+	return rendered, err
 }
 
 func dashboardConfigContainsCustomGoSungrow(value any) bool {

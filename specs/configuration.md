@@ -7,7 +7,7 @@ Scope: Configuration sources, precedence, environment variables, and operational
 
 - **REQ-CFG-001** — Product configuration MUST be resolvable from framework defaults, persisted configuration, `GOSUNGROW_` environment variables, and explicit CLI flags. Explicit flags take precedence; an explicitly supplied empty value remains empty when the affected requirement distinguishes empty from absent.
 - **REQ-CFG-002** — `config write` MUST persist the effective CLI-framework configuration to `GOSUNGROW_CONFIG`; when unset, the framework's standard GoSungrow configuration location is used. Credentials and tokens MUST NOT be printed by normal successful commands.
-- **REQ-CFG-003** — The Home Assistant app wrapper MUST translate app options into the configuration described by `REQ-ADDON-*`; specifically, `gosungrow_host` maps to `GOSUNGROW_HOST` under `REQ-ADDON-013`. Supervisor-provided service values are inputs only to that translation and MUST NOT redefine CLI precedence.
+- **REQ-CFG-003** — The Home Assistant app wrapper MUST translate app options into the configuration described by `REQ-ADDON-*`; specifically, `gosungrow_host` maps to `GOSUNGROW_HOST` under REQ-ADDON-013, `install_dashboard` maps to `GOSUNGROW_DASHBOARD_ENABLED` and `--dashboard-enabled`, and `dashboard_force_update` maps to `GOSUNGROW_DASHBOARD_FORCE_UPDATE` and `--dashboard-force-update` under REQ-CLI-007 and REQ-ADDON-002. Explicit app choices, including false, MUST be passed to configuration writing and the MQTT runtime so stale persisted settings cannot override them. Supervisor-provided service values are inputs only to that translation and MUST NOT redefine CLI precedence.
 
 ## Configuration catalog
 
@@ -20,6 +20,8 @@ The implementation MUST support this complete set of repository-specific environ
 | `GOSUNGROW_MQTT_HOST`, `GOSUNGROW_MQTT_PORT`, `GOSUNGROW_MQTT_USER`, `GOSUNGROW_MQTT_PASSWORD` | MQTT endpoint and credentials; port defaults to `1883`. |
 | `GOSUNGROW_CONFIG` | Persisted CLI configuration path and runtime cache/config parent. |
 | `GOSUNGROW_ASSET_DIR` | Managed dashboard asset directory; the app image default is `/opt/gosungrow/assets`. |
+| `GOSUNGROW_DASHBOARD_ENABLED` | Boolean runtime dashboard enable setting corresponding to `--dashboard-enabled`; defaults to false outside explicit configuration. The app derives it from its existing `install_dashboard` option and explicitly passes that choice under REQ-CLI-007. |
+| `GOSUNGROW_DASHBOARD_FORCE_UPDATE` | Boolean runtime replacement permission corresponding to `--dashboard-force-update`; defaults to false outside explicit configuration. The app derives it from its existing `dashboard_force_update` option. True does not enable dashboard work when `dashboard-enabled` is false. |
 | `GOSUNGROW_DASHBOARD_LANGUAGE` | Dashboard language passed by app startup; absent/empty becomes `auto`. |
 | `GOSUNGROW_DASHBOARD_RECONCILE_DELAYS` | Space-separated sequential delay values used by `REQ-ADDON-004`; default is `30 90 180 300`. |
 | `GOSUNGROW_DEBUG` | Dashboard diagnostic mode is enabled after trim and case-fold only for `1`, `true`, `yes`, or `on`; app startup derives it from the `debug` option. |

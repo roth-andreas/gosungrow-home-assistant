@@ -44,10 +44,12 @@ fi
 
 if [ -z "$GOSUNGROW_USER" ]; then
   bashio::log.fatal 'Missing required option: gosungrow_user'
+  exit 1
 fi
 
 if [ -z "$GOSUNGROW_PASSWORD" ]; then
   bashio::log.fatal 'Missing required option: gosungrow_password'
+  exit 1
 fi
 
 if ! GOSUNGROW_HOST="$(gosungrow_resolve_host "$CUSTOM_GOSUNGROW_HOST" "$DEFAULT_HOST")"; then
@@ -57,6 +59,7 @@ fi
 
 if [ -z "$GOSUNGROW_MQTT_HOST" ]; then
   bashio::log.fatal 'No MQTT broker configured. Set mqtt_host in the app config or install/start the Home Assistant Mosquitto broker app.'
+  exit 1
 fi
 
 if [ -n "$CUSTOM_MQTT_HOST" ]; then
@@ -76,10 +79,20 @@ export GOSUNGROW_MQTT_PASSWORD
 export GOSUNGROW_DEBUG="$(bashio::config 'debug')"
 export GOSUNGROW_ASSET_DIR="${GOSUNGROW_ASSET_DIR:-/opt/gosungrow/assets}"
 export GOSUNGROW_DASHBOARD_LANGUAGE="$(bashio::config 'dashboard_language')"
+export GOSUNGROW_DASHBOARD_ENABLED=false
+export GOSUNGROW_DASHBOARD_FORCE_UPDATE=false
+if bashio::config.true 'install_dashboard'; then
+  GOSUNGROW_DASHBOARD_ENABLED=true
+fi
+if bashio::config.true 'dashboard_force_update'; then
+  GOSUNGROW_DASHBOARD_FORCE_UPDATE=true
+fi
 
 mkdir -p "$(dirname "$GOSUNGROW_CONFIG")"
 
 GoSungrow config write \
+  --dashboard-enabled="$GOSUNGROW_DASHBOARD_ENABLED" \
+  --dashboard-force-update="$GOSUNGROW_DASHBOARD_FORCE_UPDATE" \
   --host="$GOSUNGROW_HOST" \
   --appkey="$GOSUNGROW_APPKEY" \
   --user="$GOSUNGROW_USER" \
@@ -127,24 +140,8 @@ install_managed_dashboard() {
   rm -f "$dashboard_log"
 }
 
-reconcile_managed_dashboard_after_mqtt_start() {
-  local attempt
-  local delay
-
-  attempt=0
-  for delay in ${GOSUNGROW_DASHBOARD_RECONCILE_DELAYS:-30 90 180 300}; do
-    sleep "$delay" || return 0
-    attempt=$((attempt + 1))
-    install_managed_dashboard "Reconciling after MQTT startup (${attempt})" || true
-  done
-}
-
-dashboard_reconcile_pid=""
 if bashio::config.true 'install_dashboard'; then
   install_managed_dashboard "Installing" || true
-  reconcile_managed_dashboard_after_mqtt_start &
-  dashboard_reconcile_pid="$!"
-  trap 'if [ -n "${dashboard_reconcile_pid:-}" ]; then kill "$dashboard_reconcile_pid" 2>/dev/null || true; fi' EXIT
 fi
 
 bashio::log.info "Starting GoSungrow against MQTT broker ${GOSUNGROW_MQTT_HOST}:${GOSUNGROW_MQTT_PORT}."
@@ -164,6 +161,8 @@ run_mqtt_with_login_retry() {
     "--mqtt-port=${GOSUNGROW_MQTT_PORT:-1883}"
     "--mqtt-user=$GOSUNGROW_MQTT_USER"
     "--mqtt-password=$GOSUNGROW_MQTT_PASSWORD"
+    "--dashboard-enabled=$GOSUNGROW_DASHBOARD_ENABLED"
+    "--dashboard-force-update=$GOSUNGROW_DASHBOARD_FORCE_UPDATE"
   )
 
   attempt=0

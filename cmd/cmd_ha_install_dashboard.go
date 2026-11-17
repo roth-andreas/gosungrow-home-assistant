@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/roth-andreas/gosungrow-home-assistant/cmdHassio"
+	"github.com/roth-andreas/gosungrow-home-assistant/defaults"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud"
 	gosungrowoutput "github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/output"
 	"github.com/spf13/cobra"
@@ -52,6 +54,7 @@ type haDashboardInstallOptions struct {
 	ShowInSidebar      bool
 	RequireAdmin       bool
 	ForceUpdate        bool
+	AvailabilityDriven bool
 }
 
 type haDashboardTarget struct {
@@ -94,14 +97,16 @@ type haResourceMetadata struct {
 }
 
 type haState struct {
-	EntityID         string         `json:"entity_id"`
-	State            string         `json:"state"`
-	LastChanged      string         `json:"last_changed,omitempty"`
-	LastUpdated      string         `json:"last_updated,omitempty"`
-	Attributes       map[string]any `json:"attributes,omitempty"`
-	RegistryUniqueID string         `json:"-"`
-	RegistryDeviceID string         `json:"-"`
-	RegistryPlatform string         `json:"-"`
+	EntityID          string         `json:"entity_id"`
+	State             string         `json:"state"`
+	LastChanged       string         `json:"last_changed,omitempty"`
+	LastUpdated       string         `json:"last_updated,omitempty"`
+	Attributes        map[string]any `json:"attributes,omitempty"`
+	RegistryUniqueID  string         `json:"-"`
+	RegistryDeviceID  string         `json:"-"`
+	RegistryPlatform  string         `json:"-"`
+	RegistryObserved  bool           `json:"-"`
+	ObservedSelection bool           `json:"-"`
 }
 
 type haEntityRegistryEntry struct {
@@ -112,40 +117,44 @@ type haEntityRegistryEntry struct {
 }
 
 type dashboardInstallDiagnostics struct {
-	DiagnosticContext     string
-	Debug                 bool
-	HAStatesLoaded        int
-	HAStatesLoadError     string
-	GoSungrowStatesFound  int
-	DashboardRefsFound    int
-	RemappedRefs          int
-	RemappedPreview       []dashboardEntityRemap
-	UnresolvedRefs        []dashboardUnresolvedEntityRef
-	MetricTraces          []dashboardMetricTrace
-	AggregateHints        []dashboardAggregateHint
-	BatteryDetectionKnown bool
-	BatteryTargetsFound   int
-	BatteryTargetsTotal   int
-	TargetDiagnostics     []dashboardTargetDiagnostics
-	DashboardSaved        bool
-	DashboardSaveReason   string
-	AssetPhase            string
-	AssetHash             string
-	AssetURL              string
-	AssetHTTPRoute        string
-	AssetMetadataStatus   int
-	AssetMetadataOutcome  string
-	AssetDiscoveredPort   int
-	AssetDiscoveredTLS    string
-	AssetStaticRoute      string
-	AssetOperatorAction   string
-	AssetFailureClass     string
-	AssetHTTPStatus       int
-	AssetMIMEType         string
-	ResourceAction        string
-	DashboardMode         string
-	RollbackResult        string
-	CleanupResult         string
+	SourceObservedAt        time.Time
+	SourceRegistryAvailable bool
+	SourceStates            []haState
+	SourceTargets           []haDashboardTarget
+	DiagnosticContext       string
+	Debug                   bool
+	HAStatesLoaded          int
+	HAStatesLoadError       string
+	GoSungrowStatesFound    int
+	DashboardRefsFound      int
+	RemappedRefs            int
+	RemappedPreview         []dashboardEntityRemap
+	UnresolvedRefs          []dashboardUnresolvedEntityRef
+	MetricTraces            []dashboardMetricTrace
+	AggregateHints          []dashboardAggregateHint
+	BatteryDetectionKnown   bool
+	BatteryTargetsFound     int
+	BatteryTargetsTotal     int
+	TargetDiagnostics       []dashboardTargetDiagnostics
+	DashboardSaved          bool
+	DashboardSaveReason     string
+	AssetPhase              string
+	AssetHash               string
+	AssetURL                string
+	AssetHTTPRoute          string
+	AssetMetadataStatus     int
+	AssetMetadataOutcome    string
+	AssetDiscoveredPort     int
+	AssetDiscoveredTLS      string
+	AssetStaticRoute        string
+	AssetOperatorAction     string
+	AssetFailureClass       string
+	AssetHTTPStatus         int
+	AssetMIMEType           string
+	ResourceAction          string
+	DashboardMode           string
+	RollbackResult          string
+	CleanupResult           string
 }
 
 type dashboardTargetDiagnostics struct {
@@ -186,6 +195,38 @@ type haWSCallError struct {
 	Message string
 }
 
+type dashboardConfigChangedError struct{}
+
+func (*dashboardConfigChangedError) Error() string {
+	return "dashboard changed during reconciliation; retry with fresh source selections"
+}
+func (*dashboardConfigChangedError) FailureClass() iSolarCloud.FailureClass {
+	return iSolarCloud.FailureClassRecoverableRemote
+}
+
+type dashboardConfigReader interface {
+	GetConfig(context.Context, string) (map[string]any, error)
+}
+
+func verifyDashboardConfigSnapshot(ctx context.Context, client dashboardConfigReader, path string, expected map[string]any) error {
+	latest, err := client.GetConfig(ctx, path)
+	if err != nil {
+		return fmt.Errorf("re-read dashboard before saving: %w", err)
+	}
+	before, err := hashCanonicalJSON(expected)
+	if err != nil {
+		return err
+	}
+	after, err := hashCanonicalJSON(latest)
+	if err != nil {
+		return err
+	}
+	if before != after {
+		return &dashboardConfigChangedError{}
+	}
+	return nil
+}
+
 func (e *haWSCallError) Error() string {
 	return fmt.Sprintf("home assistant websocket error (%s): %s", e.Code, e.Message)
 }
@@ -208,6 +249,7 @@ type haWSResponse struct {
 type haWSClient struct {
 	conn   *websocket.Conn
 	nextID int64
+	cancel context.CancelFunc
 }
 
 func (c *CmdHa) newInstallDashboardCommand() *cobra.Command {
@@ -277,6 +319,18 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	if len(targets) == 0 {
 		return fmt.Errorf("no Sungrow ESS devices were discovered")
 	}
+	return reconcileManagedDashboard(context.Background(), targets, opts)
+}
+
+// Runtime reconciliation uses an immutable discovery snapshot. HA transitions
+// never cause iSolarCloud login or discovery on the observer goroutine.
+func reconcileManagedDashboard(parent context.Context, targets []haDashboardTarget, opts haDashboardInstallOptions) error {
+	if strings.TrimSpace(opts.SupervisorToken) == "" {
+		return fmt.Errorf("SUPERVISOR_TOKEN is not set; configure Home Assistant access for managed dashboards")
+	}
+	if len(targets) == 0 {
+		return fmt.Errorf("no discovered dashboard targets are available yet")
+	}
 
 	statePath := dashboardStatePath()
 	state, err := loadDashboardState(statePath)
@@ -284,7 +338,7 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 45*time.Second)
 	defer cancel()
 
 	client, err := newHAWSClient(ctx, opts.HomeAssistantWSURL, opts.SupervisorToken)
@@ -318,6 +372,8 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	}
 
 	diagnostics := dashboardInstallDiagnostics{
+		SourceObservedAt:    time.Now().UTC(),
+		SourceTargets:       targets,
 		DiagnosticContext:   dashboardDiagnosticContext(opts.DiagnosticContext),
 		Debug:               dashboardDebugEnabled(),
 		BatteryTargetsTotal: len(targets),
@@ -330,6 +386,7 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	} else {
 		if registry, registryErr := client.ListEntityRegistry(ctx); registryErr == nil {
 			states = enrichDashboardStatesWithRegistry(states, registry)
+			diagnostics.SourceRegistryAvailable = true
 		} else {
 			fmt.Printf("Managed dashboard could not load the Home Assistant entity registry; canonical matching will use conservative fallbacks: %s\n", registryErr)
 		}
@@ -340,11 +397,15 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		diagnostics.TargetDiagnostics = buildDashboardTargetDiagnostics(targets, states)
 		diagnostics.AggregateHints = buildDashboardAggregateHints(targets, states)
 	}
+	diagnostics.SourceStates = states
 	persistedOverrides := map[string]map[string]string(nil)
 	if state != nil {
 		persistedOverrides = state.SourceOverrides
 	}
 	config, sourceOverrides, remapReport := composeDashboardSources(config, currentConfig, persistedOverrides, targets, states, opts.DashboardURLPath, localeBundle)
+	if remapReport.SourcePolicyError != nil {
+		return fmt.Errorf("compose dashboard source policies: %w", remapReport.SourcePolicyError)
+	}
 	diagnostics.DashboardRefsFound = remapReport.TotalRefs
 	diagnostics.RemappedRefs = len(remapReport.Remapped)
 	diagnostics.RemappedPreview = dashboardRemapPreview(remapReport.Remapped, 5)
@@ -505,10 +566,20 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		return rollbackDashboardInstall(ctx, client, opts.DashboardURLPath, dashboardCreated, currentConfig, resourceChange, err, &diagnostics)
 	}
 
-	shouldSaveConfig := currentHash != desiredHash || currentConfig == nil || opts.ForceUpdate
+	shouldSaveConfig := currentHash != desiredHash || currentConfig == nil || (opts.ForceUpdate && !opts.AvailabilityDriven)
 	diagnostics.DashboardSaved = shouldSaveConfig
 	diagnostics.DashboardSaveReason = dashboardSaveReason(shouldSaveConfig, currentConfig == nil, currentHash != desiredHash, opts.ForceUpdate)
 	if shouldSaveConfig {
+		if currentConfig != nil {
+			if err := verifyDashboardConfigSnapshot(ctx, client, opts.DashboardURLPath, currentConfig); err != nil {
+				// No config was written by this attempt. Restoring our older
+				// snapshot here would overwrite the concurrent user's choice.
+				diagnostics.DashboardSaved = false
+				diagnostics.DashboardSaveReason = "saved dashboard changed or could not be rechecked"
+				diagnostics.RollbackResult = "saved dashboard preserved"
+				return err
+			}
+		}
 		if err := client.SaveConfig(ctx, opts.DashboardURLPath, config); err != nil {
 			return rollbackDashboardInstall(ctx, client, opts.DashboardURLPath, dashboardCreated, currentConfig, resourceChange, fmt.Errorf("save managed dashboard: %w", err), &diagnostics)
 		}
@@ -1216,11 +1287,12 @@ func writeDashboardInstallDiagnostics(w io.Writer, diagnostics dashboardInstallD
 			if hint.Unit != "" {
 				unitSuffix = " " + hint.Unit
 			}
-			fmt.Fprintf(w, "- %s [%s] state=%s%s entity=%s\n", hint.Metric, hint.Source, hint.State, unitSuffix, hint.Entity)
+			fmt.Fprintf(w, "- %s [%s] unit=%s entity=%s\n", hint.Metric, hint.Source, strings.TrimSpace(unitSuffix), hint.Entity)
 		}
 	}
 
 	if diagnostics.Debug && len(diagnostics.MetricTraces) > 0 {
+		writeDashboardSourceCapture(w, diagnostics)
 		fmt.Fprintln(w, "Dashboard metric candidates:")
 		for _, trace := range diagnostics.MetricTraces {
 			if resolution := trace.Resolution; resolution != nil {
@@ -1244,11 +1316,10 @@ func writeDashboardInstallDiagnostics(w io.Writer, diagnostics dashboardInstallD
 				if candidate.Unit != "" {
 					unitSuffix = " " + candidate.Unit
 				}
-				fmt.Fprintf(w, "  candidate score=%d source=%s state=%s%s entity=%s reason=%s\n",
+				fmt.Fprintf(w, "  candidate score=%d source=%s unit=%s entity=%s reason=%s\n",
 					candidate.Score,
 					candidate.Source,
-					candidate.State,
-					unitSuffix,
+					strings.TrimSpace(unitSuffix),
 					candidate.Entity,
 					candidate.Reason,
 				)
@@ -1270,6 +1341,62 @@ func dashboardYesNo(value bool) string {
 		return "yes"
 	}
 	return "no"
+}
+
+func writeDashboardSourceCapture(w io.Writer, diagnostics dashboardInstallDiagnostics) {
+	now := diagnostics.SourceObservedAt
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	stateByID := dashboardStateByEntityID(diagnostics.SourceStates)
+	targetByKey := make(map[string]haDashboardTarget)
+	for _, target := range diagnostics.SourceTargets {
+		targetByKey[target.PsKey] = target
+	}
+	for _, trace := range diagnostics.MetricTraces {
+		target := targetByKey[trace.TargetPsKey]
+		expected := cmdHassio.JoinStringsForId("GoSungrow", "virtual."+target.PsKey+"."+trace.Metric)
+		if trace.Metric == "pv_power" {
+			expected = dashboardPlantPVUniqueID(target)
+		}
+		canonical := "not_observed"
+		for _, state := range diagnostics.SourceStates {
+			if strings.EqualFold(state.RegistryUniqueID, expected) {
+				canonical = state.EntityID
+				break
+			}
+		}
+		selected, present := stateByID[strings.ToLower(trace.Resolved)]
+		policy := assessDashboardSource(target, trace.Metric, trace.Resolved, trace.Source == "manual", diagnostics.SourceStates, now)
+		if trace.Resolution != nil {
+			policy = trace.Resolution.Policy
+		}
+		effectiveDisplay := trace.Resolved
+		if policy.DisplayDecision == "withheld" {
+			effectiveDisplay = ""
+		}
+		recommendation := "none"
+		eligible := 0
+		if trace.Resolution != nil {
+			eligible = len(trace.Resolution.Match.Candidates)
+			if trace.Resolution.Match.Confident && trace.Resolution.Match.Entity != trace.Resolution.Default {
+				recommendation = trace.Resolution.Match.Entity
+			}
+		}
+		fmt.Fprintf(w, "Dashboard source observation: app_version=%s matcher_version=%d observed_at=%s reconciliation=%q stage=ha_and_composition ps_id=%q ps_key=%q metric=%s registry_available=%t states_failed=%t canonical_unique_id=%q canonical_entity=%q selected_entity=%q effective_display_entity=%q selected_observed=%t numeric_valid=%t unit=%q updated_at=%q fresh=%t selection_origin=%s verification=%s display_decision=%s reason=%q eligible_candidates=%d recommendation=%q bindings=%d save_outcome=%q publisher_completion=not_checked browser_display=not_checked\n",
+			defaults.BinaryVersion, dashboardSemanticMatcherVersion, now.UTC().Format(time.RFC3339Nano), dashboardDiagnosticContext(diagnostics.DiagnosticContext),
+			boundedDashboardSourceField(target.PsID), boundedDashboardSourceField(trace.TargetPsKey), trace.Metric, diagnostics.SourceRegistryAvailable, diagnostics.HAStatesLoadError != "", expected, canonical, trace.Resolved, effectiveDisplay,
+			present, present && dashboardStateHasUsableNumericValue(selected), dashboardStateUnit(selected), selected.LastUpdated, present && dashboardSourceStateRecent(selected, trace.Metric, now),
+			policy.SelectionOrigin, policy.Verification, policy.DisplayDecision, policy.Reason, eligible, recommendation, trace.BindingCount, diagnostics.DashboardSaveReason)
+		candidates := trace.Candidates
+		if len(candidates) > 5 {
+			candidates = candidates[:5]
+		}
+		for _, candidate := range candidates {
+			fmt.Fprintf(w, "Dashboard source candidate: app_version=%s matcher_version=%d observed_at=%s reconciliation=%q ps_id=%q ps_key=%q metric=%s entity=%q point_id=%q compatibility=%q provenance=%q reason=%q\n",
+				defaults.BinaryVersion, dashboardSemanticMatcherVersion, now.UTC().Format(time.RFC3339Nano), dashboardDiagnosticContext(diagnostics.DiagnosticContext), target.PsID, trace.TargetPsKey, trace.Metric, candidate.Entity, candidate.PointID, candidate.Compatibility, candidate.Provenance, boundedDashboardSourceField(candidate.Reason))
+		}
+	}
 }
 
 func dashboardStatePath() string {
@@ -1456,9 +1583,14 @@ func newHAWSClient(ctx context.Context, endpoint string, token string) (*haWSCli
 		return nil, err
 	}
 
-	client := &haWSClient{conn: conn}
-	if err := client.authenticate(token); err != nil {
+	watch, cancel := context.WithCancel(ctx)
+	client := &haWSClient{conn: conn, cancel: cancel}
+	go func() {
+		<-watch.Done()
 		_ = conn.Close()
+	}()
+	if err := client.authenticate(token); err != nil {
+		_ = client.Close()
 		return nil, err
 	}
 	return client, nil
@@ -1467,6 +1599,9 @@ func newHAWSClient(ctx context.Context, endpoint string, token string) (*haWSCli
 func (c *haWSClient) Close() error {
 	if c == nil || c.conn == nil {
 		return nil
+	}
+	if c.cancel != nil {
+		c.cancel()
 	}
 	return c.conn.Close()
 }
@@ -1597,6 +1732,7 @@ func enrichDashboardStatesWithRegistry(states []haState, registry []haEntityRegi
 	}
 	ret := append([]haState(nil), states...)
 	for index := range ret {
+		ret[index].RegistryObserved = true
 		entry, ok := byEntity[strings.ToLower(strings.TrimSpace(ret[index].EntityID))]
 		if !ok {
 			continue

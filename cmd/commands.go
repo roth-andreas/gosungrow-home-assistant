@@ -1,6 +1,13 @@
 package cmd
 
 import (
+	"context"
+	"fmt"
+	"os"
+	"os/signal"
+	"strconv"
+	"syscall"
+
 	"github.com/MickMake/GoUnify/Only"
 	"github.com/MickMake/GoUnify/Unify"
 	"github.com/roth-andreas/gosungrow-home-assistant/defaults"
@@ -65,10 +72,50 @@ func init() {
 
 		cmds.Ha = NewCmdHa()
 		cmds.Ha.AttachCommand(cmdRoot)
+		// GoUnify applies config/environment values during initialization. Keep
+		// strict Boolean validation after that step: its generic flag visitor
+		// can overwrite a conversion error while visiting subsequent flags.
+		cobra.OnInitialize(validateRuntimeDashboardConfiguration)
+	}
+}
+
+func validateRuntimeDashboardConfiguration() {
+	root := cmds.Unify.GetCmd()
+	initialize := root.PersistentPreRunE
+	explicit := make(map[string]string)
+	for _, name := range []string{"dashboard-enabled", "dashboard-force-update"} {
+		if flag := root.PersistentFlags().Lookup(name); flag != nil && flag.Changed {
+			explicit[name] = flag.Value.String()
+		}
+	}
+	root.PersistentPreRunE = func(command *cobra.Command, args []string) error {
+		if initialize != nil {
+			if err := initialize(command, args); err != nil {
+				return err
+			}
+		}
+		for _, setting := range []struct {
+			name  string
+			value *bool
+		}{{"dashboard-enabled", &cmds.Mqtt.DashboardEnabled}, {"dashboard-force-update", &cmds.Mqtt.DashboardForceUpdate}} {
+			raw, set := explicit[setting.name]
+			if !set {
+				raw = fmt.Sprint(cmds.Unify.GetViper().Get(setting.name))
+			}
+			value, err := strconv.ParseBool(raw)
+			if err != nil {
+				return fmt.Errorf("invalid Boolean configuration for --%s", setting.name)
+			}
+			*setting.value = value
+		}
+		return nil
 	}
 }
 
 func Execute() error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	cmds.Unify.GetCmd().SetContext(ctx)
 	var err error
 
 	for range Only.Once {

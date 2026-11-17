@@ -142,8 +142,8 @@ func TestDailyDashboardRejectsLegacyFallbackThroughComposition(t *testing.T) {
 				t.Fatalf("unsafe daily default: %#v", card["defaults"])
 			}
 			trace := dailyTrace(t, report, target.PsKey, tc.metric)
-			if trace.Resolved != "" || trace.BindingCount != 0 || trace.Source != "unavailable" {
-				t.Fatalf("unsafe daily source survived pruning: %#v", trace)
+			if trace.Resolved != "" || trace.BindingCount == 0 || trace.Source != "unavailable" || trace.Resolution.Policy.DisplayDecision != "withheld" {
+				t.Fatalf("unresolved daily source lost its review paths or became displayable: %#v", trace)
 			}
 		})
 	}
@@ -183,7 +183,7 @@ func TestDailyDashboardRejectsUnverifiedInvalidAndAmbiguousSources(t *testing.T)
 			states := append(tc.mutate(&state), state)
 			config, _, report := composeDashboardSources(dailyDashboardTemplate(t, []haDashboardTarget{target}), nil, nil, []haDashboardTarget{target}, states, "gosungrow-flow", defaultDashboardLocaleBundle)
 			trace := dailyTrace(t, report, target.PsKey, "p13199")
-			if trace.Resolved != "" || trace.BindingCount != 0 || trace.Resolution.Match.Confident {
+			if trace.Resolved != "" || trace.BindingCount == 0 || trace.Resolution.Match.Confident || trace.Resolution.Policy.DisplayDecision != "withheld" {
 				t.Fatalf("invalid/unverified daily source selected: %#v", trace)
 			}
 			if anyMapToStringMap(findDashboardSourceMappingCard(config, dashboardSourceMappingID(target))["defaults"])["p13199"] != "" {
@@ -267,7 +267,7 @@ func TestDailyDashboardDiagnosticsDescribeFinalOutcomeAndBoundCandidates(t *test
 	}
 	var output bytes.Buffer
 	writeDashboardInstallDiagnostics(&output, dashboardInstallDiagnostics{Debug: true, MetricTraces: []dashboardMetricTrace{trace}})
-	for _, required := range []string{"source=unavailable", "eligible_candidates=25", "Ambiguous canonical daily candidates", "bindings=0"} {
+	for _, required := range []string{"source=unavailable", "eligible_candidates=25", "Ambiguous canonical daily candidates", fmt.Sprintf("bindings=%d", trace.BindingCount), "display_decision=withheld"} {
 		if !strings.Contains(output.String(), required) {
 			t.Fatalf("missing final diagnostic %q: %s", required, output.String())
 		}
@@ -320,7 +320,7 @@ func TestDailyDashboardDoesNotChooseOneInverterForMultiInverterYield(t *testing.
 	states := []haState{dashboardTestCanonicalState("sensor.yield", "GoSungrow-virtual-100_1_1_1-p1", "12.4", "kWh")}
 	_, _, report := composeDashboardSources(dailyDashboardTemplate(t, []haDashboardTarget{target}), nil, nil, []haDashboardTarget{target}, states, "gosungrow-flow", defaultDashboardLocaleBundle)
 	trace := dailyTrace(t, report, target.PsKey, "p13112")
-	if trace.Resolved != "" || trace.BindingCount != 0 || trace.Resolution.Match.Confident {
+	if trace.Resolved != "" || trace.BindingCount == 0 || trace.Resolution.Match.Confident || trace.Resolution.Policy.DisplayDecision != "withheld" {
 		t.Fatalf("single-inverter yield became a plant default: %#v", trace)
 	}
 }

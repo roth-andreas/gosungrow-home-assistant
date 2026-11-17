@@ -1,4 +1,16 @@
 dashboard:
+  source_withheld: Source withheld. Review Data Sources.
+  source_manual_unverified: Unverified manual source. Review Data Sources.
+  source_unverified: Unverified manual source
+  source_meaning_verified: Source meaning verified
+  source_meaning_unverified: Source meaning could not be verified
+  source_no_source: No source selected
+  source_not_observed: Selected source not observed
+  source_unit_conflict: Source unit conflicts with the metric
+  source_target_conflict: Source belongs to another target
+  source_meaning_conflict: Canonical source meaning conflicts with this metric
+  source_unit_missing: Source unit not observed
+  source_review: Review Data Sources.
   native_fallback_source_notice: Enhanced dashboard cards are temporarily unavailable. Live data remains available, but source editing may be unavailable until automatic recovery completes.
   view_overview: Overview
   view_aggregates: Aggregates

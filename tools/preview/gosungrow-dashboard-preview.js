@@ -279,7 +279,7 @@ function renderView(state, scenario) {
     </div>
     `;
     root.appendChild(aggregates);
-    mountSummaryCard(root.querySelector("#summary-mount"), scenario);
+    mountSummaryCard(root.querySelector("#summary-mount"), scenario, state.sourceState);
     return root;
   }
 
@@ -310,7 +310,7 @@ function renderView(state, scenario) {
 function mountSourcesCard(container, scenario, sourceState, language = "en") {
   const card = document.createElement("gosungrow-source-mapping-card-v1");
   const issue = sourceState === "warning";
-  const manual = sourceState === "manual" || sourceState === "saved";
+  const manual = ["manual", "saved", "unverified_manual"].includes(sourceState);
   const missing = sourceState === "missing";
   const empty = sourceState === "empty";
   const legacy = sourceState === "legacy";
@@ -374,7 +374,7 @@ function mountSourcesCard(container, scenario, sourceState, language = "en") {
     directMetric.unsupported_calculated = true;
     directMetric.confidence = "low";
     directMetric.reason = "Unsupported calculated legacy source";
-    directMetric.candidates = [{ entity_id: legacyEntity, point_id: "p13116", provenance: "calculated_legacy", compatibility: "unsupported", selectable: false, score: 0, confidence: "low", reason: "Unsupported calculated legacy source", recommended: true }];
+    directMetric.candidates = [{ entity_id: legacyEntity, point_id: "p13116", provenance: "calculated_legacy", compatibility: "unsupported", selectable: false, score: 0, confidence: "low", reason: "Unsupported calculated legacy source", recommended: false }];
     liveStates[legacyEntity] = { state: "52.6", attributes: { unit_of_measurement: "kWh", friendly_name: "Calculated PV to load energy" } };
   }
   if (nativeUnavailable) {
@@ -385,10 +385,22 @@ function mountSourcesCard(container, scenario, sourceState, language = "en") {
     directMetric.reason = "Native direct-solar source unavailable";
     directMetric.candidates = [];
   }
-  metrics.find((item) => item.key === "p13116").validation = { schema_version: 1, rules: [{ type: "not_materially_greater_than", metric: "p13112", relative_tolerance: 0.05, absolute_tolerance: 0.1 }] };
+  metrics.find((item) => item.key === "p13116").validation = { schema_version: 2, rules: [{ type: "not_materially_greater_than", metric: "p13112", relative_tolerance: 0.05, absolute_tolerance: 0.1 }] };
   const overrides = manual ? { p13116: `${ENTITY_IDS.dailyPvToLoad}_alternative` } : missing ? { p13116: "sensor.preview_missing_manual" } : {};
   if (manual || missing) { const selectedMetric = metrics.find((item) => item.key === "p13116"); selectedMetric.confidence = "manual"; selectedMetric.reason = "Current manual selection"; }
   const defaults = Object.fromEntries(metrics.map((item) => [item.key, item.default]));
+  for (const item of metrics) {
+    const unverified = (item.key === "p13116" && (legacy || recommendation || nativeUnavailable || sourceState === "unverified_manual")) || (item.key === "p13199" && sourceState === "withheld");
+    item.entity_id = overrides[item.key] || item.default;
+    item.selection_origin = overrides[item.key] ? "manual" : "automatic";
+    item.verification = unverified ? "unverified" : "verified";
+    item.display_decision = !item.entity_id || legacy ? "withheld" : unverified ? (item.selection_origin === "manual" ? "warned" : "withheld") : "normal";
+    item.validation ||= { schema_version: 2, rules: [] };
+    item.reason = item.display_decision === "normal" ? "Source meaning verified" : item.display_decision === "warned" ? "Unverified manual source. Review Data Sources." : "Source withheld. Review Data Sources.";
+    for (const candidate of item.candidates) candidate.verification = candidate.selectable === false ? "unverified" : "verified";
+    if (unverified) for (const candidate of item.candidates) if (candidate.entity_id === item.entity_id) { candidate.recommended = false; candidate.verification = "unverified"; }
+  }
+  if (sourceState === "withheld") liveStates[ENTITY_IDS.dailyConsumption] = { state: "9.92", attributes: { unit_of_measurement: "MWh", friendly_name: "Unverified total energy" } };
   const candidates = Object.fromEntries(metrics.map((item) => [item.key, item.candidates]));
   metrics.forEach((item) => delete item.candidates);
   const bindings = Object.fromEntries(metrics.map((item, index) => [item.key, [`/views/0/cards/${index}/entity`]]));
@@ -398,14 +410,19 @@ function mountSourcesCard(container, scenario, sourceState, language = "en") {
     source_physical_warning: language === "de" ? "Der ausgewählte Wert ({value}) überschreitet die Solarerzeugung ({reference}). Bitte Quelle prüfen." : language === "sv" ? "Det valda värdet ({value}) överstiger solproduktionen ({reference}). Granska källan." : "Selected value ({value}) exceeds solar production ({reference}). Review this source.",
     source_save_error: language === "de" ? "Datenquelle konnte nicht gespeichert werden." : language === "sv" ? "Datakällan kunde inte sparas." : "Could not save the data source.", confidence_high: language === "de" ? "Hohe Zuverlässigkeit" : language === "sv" ? "Hög säkerhet" : "High confidence", confidence_medium: language === "de" ? "Mittlere Zuverlässigkeit" : language === "sv" ? "Medelhög säkerhet" : "Medium confidence", confidence_low: language === "de" ? "Niedrige Zuverlässigkeit" : language === "sv" ? "Låg säkerhet" : "Low confidence", confidence_manual: language === "de" ? "Vom Benutzer gewählt" : language === "sv" ? "Användarvald" : "User selected", groups: text.groups };
   const recommendations = recommendation ? { p13116: `${ENTITY_IDS.dailyPvToLoad}_alternative` } : {};
-  const config = { type: "custom:gosungrow-source-mapping-card-v1", schema_version: 1, mapping_id: "preview", dashboard_url_path: "gosungrow-flow", defaults, overrides, recommendations, candidates, bindings, metrics, labels };
+  const config = { type: "custom:gosungrow-source-mapping-card-v1", schema_version: 1, matcher_version: 5, mapping_id: "preview", dashboard_url_path: "gosungrow-flow", defaults, pinned_defaults: { ...defaults }, overrides, recommendations, candidates, bindings, metrics, labels };
+  const displays = metrics.map((item, index) => {
+    const projection = card._projectNative({ mapping_id: "preview", metrics: { [item.key]: card._policyFields(item) }, native_template: { type: "tile", entity: item.entity_id }, native_bindings: { [item.key]: ["/entity"] } });
+    config.bindings[item.key] = projection.bindings[item.key].map((path) => `/views/0/cards/${index}${path}`);
+    return projection.card;
+  });
   card.setConfig(config);
   const hass = buildHass(scenario);
   hass.user = { is_admin: sourceState !== "readonly" };
   hass.locale = { language };
   Object.assign(hass.states, liveStates);
   if (missing) delete hass.states["sensor.preview_missing_manual"];
-  const dashboard = { views: [{ cards: metrics.map((item) => ({ entity: overrides[item.key] || item.default })) }, { cards: [{ ...structuredClone(config) }] }] };
+  const dashboard = { views: [{ cards: displays }, { cards: [{ ...structuredClone(config) }] }] };
   hass.callWS = async (request) => {
     if (sourceState === "save_error" && request.type === "lovelace/config/save") throw new Error("Preview: Home Assistant rejected the save.");
     if (request.type === "lovelace/config") return structuredClone(dashboard);
@@ -446,7 +463,7 @@ function mountFlowCard(container, device, scenario) {
   container.appendChild(card);
 }
 
-function mountSummaryCard(container, scenario) {
+function mountSummaryCard(container, scenario, sourceState = "automatic") {
   const card = document.createElement("gosungrow-energy-summary-card-v1");
   card.setConfig({
     title: "Energy Summary",
@@ -473,6 +490,10 @@ function mountSummaryCard(container, scenario) {
       from_battery: ENTITY_IDS.dailyBatteryDischarge,
     },
   });
+  const keys = { production: "p13112", consumption: "p13199", to_grid: "p13173", from_grid: "p13147", to_battery: "p13174", from_battery: "p13029" };
+  const config = { ...card._config, source_policy: { mapping_id: "preview", metrics: Object.fromEntries(Object.entries(card._config.entities).map(([key, entity_id]) => [keys[key], { entity_id, selection_origin: "automatic", verification: "verified", display_decision: "normal", reason: "Synthetic verified daily source" }])) } };
+  if (["withheld", "unverified_manual"].includes(sourceState)) Object.assign(config.source_policy.metrics.p13199, { selection_origin: sourceState === "unverified_manual" ? "manual" : "automatic", verification: "unverified", display_decision: sourceState === "unverified_manual" ? "warned" : "withheld", reason: "Review Data Sources." });
+  card.setConfig(config);
   card.hass = buildHass(scenario);
   container.appendChild(card);
 }

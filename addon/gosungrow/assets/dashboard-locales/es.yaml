@@ -1,4 +1,16 @@
 dashboard:
+  source_withheld: Fuente oculta. Revisa las fuentes de datos.
+  source_manual_unverified: Fuente manual sin verificar. Revisa las fuentes de datos.
+  source_unverified: Fuente manual sin verificar
+  source_meaning_verified: Significado de la fuente verificado
+  source_meaning_unverified: No se pudo verificar el significado de la fuente
+  source_no_source: Ninguna fuente seleccionada
+  source_not_observed: No se ha encontrado la fuente seleccionada
+  source_unit_conflict: La unidad de la fuente no corresponde a la métrica
+  source_target_conflict: La fuente pertenece a otra instalación
+  source_meaning_conflict: El significado de la fuente canónica no corresponde a la métrica
+  source_unit_missing: No se ha encontrado la unidad de la fuente
+  source_review: Revisa las fuentes de datos.
   native_fallback_source_notice: Las tarjetas avanzadas no estan disponibles temporalmente. Los datos en directo siguen visibles; la edicion de fuentes puede no estar disponible hasta la recuperacion automatica.
   view_overview: Vista general
   view_aggregates: Acumulados

@@ -5,6 +5,45 @@ Scope: Current implementation and verification ownership
 
 The specification is authoritative; this map helps locate derived artifacts.
 
+## Source verification and late-availability contract
+
+Status: implemented, with Go, Node, shell, and pinned Home Assistant Core 2026.9.3 browser evidence. Full race validation remains subject to a working CGO compiler environment; no verification against the reporter's live hardware is claimed.
+
+| Requirements | Required follow-up evidence and ownership |
+|---|---|
+| `REQ-SRC-001`, `008`, `019`, `028`–`030`; `REQ-ACC-060`–`063`, `069` | Source-mapping composition and browser transaction tests: separate selection origin, verification, and availability; honest recommendations; retained unsupported identities; automatic withholding, warned manual values, incompatibility, migration, and stale-save rejection. Owners: `cmd/dashboard_source_mapping.go`, shared daily resolution, bundled source card, corresponding Go/Node tests. |
+| `REQ-RES-001`–`002`, `010`, `016`, `022`; `REQ-HA-020`; `REQ-ACC-064`–`065` | MQTT discovery identity through actual HA registry ID, complete template resolution, pruning, recommendations, and bindings; renamed/suffixed canonical PV, wrong-plant and registry conflicts, ambiguity, and preserved pinned/manual choices. Owners: dashboard resolver/composition, MQTT/HA model, and existing integration tests. |
+| `REQ-DASH-002`, `011`, `013`, `021`, `027`–`028`, `032`, `039`–`040`; `REQ-ADDON-004`–`005`, `014`; `REQ-ACC-065`–`066` | Deterministic lifecycle and app integration tests: entity arrival after startup retries, fixed coalescing window, serialization, retry/reconnect bounds, missed-transition recovery, unchanged-config no-op, shutdown, disabled installation, no redundant API login, ownership and MQTT isolation. Owners: dashboard lifecycle, HA observation adapter, and app orchestration. |
+| `REQ-CARD-004`–`005`, `008`–`012`, `021`; `REQ-ACC-061`–`063`, `067` | Browser/card and native-fallback tests: complete versus partial flow totals, verified direct fallback, real zero, sign compatibility, manual precedence, daily presentation across current/historical periods, warnings, and no recorder mutation. Existing battery status/route cases remain regression guards. |
+| `REQ-MQTT-023`, `026`; `REQ-DASH-038`, `041`; `REQ-XCUT-023`; `REQ-ACC-068`, `070` | Correlated sync/reconciliation diagnostic tests: operation-stage evidence, discovery reuse, missing/failed observation, original point metadata, reasons, stable identity/time correlation, deterministic limits/omitted counts, and redaction. No claim of HA discovery or browser display from publication alone. |
+
+Implementation owners are `cmd/dashboard_source_policy.go`, `cmd/dashboard_native_projection.go`, `cmd/dashboard_observer.go`, `cmd/dashboard_runtime.go`, `cmd/dashboard_source_capture.go`, the existing resolver/composition and bundled cards, and `cmdHassio/publication_receipt.go`. Their Go tests, the two Node suites, app startup tests, and `tools/ha-e2e/dashboard_resource_smoke.mjs` cover the scenarios below. User guidance is updated in `README.md` and `addon/gosungrow/DOCS.md`. Existing source-inventory patterns cover these surfaces. The change does not alter aggregation arithmetic, add energy formulas or diagnostic services, delete entities, repair recorder history, or assert verification against the reporter's live hardware.
+
+| Behavioral test | Requirements and evidence |
+|---|---|
+| `cmd/dashboard_source_policy_test.go` | `REQ-SRC-028`–`031`; `REQ-CARD-005`, `021`; `REQ-ACC-060`–`063`, `072`–`073`: source verification, presentation decisions, and shared serialized policy |
+| `cmd/dashboard_native_projection_test.go` | `REQ-SRC-032`; `REQ-DASH-027`, `042`; `REQ-CARD-021`; `REQ-ACC-074`–`075`: restorable native projections, ownership validation, preserved layout, and regenerated bindings |
+| `cmd/dashboard_observer_test.go` | `REQ-DASH-039`–`040`; `REQ-ACC-065`–`066`: relevant Home Assistant events, dedicated observation, bounded reconnect, and cancellation |
+| `cmd/dashboard_runtime_test.go` | `REQ-DASH-039`–`040`; `REQ-ADDON-014`; `REQ-ACC-065`–`066`, `071`: serialized reconciliation, coalescing, retries, shutdown, and disabled installation |
+
+### Runtime handoff and serialized-policy completion
+
+Status: implemented. CLI framework, startup-wrapper, composition, source transaction, and native fallback/promotion tests provide coverage for the approved settings and metadata boundaries.
+
+| Requirements | Required follow-up evidence and ownership |
+|---|---|
+| `REQ-CLI-007`; `REQ-CFG-003`; `REQ-ADDON-002`, `014`; `REQ-ACC-071` | CLI/configuration and app integration tests for false defaults, flag/environment/persisted precedence, explicit true/false app handoff, malformed Boolean handling, disabled-plus-force behavior, independent manual installation, and MQTT tolerance of missing dashboard prerequisites. Owners: CLI/MQTT configuration, app startup, and corresponding tests/documentation. |
+| `REQ-SRC-031`; `REQ-CARD-005`, `021`; `REQ-ACC-072`–`073` | Go composition and browser tests for the shared mapping/display policy shape, target and effective-entity agreement, live availability separation, absent/invalid metadata, direct-fallback verification, and atomic policy/binding updates on selection, reset, and recommendation adoption. Owners: source mapping/composition, bundled cards, and existing Go/Node/browser tests. |
+| `REQ-DASH-027`, `032`, `042`; `REQ-ACC-074` | Native-fallback and promotion tests for non-rendered mapping retention, preserved defaults/pins/overrides, fresh re-verification, rebuilt candidate/binding paths, source-only structure normalization, unrelated layout protection, and no recorder changes or cross-target leakage. Owners: dashboard lifecycle/native conversion, source extraction, and existing lifecycle/browser tests. |
+
+### Restorable native-card projection completion
+
+Status: implemented. Go projection/ownership tests, Node source-transaction tests, and the pinned Home Assistant browser fixture cover withholding/restoration, preserved layout and series, regenerated bindings, and rejection of invalid ownership metadata.
+
+| Requirements | Required follow-up evidence and ownership |
+|---|---|
+| `REQ-SRC-032`; `REQ-CARD-021`; `REQ-DASH-027`, `042`; `REQ-ACC-075` | Go projection/ownership tests and browser source-transaction tests for paired native template and relative-path metadata; tile and multi-series graph withholding/restoration; preserved unrelated series and layout; regenerated absolute bindings; atomic verified replacement; shared-entity metric isolation; invalid/stale/cross-target/multiply owned paths; failed-save preservation; template redaction and no hidden-card/helper-entity storage or recorder mutation. Owners: source-policy composition, native rendering, structure normalization, bundled source-save transaction, and existing Go/Node/pinned-browser fixtures. |
+
 ## Runtime ownership
 
 | Requirements | Implementation |
@@ -108,7 +147,7 @@ Artifact ownership identifies executable evidence; validation results must be re
 | Live Flow battery layout review (wide and compact) | `REQ-CARD-019`; `REQ-ACC-058`–`059`: browser review of caption, power, direction status, SOC, and active route labels without overlap, including all supported locales |
 | `tools/ha-e2e/dashboard_resource_smoke.mjs`, `tools/ha-e2e/local_route_bootstrap.mjs`, `tools/ha-e2e/local_route_bootstrap.sh` | `REQ-CARD-018`; `REQ-DASH-037`; `REQ-REL-011`, `013`; `REQ-ACC-033`, `036`, `038` |
 | `addon/gosungrow/recovery_policy_test.sh` | `REQ-ADDON-008`–`012`; `REQ-XCUT-019`, `021`; `REQ-ACC-028`, `038` |
-| `addon/gosungrow/configuration_test.sh` | `REQ-ADDON-002`, `013`; `REQ-CFG-003`; `REQ-ACC-023` |
+| `addon/gosungrow/configuration_test.sh` | `REQ-ADDON-001`–`002`, `013`; `REQ-CFG-003`; `REQ-ACC-023` |
 
 ## Non-test verification
 

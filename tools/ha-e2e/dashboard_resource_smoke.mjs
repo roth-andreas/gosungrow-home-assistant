@@ -149,7 +149,7 @@ async function verifyBrowser() {
   try {
     const page = await browser.newPage();
     const pageErrors = [];
-    page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("pageerror", (error) => pageErrors.push(error.stack || error.message));
     await page.goto(`${baseURL}/gosungrow-flow/overview`, { waitUntil: "networkidle", timeout: 90_000 });
     await page.waitForFunction(() => [
       "gosungrow-energy-flow-card-v2",
@@ -175,6 +175,76 @@ async function verifyBrowser() {
       "gosungrow-source-mapping-card-v1",
     ]);
     assert.deepEqual(result.errors, [], `Home Assistant rendered configuration errors: ${result.errors.join(" | ")}`);
+    const policyChecks = await page.evaluate(async () => {
+      const hass = document.querySelector("home-assistant").hass;
+      const findDeep = (root, selector) => {
+        const direct = root.querySelector(selector);
+        if (direct) return direct;
+        for (const element of root.querySelectorAll("*")) if (element.shadowRoot) { const found = findDeep(element.shadowRoot, selector); if (found) return found; }
+        return null;
+      };
+      const mount = findDeep(document, "hui-view") || findDeep(document, "hui-root");
+      if (!mount) throw new Error("Home Assistant Lovelace context is missing");
+      const check = (condition, message) => { if (!condition) throw new Error(message); };
+      const oldEntity = "sensor.gosungrow_e2e_total_energy";
+      const replacement = "sensor.gosungrow_e2e_daily_consumption";
+      const production = "sensor.gosungrow_e2e_daily_production";
+      const fields = (entity_id, verification, display_decision, selection_origin = "automatic") => ({ entity_id, selection_origin, verification, display_decision, reason: display_decision === "normal" ? "Source meaning verified" : "Source withheld. Review Data Sources." });
+      const consumption = fields(oldEntity, "unverified", "withheld");
+      const produced = fields(production, "verified", "normal");
+      const editor = document.createElement("gosungrow-source-mapping-card-v1");
+      const mapping = {
+        type: "custom:gosungrow-source-mapping-card-v1", schema_version: 1, matcher_version: 5, mapping_id: "ci", dashboard_url_path: "gosungrow-flow",
+        defaults: { p13199: oldEntity, p13112: production }, pinned_defaults: { p13199: oldEntity, p13112: production }, overrides: {}, recommendations: { p13199: replacement },
+        candidates: { p13199: [{ entity_id: oldEntity, verification: "unverified", compatibility: "unverified", recommended: false, selectable: false }, { entity_id: replacement, verification: "verified", compatibility: "compatible", recommended: true, confidence: "high" }] },
+        metrics: [{ key: "p13199", label: "Consumption", group: "energy_summary", default: oldEntity, ...consumption, validation: { schema_version: 2, rules: [] } }, { key: "p13112", label: "Production", group: "today_energy", default: production, ...produced, validation: { schema_version: 2, rules: [] } }],
+        bindings: { p13199: [], p13112: [] }, labels: {},
+      };
+      const tileSource = { mapping_id: "ci", metrics: { p13199: structuredClone(consumption) }, native_template: { type: "tile", entity: oldEntity, name: "Consumption", layout_options: { grid_columns: 6 } }, native_bindings: { p13199: ["/entity"] } };
+      const graphSource = { mapping_id: "ci", metrics: { p13199: structuredClone(consumption), p13112: structuredClone(produced) }, native_template: { type: "history-graph", title: "Preserved energy graph", hours_to_show: 24, entities: [{ entity: oldEntity, name: "Consumption" }, { entity: production, name: "Production" }] }, native_bindings: { p13199: ["/entities/0/entity"], p13112: ["/entities/1/entity"] } };
+      const nativeCards = [tileSource, graphSource].map((source, i) => {
+        const projection = editor._projectNative(source);
+        for (const [key, paths] of Object.entries(projection.bindings)) mapping.bindings[key].push(...paths.map((path) => `/views/0/cards/${i}${path}`));
+        return projection.card;
+      });
+      const summaryConfig = { type: "custom:gosungrow-energy-summary-card-v1", entities: { consumption: oldEntity, production }, source_policy: { mapping_id: "ci", metrics: { p13199: structuredClone(consumption), p13112: structuredClone(produced) } } };
+      for (const [metric, key] of [["p13199", "consumption"], ["p13112", "production"]]) mapping.bindings[metric].push(`/views/0/cards/2/entities/${key}`, `/views/0/cards/2/source_policy/metrics/${metric}/entity_id`);
+      const config = { title: "Policy fixture", views: [{ title: "Overview", path: "overview", cards: [...nativeCards, summaryConfig, mapping] }] };
+      await hass.callWS({ type: "lovelace/config/save", url_path: "gosungrow-flow", config });
+      editor.setConfig(mapping);
+      editor.hass = hass;
+      editor._refreshDashboardView = () => {};
+      mount.append(editor);
+      const summary = document.createElement("gosungrow-energy-summary-card-v1");
+      summary.setConfig(summaryConfig);
+      summary.hass = hass;
+      mount.append(summary);
+      check(!summary._metricDisplay(summary._metricDefinitions().find((metric) => metric.key === "consumption"), "day").available, "unverified daily total leaked");
+      for (const period of ["day", "month", "year"]) check(!summary._chartDisplay(period, summary._metricDefinitions()).series.some((series) => series.key === "consumption"), "withheld history leaked");
+      check(editor.shadowRoot.textContent.includes("Source withheld"), "Data Sources omitted the withholding explanation");
+      const helpers = await window.loadCardHelpers();
+      const native = helpers.createCardElement(nativeCards[1]);
+      native.hass = hass;
+      mount.append(native);
+      await native.updateComplete;
+      check(nativeCards[1].cards[1].entities.length === 1 && nativeCards[1].cards[1].entities[0].entity === production, "withholding removed another graph series");
+      await editor._save("p13199", replacement);
+      check(editor._config.defaults.p13199 === replacement, `adoption failed: ${editor._notice}`);
+      const saved = await hass.callWS({ type: "lovelace/config", url_path: "gosungrow-flow", force: true });
+      check(saved.views[0].cards[0].type === "tile" && saved.views[0].cards[0].entity === replacement, "tile did not restore");
+      check(saved.views[0].cards[1].type === "history-graph" && saved.views[0].cards[1].entities[1].entity === production, "graph layout or other series changed");
+      check(saved.views[0].cards[1].hours_to_show === 24 && saved.views[0].cards[1].title === "Preserved energy graph", "native non-source properties changed");
+      for (const path of editor._config.bindings.p13199) check(editor._getPointer(saved, path) === replacement, `stale persisted binding: ${path}`);
+      summary.setConfig(saved.views[0].cards[2]);
+      summary.hass = hass;
+      check(summary._metricDisplay(summary._metricDefinitions().find((metric) => metric.key === "consumption"), "day").available, "adopted daily source stayed hidden");
+      const source = structuredClone(saved.views[0].cards[1].source_policy);
+      Object.assign(source.metrics.p13199, fields(replacement, "incompatible", "withheld", "manual"));
+      const withheldAgain = editor._projectNative(source).card;
+      check(withheldAgain.cards[1].entities.length === 1 && withheldAgain.cards[1].entities[0].entity === production, "restored source could not be withheld independently");
+      return { nativeTile: true, nativeGraph: true, policySave: true, bindingReadback: true, historyWithheld: true };
+    });
+    assert(Object.values(policyChecks).every(Boolean), "source-policy browser checks must pass");
     assert.deepEqual(pageErrors, [], `browser page errors: ${pageErrors.join(" | ")}`);
   } finally {
     await browser.close();
@@ -184,6 +254,9 @@ async function verifyBrowser() {
 await waitForHomeAssistant();
 await verifyResource();
 const token = await finishOnboarding();
+for (const [entity, state, unit] of [["sensor.gosungrow_e2e_total_energy", "9.92", "MWh"], ["sensor.gosungrow_e2e_daily_consumption", "7.5", "kWh"], ["sensor.gosungrow_e2e_daily_production", "4", "kWh"]]) {
+  await request(`/api/states/${entity}`, { token, body: { state, attributes: { unit_of_measurement: unit, state_class: "total_increasing" } } });
+}
 await provisionDashboard(token);
 await verifyBrowser();
 console.log("Home Assistant managed-dashboard browser smoke passed");

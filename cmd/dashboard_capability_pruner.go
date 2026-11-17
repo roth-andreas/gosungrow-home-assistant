@@ -128,6 +128,12 @@ func dashboardUnsupportedMetricsByTargetWithTraces(config map[string]any, target
 				continue
 			}
 			if resolved[psKey][metric] == "" {
+				// A canonical metric with no verified default still needs a
+				// review entry and owned presentation paths. The policy layer
+				// withholds its values instead of deleting its card structure.
+				if dashboardIsCanonicalDailyMetric(metric) || metric == "pv_power" {
+					continue
+				}
 				unsupported[metric] = struct{}{}
 			}
 		}

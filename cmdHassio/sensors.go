@@ -4,20 +4,29 @@ import (
 	"encoding/json"
 	"github.com/MickMake/GoUnify/Only"
 	"strings"
+	"time"
 )
 
 const LabelSensor = "sensor"
 
 func (m *Mqtt) SensorPublishConfig(config EntityConfig) error {
+	_, err := m.SensorPublishConfigWithReceipt(config)
+	return err
+}
+
+func (m *Mqtt) SensorPublishConfigWithReceipt(config EntityConfig) (SensorPublicationReceipt, error) {
+	receipt := m.SensorPublicationReceipt(config)
 	m.err = nil
 
 	for range Only.Once {
 		if !config.IsSensor() {
+			receipt.Config.Status = "skipped_not_sensor"
 			break
 		}
 
 		ok, newDevice := m.NewDevice(config)
 		if !ok {
+			receipt.Config.Status = "skipped_unknown_parent"
 			break
 		}
 
@@ -45,20 +54,32 @@ func (m *Mqtt) SensorPublishConfig(config EntityConfig) error {
 
 		tag := JoinStringsForTopic(m.Prefix, LabelSensor, m.ClientId, id, "config")
 		m.err = m.Publish(tag, 0, true, payload.Json())
+		receipt.Config.Status = "failed"
+		if m.err == nil {
+			receipt.Config.Status, receipt.Config.CompletedAt = "completed", time.Now().UTC()
+		}
 	}
 
-	return m.err
+	return receipt, m.err
 }
 
 func (m *Mqtt) SensorPublishValue(config EntityConfig) error {
+	_, err := m.SensorPublishValueWithReceipt(config)
+	return err
+}
+
+func (m *Mqtt) SensorPublishValueWithReceipt(config EntityConfig) (SensorPublicationReceipt, error) {
+	receipt := m.SensorPublicationReceipt(config)
 	m.err = nil
 
 	for range Only.Once {
 		if !config.IsSensor() {
+			receipt.State.Status = "skipped_not_sensor"
 			break
 		}
 
 		if config.IgnoreUpdate {
+			receipt.State.Status = "skipped_ignored"
 			break
 		}
 
@@ -73,23 +94,26 @@ func (m *Mqtt) SensorPublishValue(config EntityConfig) error {
 		// @TODO - Real hack here. Need to properly check for JSON.
 		if strings.Contains(value, `{`) || strings.Contains(value, `":`) {
 			m.err = m.Publish(tag, 0, true, value)
-			break
-		}
-
-		payload := MqttState{
-			LastReset: config.LastReset, // m.GetLastReset(config.FullId),
-			Value:     value,
-		}
-		if config.StateClass != "total" {
-			payload = MqttState{
-				Value: value,
+		} else {
+			payload := MqttState{
+				LastReset: config.LastReset, // m.GetLastReset(config.FullId),
+				Value:     value,
 			}
-		}
+			if config.StateClass != "total" {
+				payload = MqttState{
+					Value: value,
+				}
+			}
 
-		m.err = m.Publish(tag, 0, true, payload.Json())
+			m.err = m.Publish(tag, 0, true, payload.Json())
+		}
+		receipt.State.Status = "failed"
+		if m.err == nil {
+			receipt.State.Status, receipt.State.CompletedAt = "completed", time.Now().UTC()
+		}
 	}
 
-	return m.err
+	return receipt, m.err
 }
 
 type Sensor struct {

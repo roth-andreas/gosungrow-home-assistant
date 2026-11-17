@@ -90,8 +90,9 @@ The app documentation is in `addon/gosungrow/DOCS.md`.
 - This is not a native Home Assistant integration. MQTT must be working before the app starts.
 - Temporary iSolarCloud login or gateway failures recover automatically on later sync attempts. GoSungrow retains the last successful gateway and MQTT values, authenticates again when required, and refreshes device discovery before publishing resumes.
 - The app manages its own dashboard automatically.
-- Daily dashboard values use verified Sungrow measurement meanings, including when Home Assistant entities are renamed. Missing, ambiguous, or unverified daily sources are omitted instead of being replaced by lifetime totals or feed-in values. Existing selected sources remain available for review; accept a safer recommendation explicitly in **Data Sources**.
-- Multi-inverter plants use `sensor.gosungrow_virtual_<plant-id>_pv_power` when GoSungrow can establish a complete, single-basis plant total. Existing manual dashboard sources remain unchanged and pinned automatic sources receive a reviewable recommendation.
+- Daily values with unverified automatic sources are withheld, including their history and tooltips. Otherwise usable unverified manual selections keep a persistent warning; proven incompatible values remain withheld. Selections stay available in **Data Sources** for review. Adopting a verified replacement uses its own history and leaves recorder data untouched.
+- Multi-inverter plants use the canonical plant PV source when GoSungrow can establish a complete, single-basis total. Its default name is `sensor.gosungrow_virtual_<plant-id>_pv_power`; registry identity also finds renamed or suffixed entities. Existing manual selections remain unchanged and pinned automatic sources receive a reviewable recommendation.
+- While dashboard installation is enabled, the app watches relevant Home Assistant changes throughout its lifetime. Sources that appear after startup are reconsidered automatically, with serialized updates and bounded retries. Home Assistant observation does not force an iSolarCloud login.
 - Microinverters (type 55) are included. Device sums require every independently discovered producer leaf; missing readings never become zero or a partial total. The `Plant PV aggregation:` info log explains publication or suppression without enabling HTTP tracing.
 - If you are updating from an older version with more options, open the app configuration once and save it to clear legacy fields.
 - The repository also includes `examples/home-assistant-energy-cards.yaml` if you want to build a dashboard around Home Assistant's official Energy cards.
@@ -104,6 +105,8 @@ The app documentation is in `addon/gosungrow/DOCS.md`.
 ## Battery power in Live Flow
 
 The reading beside the battery icon is captioned **Battery power**. For automatic values calculated from directional flows, positive means net discharge and negative means net charge. The published legacy MQTT `battery_power` sensor uses the opposite sign. A manually selected battery sensor keeps its own value and sign.
+
+Automatic node totals require every directional operand to be valid and have compatible power units. With incomplete flows, a verified direct source can supply the node; otherwise it stays unavailable. The legacy battery sensor is not used as an automatic fallback with the wrong sign. A missing manual source stays unavailable rather than falling back to another value.
 
 The direction text uses the solar-to-battery and battery-to-home flows independently of the selected battery reading. It shows Charging, Discharging, Idle, Balanced flows, or Direction unavailable. Matching route values are hidden when the other battery route is available and inactive; distinct active route values remain visible in the wide layout. Compact layouts retain battery information while omitting route labels.
 

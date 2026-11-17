@@ -1,3 +1,17 @@
+const goSungrowFlowMetrics = { solar_power: "pv_power", load_power: "load_power", grid_power: "grid_power", battery_power: "battery_power", battery_soc: "p13141", pv_to_load_power: "pv_to_load_power", pv_to_battery_power: "pv_to_battery_power", pv_to_grid_power: "pv_to_grid_power", grid_to_load_power: "grid_to_load_power", battery_to_load_power: "battery_to_load_power" };
+const goSungrowSummaryMetrics = { production: "p13112", consumption: "p13199", to_grid: "p13173", from_grid: "p13147", to_battery: "p13174", from_battery: "p13029" };
+const goSungrowMetricKeys = new Set([...Object.values(goSungrowFlowMetrics), ...Object.values(goSungrowSummaryMetrics), "p13116"]);
+const goSungrowFiniteNumber = (value) => /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(String(value ?? "").trim()) && Number.isFinite(Number(value)) ? Number(value) : NaN;
+function goSungrowSourceDecision(config, metric, entity, required = false) {
+  const source = config?.source_policy;
+  const policy = source?.metrics?.[metric];
+  if (!source && !required) return "normal";
+  if (!goSungrowMetricKeys.has(metric) || typeof source?.mapping_id !== "string" || !source.mapping_id.trim() || !policy || policy.entity_id !== entity || typeof policy.entity_id !== "string" || !["automatic", "manual"].includes(policy.selection_origin) || typeof policy.reason !== "string" || !policy.reason.trim()) return "withheld";
+  if (policy.verification === "verified" && policy.display_decision === "normal") return "normal";
+  if (policy.verification === "unverified" && policy.selection_origin === "manual" && policy.display_decision === "warned") return "warned";
+  return "withheld";
+}
+
 class GoSungrowEnergyFlowCard extends HTMLElement {
   static getStubConfig() {
     return {
@@ -324,6 +338,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
       </style>
       <ha-card>
         ${this._config.title ? `<div class="title">${this._escape(this._config.title)}</div>` : ""}
+        ${Object.entries(this._config.source_policy?.metrics || {}).filter(([, policy]) => policy.display_decision !== "normal").map(([metric, policy]) => `<div class="title" role="note">${this._escape(this._label(`source_metric_${metric}`, "Data Sources"))}: ${this._escape(this._label(policy.display_decision === "warned" ? "source_manual_unverified" : "source_withheld", policy.display_decision === "warned" ? "Unverified manual source. Review Data Sources." : "Source withheld. Review Data Sources."))}</div>`).join("")}
         <div class="shell${compact ? " compact" : ""}">
           <div class="stage">
             <svg viewBox="0 0 ${layout.width} ${layout.height}" preserveAspectRatio="xMidYMid meet">
@@ -477,42 +492,11 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
       batterySoc: this._entityDisplay("battery_soc"),
     };
 
-    const flowUnit =
-      flows.pv_to_load_power.unit ||
-      flows.pv_to_grid_power.unit ||
-      flows.pv_to_battery_power.unit ||
-      flows.grid_to_load_power.unit ||
-      flows.battery_to_load_power.unit ||
-      direct.solar.unit ||
-      direct.home.unit ||
-      direct.grid.unit ||
-      direct.battery.unit;
-
     const computed = {
-      solar: this._displayFromValue(
-        flows.pv_to_load_power.numericValue + flows.pv_to_grid_power.numericValue + flows.pv_to_battery_power.numericValue,
-        flowUnit,
-        direct.solar,
-        this._hasAnyDisplay([flows.pv_to_load_power, flows.pv_to_grid_power, flows.pv_to_battery_power]),
-      ),
-      grid: this._displayFromValue(
-        flows.grid_to_load_power.numericValue - flows.pv_to_grid_power.numericValue,
-        flowUnit,
-        direct.grid,
-        this._hasAnyDisplay([flows.grid_to_load_power, flows.pv_to_grid_power]),
-      ),
-      home: this._displayFromValue(
-        flows.pv_to_load_power.numericValue + flows.grid_to_load_power.numericValue + flows.battery_to_load_power.numericValue,
-        flowUnit,
-        direct.home,
-        this._hasAnyDisplay([flows.pv_to_load_power, flows.grid_to_load_power, flows.battery_to_load_power]),
-      ),
-      battery: this._displayFromValue(
-        flows.battery_to_load_power.numericValue - flows.pv_to_battery_power.numericValue,
-        flowUnit,
-        direct.battery,
-        this._hasAnyDisplay([flows.battery_to_load_power, flows.pv_to_battery_power]),
-      ),
+      solar: this._computedPower("solar_power", [flows.pv_to_load_power, flows.pv_to_grid_power, flows.pv_to_battery_power], [1, 1, 1], direct.solar),
+      grid: this._computedPower("grid_power", [flows.grid_to_load_power, flows.pv_to_grid_power], [1, -1], direct.grid),
+      home: this._computedPower("load_power", [flows.pv_to_load_power, flows.grid_to_load_power, flows.battery_to_load_power], [1, 1, 1], direct.home),
+      battery: this._computedPower("battery_power", [flows.battery_to_load_power, flows.pv_to_battery_power], [1, -1], direct.battery),
     };
 
     return {
@@ -527,8 +511,22 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
   _manualNodeDisplay(key, direct, automaticDisplay) {
     const configured = this._config?.entities?.[key];
     const automatic = this._config?.automatic_entities?.[key];
-    const manuallySelected = configured && automatic && configured.toLowerCase() !== automatic.toLowerCase();
+    const manuallySelected = this._config?.source_policy?.metrics?.[goSungrowFlowMetrics[key]]?.selection_origin === "manual" || (configured && automatic && configured.toLowerCase() !== automatic.toLowerCase());
     return manuallySelected ? direct : automaticDisplay;
+  }
+
+  _computedPower(key, operands, signs, direct) {
+    if (operands.every((display) => this._validPowerDisplay(display) && display.numericValue >= 0)) {
+      const units = { W: 1, kW: 1000, MW: 1000000 };
+      const unit = operands[0].unit;
+      const value = operands.reduce((sum, display, i) => sum + signs[i] * display.numericValue * units[display.unit] / units[unit], 0);
+      return this._displayFromValue(value, unit, null, true);
+    }
+    const entity = this._config?.entities?.[key];
+    // The legacy battery counter has the opposite sign. Without a declared
+    // compatible direction, a raw direct value cannot replace the flow net.
+    if (key !== "battery_power" && goSungrowSourceDecision(this._config, goSungrowFlowMetrics[key], entity, true) === "normal" && this._validPowerDisplay(direct)) return direct;
+    return { formatted: "--", numericValue: NaN, available: false, numericValid: false, unit: "" };
   }
 
   _flowDisplays() {
@@ -744,13 +742,17 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
     const stateObj = entityId && this._hass ? this._hass.states[entityId] : null;
     const unit = stateObj?.attributes?.unit_of_measurement || "";
 
-    if (!stateObj) {
+    if (!stateObj || goSungrowSourceDecision(this._config, goSungrowFlowMetrics[key], entityId) === "withheld") {
       return { formatted: "--", numericValue: 0, unit: "", available: false };
     }
 
-    const numericValue = Number.parseFloat(stateObj.state);
+    const stamp = stateObj.last_updated || stateObj.last_changed;
+    const age = stamp ? Date.now() - Date.parse(stamp) : 0;
+    if (!Number.isFinite(age) || age > 1800000 || age < -300000) return { formatted: "--", numericValue: NaN, numericValid: false, unit, available: false };
+
+    const numericValue = goSungrowFiniteNumber(stateObj.state);
     if (!Number.isFinite(numericValue)) {
-      return { formatted: stateObj.state, numericValue: 0, unit, available: true, numericValid: false };
+      return { formatted: "--", numericValue: NaN, unit, available: false, numericValid: false };
     }
 
     return {
@@ -760,10 +762,6 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
       unit,
       available: true,
     };
-  }
-
-  _hasAnyDisplay(displays) {
-    return displays.some((display) => display && display.available);
   }
 
   _displayFromValue(value, unit, fallback, useComputed) {
@@ -942,6 +940,13 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
   setConfig(config) {
     if (!config || !config.entities) {
       throw new Error("Missing required config.entities");
+    }
+    const sourceKey = JSON.stringify([config.entities, config.source_policy]);
+    if (sourceKey !== this._sourceKey) {
+      this._sourceGeneration = (this._sourceGeneration || 0) + 1;
+      this._statsCache = {};
+      this._pendingKey = "";
+      this._sourceKey = sourceKey;
     }
     this._config = config;
     this._labels = config.labels || {};
@@ -1292,6 +1297,7 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
           <span>${this._escape(metric.label)}</span>
         </div>
         <div class="${valueClass}">${this._escape(metric.display)}</div>
+        ${metric.warning ? `<div class="status">${this._escape(metric.warning)}</div>` : ""}
       </div>
     `;
   }
@@ -1484,17 +1490,19 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
       { key: "from_grid", label: this._label("name_from_grid", "From Grid"), color: "#cbd5e1" },
       { key: "to_battery", label: this._label("name_to_battery", "To Battery"), color: "#ec4899" },
       { key: "from_battery", label: this._label("name_from_battery", "From Battery"), color: "#14b8a6" },
-    ].filter((metric) => this._entity(metric.key));
+    ].filter((metric) => this._entity(metric.key) || this._config?.source_policy?.metrics?.[goSungrowSummaryMetrics[metric.key]]);
   }
 
   _metricDisplay(metric, period) {
     const entityID = this._entity(metric.key);
-    const source = period === "day" ? this._dayValue(entityID) : this._headlineStatValue(period, entityID);
+    const decision = this._sourceDecision(metric.key);
+    const source = decision === "withheld" ? { value: NaN } : period === "day" ? this._dayValue(entityID) : this._headlineStatValue(period, entityID);
     const available = Number.isFinite(source.value);
     return {
       ...metric,
       available,
       display: available ? this._formatEnergy(source.value, source.unit) : this._label("unavailable", "Unavailable"),
+      warning: decision === "normal" ? "" : this._label(decision === "warned" ? "source_manual_unverified" : "source_withheld", decision === "warned" ? "Unverified manual source. Review Data Sources." : "Source withheld. Review Data Sources."),
     };
   }
 
@@ -1503,13 +1511,17 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
     return typeof value === "string" ? value.trim() : "";
   }
 
+  _sourceDecision(key) {
+    return goSungrowSourceDecision(this._config, goSungrowSummaryMetrics[key], this._entity(key), true);
+  }
+
   _dayValue(entityID) {
     const state = this._hass?.states?.[entityID];
     if (!state) {
       return { value: NaN, unit: "kWh" };
     }
     return {
-      value: Number.parseFloat(state.state),
+      value: ["Wh", "kWh", "MWh"].includes(state.attributes?.unit_of_measurement) ? goSungrowFiniteNumber(state.state) : NaN,
       unit: state.attributes?.unit_of_measurement || "kWh",
     };
   }
@@ -1524,6 +1536,7 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
   }
 
   _chartDisplay(period, metrics) {
+    metrics = metrics.filter((metric) => this._sourceDecision(metric.key) !== "withheld");
     const cache = this._statsCache[this._cacheKey(period)];
     const buckets = this._localizedBuckets(period, this._populatedBuckets(cache?.buckets || []));
     const series = metrics
@@ -1535,7 +1548,7 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
         }
         return {
           key: metric.key,
-          label: metric.label,
+          label: this._sourceDecision(metric.key) === "warned" ? `${metric.label} (${this._label("source_unverified", "Unverified manual source")})` : metric.label,
           color: metric.color,
           values,
         };
@@ -1548,6 +1561,7 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
   }
 
   _liveChartDisplay(period, metrics) {
+    metrics = metrics.filter((metric) => this._sourceDecision(metric.key) !== "withheld");
     const now = this._now();
     const bucket = {
       key: this._bucketKey(period, now),
@@ -1564,7 +1578,7 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
         bucket.values[entityID] = source.value;
         return {
           key: metric.key,
-          label: metric.label,
+          label: this._sourceDecision(metric.key) === "warned" ? `${metric.label} (${this._label("source_unverified", "Unverified manual source")})` : metric.label,
           color: metric.color,
           values: [source.value],
         };
@@ -1605,7 +1619,7 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
   }
 
   _hasLiveMetricValues() {
-    return this._metricDefinitions().some((metric) => {
+    return this._metricDefinitions().filter((metric) => this._sourceDecision(metric.key) !== "withheld").some((metric) => {
       const entityID = this._entity(metric.key);
       return Number.isFinite(this._dayValue(entityID).value);
     });
@@ -1615,13 +1629,15 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
     if (!this._hass || typeof this._hass.callWS !== "function") {
       return;
     }
-    const key = this._cacheKey(this._period);
+    const period = this._period;
+    const generation = this._sourceGeneration;
+    const key = this._cacheKey(period);
     if (this._statsCache[key] || this._pendingKey === key) {
       return;
     }
 
-    const range = this._statisticsRange(this._period);
-    const entityIDs = this._metricDefinitions().map((metric) => this._entity(metric.key)).filter(Boolean);
+    const range = this._statisticsRange(period);
+    const entityIDs = [...new Set(this._metricDefinitions().filter((metric) => this._sourceDecision(metric.key) !== "withheld").map((metric) => this._entity(metric.key)).filter(Boolean))];
     if (entityIDs.length === 0) {
       return;
     }
@@ -1637,13 +1653,13 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
         types: ["max", "state", "sum"],
       })
       .then((response) => {
-        this._statsCache[key] = this._parseStatistics(response, entityIDs, this._period);
+        if (generation === this._sourceGeneration) this._statsCache[key] = this._parseStatistics(response, entityIDs, period);
       })
       .catch(() => {
-        this._statsCache[key] = {};
+        if (generation === this._sourceGeneration) this._statsCache[key] = {};
       })
       .finally(() => {
-        if (this._pendingKey === key) {
+        if (generation === this._sourceGeneration && this._pendingKey === key) {
           this._pendingKey = "";
         }
         this._render();
@@ -1676,7 +1692,7 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
 
   _cacheKey(period) {
     const range = this._periodRange(period);
-    return `${period}:${this._bucketCount(period)}:${range.start.toISOString().slice(0, 10)}`;
+    return `${this._sourceGeneration || 0}:${period}:${this._bucketCount(period)}:${range.start.toISOString().slice(0, 10)}`;
   }
 
   _bucketCount(period) {
@@ -1699,9 +1715,9 @@ class GoSungrowEnergySummaryCard extends HTMLElement {
       const numericRows = rows
         .map((row) => ({
           start: row?.start,
-          max: Number.parseFloat(row?.max),
-          sum: Number.parseFloat(row?.sum),
-          state: Number.parseFloat(row?.state),
+          max: goSungrowFiniteNumber(row?.max),
+          sum: goSungrowFiniteNumber(row?.sum),
+          state: goSungrowFiniteNumber(row?.state),
         }))
         .filter((row) => this._isValidStatisticStart(row.start) && (Number.isFinite(row.max) || Number.isFinite(row.state) || Number.isFinite(row.sum)))
         .sort((a, b) => this._timeForStatisticStart(a.start) - this._timeForStatisticStart(b.start));
@@ -1990,7 +2006,7 @@ class GoSungrowSourceMappingCard extends HTMLElement {
   _numericState(entityID) {
     const state = this._state(entityID);
     if (!state || ["unknown", "unavailable", ""].includes(String(state.state ?? "").toLowerCase())) return null;
-    const value = Number(state.state);
+    const value = goSungrowFiniteNumber(state.state);
     return Number.isFinite(value) ? value : null;
   }
 
@@ -1998,6 +2014,7 @@ class GoSungrowSourceMappingCard extends HTMLElement {
 
   _matchReviewWarning(metric, selectedEntity) {
     const current = this._selected(metric);
+    if (selectedEntity === current && metric?.display_decision !== "normal" && metric?.verification) return this._label(metric.display_decision === "warned" ? "source_manual_unverified" : "source_withheld", metric.display_decision === "warned" ? "Unverified manual source. Review Data Sources." : "Source withheld. Review Data Sources.");
     if (metric?.native_unavailable && selectedEntity === current) return this._label("source_native_unavailable", "Native source unavailable");
     if (metric?.unsupported_calculated && selectedEntity === current) return this._label("source_unsupported_calculated", "Unsupported calculated source");
     if (!metric?.needs_review || this._config?.overrides?.[metric.key] || selectedEntity !== this._selected(metric)) return "";
@@ -2007,11 +2024,12 @@ class GoSungrowSourceMappingCard extends HTMLElement {
   }
 
   _warning(metric, selectedEntity = this._selected(metric)) {
+    if (selectedEntity !== this._selected(metric) && this._candidates(metric).find((candidate) => candidate.entity_id === selectedEntity)?.verification === "unverified") return this._label("source_manual_unverified", "Unverified manual source. Review Data Sources.");
     const matchWarning = this._matchReviewWarning(metric, selectedEntity);
     if (matchWarning) return matchWarning;
     if (this._numericState(selectedEntity) === null) return this._label("source_unavailable_warning", "The selected entity is unavailable or non-numeric.");
     const validation = metric?.validation;
-    if (Number(validation?.schema_version) !== 1 || !Array.isArray(validation?.rules)) return "";
+    if (Number(validation?.schema_version) !== 2 || !Array.isArray(validation?.rules)) return "";
     for (const rule of validation.rules) {
       if (rule?.type === "freshness") {
         const state = this._state(selectedEntity);
@@ -2023,8 +2041,9 @@ class GoSungrowSourceMappingCard extends HTMLElement {
       }
       if (rule?.type !== "not_materially_greater_than") continue;
       const referenceMetric = this._metric(rule.metric);
-      const value = this._numericState(selectedEntity);
-      const reference = referenceMetric ? this._numericState(this._selected(referenceMetric)) : null;
+      const energy = (entity) => { const value = this._numericState(entity); const scale = { Wh: 0.001, kWh: 1, MWh: 1000 }[this._state(entity)?.attributes?.unit_of_measurement]; return value !== null && scale ? value * scale : null; };
+      const value = energy(selectedEntity);
+      const reference = referenceMetric ? energy(this._selected(referenceMetric)) : null;
       if (value === null || reference === null) continue;
       const relative = Number(rule.relative_tolerance || 0);
       const absolute = Number(rule.absolute_tolerance || 0);
@@ -2048,6 +2067,8 @@ class GoSungrowSourceMappingCard extends HTMLElement {
   }
 
   _displayValue(metric) {
+    if (metric?.display_decision === "withheld") return this._label("source_withheld", "Source withheld. Review Data Sources.");
+    if (this._numericState(this._selected(metric)) === null) return this._label("unavailable", "Unavailable");
     const state = this._state(this._selected(metric));
     const value = state?.state;
     if (value === undefined || value === null || ["unknown", "unavailable", ""].includes(String(value).toLowerCase())) return this._label("unavailable", "Unavailable");
@@ -2123,7 +2144,7 @@ class GoSungrowSourceMappingCard extends HTMLElement {
     });
     const ranked = [...filtered].sort((left, right) =>
       Number(right.entity_id === metric.recommendation) - Number(left.entity_id === metric.recommendation));
-    const recommended = ranked.filter((candidate) => candidate.recommended || candidate.entity_id === metric.recommendation).slice(0, 5);
+    const recommended = ranked.filter((candidate) => candidate.selectable !== false && candidate.compatibility === "compatible" && (candidate.recommended || candidate.entity_id === metric.recommendation)).slice(0, 5);
     const other = filtered.filter((candidate) => !recommended.includes(candidate));
     const warning = this._warning(metric, this._pendingEntity || this._selected(metric));
     const changed = Boolean(this._pendingEntity && this._pendingEntity !== this._selected(metric));
@@ -2147,7 +2168,7 @@ class GoSungrowSourceMappingCard extends HTMLElement {
     const peerIDs = peers.map((entry) => entry.entity_id);
     const displayName = this._compactCandidateText(friendly, peerNames, 76);
     const displayID = this._compactCandidateText(candidate.entity_id, peerIDs, 68, true);
-    const value = this._numericState(candidate.entity_id) === null ? this._label("unavailable", "Unavailable") : this._formatLiveValue(candidate.entity_id);
+    const value = (metric.display_decision === "withheld" && candidate.entity_id === this._selected(metric)) || this._numericState(candidate.entity_id) === null ? this._label("unavailable", "Unavailable") : this._formatLiveValue(candidate.entity_id);
     const accessible = `${recommendedUpdate ? `${this._label("source_recommended_automatic", "Recommended automatic source")}; ` : ""}${friendly}; ${candidate.entity_id}; ${value}`;
     const disabled = candidate.selectable === false;
     const semantic = [...new Set([candidate.canonical_point, candidate.period, candidate.scope, candidate.role, candidate.provenance].filter(Boolean))].join(" · ");
@@ -2240,7 +2261,9 @@ class GoSungrowSourceMappingCard extends HTMLElement {
       const dashboard = await this._hass.callWS({ type: "lovelace/config", url_path: this._config.dashboard_url_path, force: true });
       const card = this._findMappingCard(dashboard, this._config.mapping_id);
       const stale = () => new Error(this._label("source_stale", "Dashboard changed; reload and try again."));
-      if (!card || Number(card.schema_version) !== 1 || card.matcher_version !== this._config.matcher_version || !this._sameMap(card.defaults, this._config.defaults) || !this._sameMap(card.overrides || {}, this._config.overrides || {}) || !this._sameMap(card.recommendations || {}, this._config.recommendations || {}) || !this._sameValue(card.bindings, this._config.bindings)) throw stale();
+      const validMetric = (entry, mapping) => goSungrowMetricKeys.has(entry.key) && Number(entry.validation?.schema_version) === 2 && ["automatic", "manual"].includes(entry.selection_origin) && ["verified", "unverified", "incompatible"].includes(entry.verification) && (entry.display_decision === "withheld" || entry.display_decision === "normal" && entry.verification === "verified" || entry.display_decision === "warned" && entry.verification === "unverified" && entry.selection_origin === "manual") && typeof entry.reason === "string" && entry.reason.trim() !== "" && entry.entity_id === (mapping.overrides?.[entry.key] || mapping.defaults?.[entry.key] || "") && entry.selection_origin === (mapping.overrides?.[entry.key] ? "manual" : "automatic");
+      if (!card || Number(card.schema_version) !== 1 || card.matcher_version !== 5 || card.matcher_version !== this._config.matcher_version || !this._sameMap(card.defaults, this._config.defaults) || !this._sameMap(card.pinned_defaults, this._config.pinned_defaults) || !this._sameMap(card.overrides || {}, this._config.overrides || {}) || !this._sameMap(card.recommendations || {}, this._config.recommendations || {}) || !this._sameValue(card.bindings, this._config.bindings) || !this._sameValue(card.metrics, this._config.metrics) || !this._sameValue(card.candidates, this._config.candidates) || !Array.isArray(card.metrics) || !card.metrics.every((entry) => validMetric(entry, card))) throw stale();
+      this._validateDisplayPolicies(dashboard, card);
       if (entityID) {
         const cardMetric = Array.isArray(card.metrics) ? card.metrics.find((entry) => entry.key === metricKey) : null;
         const localCandidates = this._candidates(metric);
@@ -2253,6 +2276,7 @@ class GoSungrowSourceMappingCard extends HTMLElement {
       const nextEntity = entityID || card.defaults?.[metricKey];
       const adoptRecommendation = Boolean(entityID && !card.overrides?.[metricKey] && card.recommendations?.[metricKey] === entityID);
       const paths = card.bindings?.[metricKey] || [];
+      if (paths.length && !this._displayCards(dashboard, card.mapping_id).some(({ card: display }) => display.source_policy.metrics?.[metricKey])) throw stale();
       for (const path of paths) {
         if (this._getPointer(dashboard, path) !== oldEntity) throw stale();
       }
@@ -2262,6 +2286,19 @@ class GoSungrowSourceMappingCard extends HTMLElement {
       nextCard.overrides = { ...(nextCard.overrides || {}) };
       const nextMetric = Array.isArray(nextCard.metrics) ? nextCard.metrics.find((entry) => entry.key === metricKey) : null;
       const nextCandidate = (nextCard.candidates?.[metricKey] || nextMetric?.candidates || []).find((candidate) => candidate.entity_id === nextEntity);
+      if (!nextMetric) throw stale();
+      if (adoptRecommendation && nextCandidate?.verification !== "verified") throw stale();
+      if (entityID) {
+        const state = this._state(entityID);
+        const unit = state?.attributes?.unit_of_measurement;
+        const units = metricKey === "p13141" ? ["%"] : metricKey.endsWith("power") ? ["W", "kW", "MW"] : ["Wh", "kWh", "MWh"];
+        const updated = state?.last_updated || state?.last_changed;
+        const age = updated ? Date.now() - Date.parse(updated) : 0;
+        const maxAge = metricKey.endsWith("power") || metricKey === "p13141" ? 1800000 : 129600000;
+        if (this._numericState(entityID) === null || !units.includes(unit) || !Number.isFinite(age) || age < -300000 || age > maxAge || !["verified", "unverified"].includes(nextCandidate?.verification)) throw new Error(this._label("source_incompatible", "This entity is no longer an available compatible source."));
+        const freshWarning = this._warning(metric, entityID);
+        if (freshWarning && freshWarning !== warning && !window.confirm(`${freshWarning}\n\n${this._label("source_confirm_warning", "Use this source anyway?")}`)) return;
+      }
       if (adoptRecommendation) {
         nextCard.defaults = { ...(nextCard.defaults || {}), [metricKey]: nextEntity };
         nextCard.pinned_defaults = { ...(nextCard.pinned_defaults || {}), [metricKey]: nextEntity };
@@ -2278,32 +2315,37 @@ class GoSungrowSourceMappingCard extends HTMLElement {
         }
       } else if (entityID) nextCard.overrides[metricKey] = entityID;
       else delete nextCard.overrides[metricKey];
-      if (nextMetric) { nextMetric.confidence = nextCandidate?.confidence; nextMetric.reason = nextCandidate?.reason; }
+      const origin = nextCard.overrides?.[metricKey] ? "manual" : "automatic";
+      const verification = nextCandidate?.verification || "unverified";
+      const decision = verification === "verified" ? "normal" : verification === "unverified" && origin === "manual" ? "warned" : "withheld";
+      const policyReason = decision === "normal" ? this._label("source_meaning_verified", "Source meaning verified") : this._label(decision === "warned" ? "source_manual_unverified" : "source_withheld", decision === "warned" ? "Unverified manual source. Review Data Sources." : "Source withheld. Review Data Sources.");
+      Object.assign(nextMetric, { entity_id: nextEntity || "", selection_origin: origin, verification, display_decision: decision, reason: policyReason, selected: nextEntity, confidence: nextCandidate?.confidence });
+      for (const { card: display, path: cardPath } of this._displayCards(nextDashboard, nextCard.mapping_id)) {
+        const source = display.source_policy;
+        if (!source.metrics?.[metricKey]) continue;
+        source.metrics[metricKey] = this._policyFields(nextMetric);
+        if (adoptRecommendation && display.automatic_entities) {
+          for (const [key, metric] of Object.entries(goSungrowFlowMetrics)) if (metric === metricKey && key in display.automatic_entities) display.automatic_entities[key] = nextEntity;
+        }
+        if ("native_template" in source || "native_bindings" in source) {
+          const projected = this._projectNative(source);
+          for (const [key, relative] of Object.entries(projected.bindings)) nextCard.bindings[key] = [...(nextCard.bindings[key] || []).filter((path) => !path.startsWith(`${cardPath}/`)), ...relative.map((path) => cardPath + path)];
+          this._setPointer(nextDashboard, cardPath, projected.card);
+        }
+      }
+      this._validateDisplayPolicies(nextDashboard, nextCard);
+      const beforeSave = await this._hass.callWS({ type: "lovelace/config", url_path: this._config.dashboard_url_path, force: true });
+      if (!this._sameValue(beforeSave, dashboard)) throw stale();
       await this._hass.callWS({ type: "lovelace/config/save", url_path: this._config.dashboard_url_path, config: nextDashboard });
       const verifiedDashboard = await this._hass.callWS({ type: "lovelace/config", url_path: this._config.dashboard_url_path, force: true });
       const verifiedCard = this._findMappingCard(verifiedDashboard, this._config.mapping_id);
       const persistedEntity = verifiedCard?.overrides?.[metricKey] || verifiedCard?.defaults?.[metricKey];
-      if (persistedEntity !== nextEntity || paths.some((path) => this._getPointer(verifiedDashboard, path) !== nextEntity)) {
+      const verifiedPaths = nextCard.bindings?.[metricKey] || [];
+      this._validateDisplayPolicies(verifiedDashboard, verifiedCard || {});
+      if (persistedEntity !== nextEntity || !this._sameValue(verifiedDashboard, nextDashboard) || verifiedPaths.some((path) => this._getPointer(verifiedDashboard, path) !== nextEntity)) {
         throw new Error(this._label("source_save_error", "Could not save the data source. Check your administrator access and connection, then try again."));
       }
-      this._config.overrides = { ...(this._config.overrides || {}) };
-      if (adoptRecommendation) {
-        this._config.defaults = { ...(this._config.defaults || {}), [metricKey]: nextEntity };
-        this._config.pinned_defaults = { ...(this._config.pinned_defaults || {}), [metricKey]: nextEntity };
-        this._config.recommendations = { ...(this._config.recommendations || {}) };
-        delete this._config.recommendations[metricKey];
-        delete this._config.overrides[metricKey];
-        metric.default = nextEntity;
-        delete metric.recommendation;
-        delete metric.recommendation_reason;
-        delete metric.needs_review;
-        delete metric.unsupported_calculated;
-        delete metric.native_unavailable;
-      } else if (entityID) this._config.overrides[metricKey] = entityID;
-      else delete this._config.overrides[metricKey];
-      const localCandidate = this._candidates(metric).find((candidate) => candidate.entity_id === nextEntity);
-      metric.confidence = localCandidate?.confidence;
-      metric.reason = localCandidate?.reason;
+      this._config = this._clone(verifiedCard);
       this._notice = adoptRecommendation ? this._label("source_adopted", "Automatic source updated.") : this._label("saved", "Data source saved.");
       this._activeMetric = null;
       this._pendingEntity = null;
@@ -2321,6 +2363,129 @@ class GoSungrowSourceMappingCard extends HTMLElement {
     if (!Array.isArray(value) && value.type === "custom:gosungrow-source-mapping-card-v1" && value.mapping_id === mappingID) return value;
     for (const entry of Object.values(value)) { const found = this._findMappingCard(entry, mappingID); if (found) return found; }
     return null;
+  }
+
+  _displayCards(dashboard, mappingID) {
+    const cards = [];
+    const walk = (value, path = "") => {
+      if (!value || typeof value !== "object") return;
+      if (value.source_policy && (mappingID === null || value.source_policy.mapping_id === mappingID)) cards.push({ card: value, path });
+      for (const [key, child] of Object.entries(value)) {
+        if (["source_policy", "gosungrow_source_mapping"].includes(key)) continue;
+        walk(child, `${path}/${key.replaceAll("~", "~0").replaceAll("/", "~1")}`);
+      }
+    };
+    walk(dashboard);
+    return cards;
+  }
+
+  _projectNative(source) {
+    const fail = () => { throw new Error(this._label("source_stale", "Dashboard changed; reload and try again.")); };
+    const template = source?.native_template;
+    const owned = source?.native_bindings;
+    if (!source?.mapping_id || !template || !owned || !["tile", "entities", "history-graph"].includes(template.type) || Array.isArray(owned)) fail();
+    const safe = (value) => !value || typeof value !== "object" || Object.entries(value).every(([key, child]) => !["source_policy", "gosungrow_source_mapping", "native_template", "native_bindings", "state", "attributes", "access_token", "password", "credentials", "raw_payload"].includes(key.toLowerCase()) && safe(child));
+    if (!safe(template)) fail();
+    const rendered = this._clone(template);
+    const owners = new Set();
+    const blocked = new Set();
+    const warnings = [];
+    let blockedTile = false;
+    for (const metric of Object.keys(owned).sort()) {
+      const policy = source.metrics?.[metric];
+      const paths = owned[metric];
+      if (!goSungrowMetricKeys.has(metric) || !policy || !Array.isArray(paths) || !paths.length || typeof policy.reason !== "string" || !policy.reason.trim() || !["automatic", "manual"].includes(policy.selection_origin) || !["verified", "unverified", "incompatible"].includes(policy.verification)) fail();
+      const decision = goSungrowSourceDecision({ source_policy: source }, metric, policy.entity_id, true);
+      if (decision !== policy.display_decision && policy.display_decision !== "withheld") fail();
+      for (const path of paths) {
+        if (typeof path !== "string" || owners.has(path) || this._getPointer(template, path) !== policy.entity_id || !(template.type === "tile" ? path === "/entity" : /^\/entities\/(0|[1-9]\d*)(\/entity)?$/.test(path))) fail();
+        owners.add(path);
+        if (decision === "withheld") {
+          if (path === "/entity") blockedTile = true;
+          else blocked.add(Number(path.split("/")[2]));
+        }
+      }
+      if (decision !== "normal") {
+        const text = (value) => typeof value === "string" ? value.trim() : "";
+        const rowName = paths.map((path) => path.startsWith("/entities/") ? text(template.entities?.[Number(path.split("/")[2])]?.name) : "").find(Boolean);
+        const label = text(template.name) || rowName || text(template.title);
+        warnings.push(`${label ? label + ": " : ""}${policy.reason || ""}`);
+      }
+    }
+    const indexMap = new Map();
+    if (Array.isArray(rendered.entities)) rendered.entities = rendered.entities.filter((_, i) => { if (blocked.has(i)) return false; indexMap.set(i, indexMap.size); return true; });
+    const visible = !blockedTile && (!Array.isArray(rendered.entities) || rendered.entities.length > 0);
+    let result = rendered;
+    let prefix = "";
+    if (warnings.length) {
+      result = { type: "vertical-stack", cards: [{ type: "markdown", content: warnings.join("\n\n") }] };
+      if (visible) { result.cards.push(rendered); prefix = "/cards/1"; }
+      if ("layout_options" in rendered) { result.layout_options = rendered.layout_options; delete rendered.layout_options; }
+    }
+    result.source_policy = source;
+    const bindings = {};
+    for (const metric of Object.keys(owned).sort()) {
+      const paths = [`/source_policy/metrics/${metric}/entity_id`];
+      for (const path of owned[metric]) {
+        paths.push(`/source_policy/native_template${path}`);
+        if (!visible) continue;
+        let renderedPath = path;
+        if (path !== "/entity") {
+          const parts = path.split("/");
+          const index = indexMap.get(Number(parts[2]));
+          if (index === undefined) continue;
+          parts[2] = String(index);
+          renderedPath = parts.join("/");
+        }
+        paths.push(prefix + renderedPath);
+      }
+      bindings[metric] = paths;
+    }
+    return { card: result, bindings };
+  }
+
+  _validateDisplayPolicies(dashboard, mapping) {
+    const allCards = this._displayCards(dashboard, null).sort((left, right) => right.path.length - left.path.length);
+    const ownership = new Map();
+    for (const { card, path } of allCards.filter(({ card }) => card.source_policy.mapping_id === mapping.mapping_id)) {
+      const source = card.source_policy;
+      for (const [key, policy] of Object.entries(source.metrics || {})) {
+        const metric = mapping.metrics?.find((entry) => entry.key === key);
+        if (!metric || !this._sameValue(policy, this._policyFields(metric))) throw new Error(this._label("source_stale", "Dashboard changed; reload and try again."));
+      }
+      if ("native_template" in source || "native_bindings" in source) {
+        const projection = this._projectNative(source);
+        if (!this._sameValue(projection.card, card)) throw new Error(this._label("source_stale", "Dashboard changed; reload and try again."));
+        ownership.set(path, projection.bindings);
+      } else if (card.type === "vertical-stack" || ["tile", "history-graph", "entities"].includes(card.type) && Object.values(source.metrics || {}).some((policy) => policy.display_decision !== "normal")) {
+        throw new Error(this._label("source_stale", "Dashboard changed; reload and try again."));
+      } else {
+        const metrics = card.type === "custom:gosungrow-energy-flow-card-v2" ? goSungrowFlowMetrics : card.type === "custom:gosungrow-energy-summary-card-v1" ? goSungrowSummaryMetrics : {};
+        const owned = {};
+        for (const key of Object.keys(source.metrics || {})) {
+          owned[key] = [`/source_policy/metrics/${key}/entity_id`, ...Object.entries(metrics).filter(([, metric]) => metric === key).map(([field]) => `/entities/${field}`)];
+          if (Object.keys(source.metrics).length === 1 && "entity" in card) owned[key].push("/entity");
+        }
+        ownership.set(path, owned);
+      }
+    }
+    const stale = () => new Error(this._label("source_stale", "Dashboard changed; reload and try again."));
+    for (const [key, paths] of Object.entries(mapping.bindings || {})) {
+      if (!Array.isArray(paths)) throw stale();
+      for (const path of paths) {
+        if (typeof path !== "string") throw stale();
+        const owner = allCards.find((entry) => path.startsWith(`${entry.path}/`));
+        if (!owner || !ownership.get(owner.path)?.[key]?.includes(path.slice(owner.path.length))) throw stale();
+      }
+    }
+    for (const [path, metrics] of ownership) for (const [key, relative] of Object.entries(metrics)) {
+      const paths = mapping.bindings?.[key] || [];
+      if (relative.some((part) => !paths.includes(path + part))) throw stale();
+    }
+  }
+
+  _policyFields(metric) {
+    return Object.fromEntries(["entity_id", "selection_origin", "verification", "display_decision", "reason"].map((key) => [key, metric[key]]));
   }
 
   _pointerParts(path) { return String(path).split("/").slice(1).map((part) => part.replaceAll("~1", "/").replaceAll("~0", "~")); }
