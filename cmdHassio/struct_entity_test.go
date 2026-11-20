@@ -127,3 +127,38 @@ func TestFixConfigUsesCanonicalReactivePowerDeviceClass(t *testing.T) {
 		t.Fatalf("device class = %q, want reactive_power", config.DeviceClass)
 	}
 }
+
+func TestFixConfigUsesTemperatureDeviceClassForSungrowUnits(t *testing.T) {
+	tests := []struct {
+		unit      string
+		wantUnits string
+	}{
+		{unit: "℃", wantUnits: "°C"},
+		{unit: "°C", wantUnits: "°C"},
+		{unit: "℉", wantUnits: "°F"},
+		{unit: "°F", wantUnits: "°F"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.unit, func(t *testing.T) {
+			value := valueTypes.SetUnitValueFloat(tt.unit, "Temperature", 21.5)
+			config := EntityConfig{
+				Units: tt.unit,
+				Value: &value,
+				Point: &api.Point{Unit: tt.unit, UpdateFreq: GoStruct.UpdateFreqInstant},
+			}
+
+			config.FixConfig()
+
+			if config.Units != tt.wantUnits {
+				t.Fatalf("units = %q, want %q", config.Units, tt.wantUnits)
+			}
+			if config.DeviceClass != "temperature" {
+				t.Fatalf("device class = %q, want temperature", config.DeviceClass)
+			}
+			if config.StateClass != "measurement" {
+				t.Fatalf("state class = %q, want measurement", config.StateClass)
+			}
+		})
+	}
+}
