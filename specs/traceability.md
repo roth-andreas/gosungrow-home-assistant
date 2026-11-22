@@ -149,7 +149,8 @@ Artifact ownership identifies executable evidence; validation results must be re
 | Live Flow battery layout review (wide and compact) | `REQ-CARD-019`; `REQ-ACC-058`–`059`: browser review of caption, power, direction status, SOC, and active route labels without overlap, including all supported locales. The pinned browser smoke checks charging labels and English fallback in both layouts |
 | `tools/ha-e2e/dashboard_resource_smoke.mjs`, `tools/ha-e2e/local_route_bootstrap.mjs`, `tools/ha-e2e/local_route_bootstrap.sh` | `REQ-CARD-018`; `REQ-DASH-037`; `REQ-REL-011`, `013`; `REQ-ACC-033`, `036`, `038` |
 | `addon/gosungrow/recovery_policy_test.sh` | `REQ-ADDON-008`–`012`; `REQ-XCUT-019`, `021`; `REQ-ACC-028`, `038` |
-| `addon/gosungrow/configuration_test.sh` | `REQ-ADDON-001`–`002`, `013`; `REQ-CFG-003`; `REQ-ACC-023` |
+| `addon/gosungrow/configuration_test.sh` | `REQ-ADDON-001`–`002`, `013`, `015`–`016`; `REQ-CFG-003`; `REQ-PROD-004`; `REQ-XCUT-004`, `009`, `017`; `REQ-ACC-023`, `080`–`083` |
+| Home Assistant OS MQTT cold-boot check | `REQ-ADDON-015`–`016`; `REQ-ACC-084`. Real Supervisor registration and first retained publication during the original app invocation |
 
 ## Non-test verification
 

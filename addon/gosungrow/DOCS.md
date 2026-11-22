@@ -37,8 +37,8 @@ Optional:
 - `gosungrow_host`: regional iSolarCloud gateway; leave empty for the default and automatic fallback, or use `https://augateway.isolarcloud.com`, `https://gateway.isolarcloud.com`, `https://gateway.isolarcloud.eu`, `https://gateway.isolarcloud.com.hk`, `https://gateway.isolarcloud.com.cn`, or `https://gateway.isolarcloud.in`
 - `mqtt_host`: custom MQTT broker host; leave empty to use the Home Assistant MQTT service
 - `mqtt_port`: custom MQTT broker port; defaults to `1883`
-- `mqtt_username`: custom MQTT username; leave empty to use the Home Assistant MQTT service credentials
-- `mqtt_password`: custom MQTT password; leave empty to use the Home Assistant MQTT service credentials
+- `mqtt_username`: optional username for the custom broker
+- `mqtt_password`: optional password for the custom broker
 - `install_dashboard`: create or update the managed dashboard automatically
 - `dashboard_language`: `auto` (default) or explicit locale (`en`, `de`, `sv`, `es`)
 - `debug`: enable verbose logging
@@ -47,10 +47,11 @@ Optional:
 
 On a healthy setup, the app:
 
-1. installs or updates the managed dashboards
-2. initializes the iSolarCloud session and connects to MQTT
-3. publishes entity discovery and state updates
-4. reconciles the managed dashboard again shortly after MQTT startup, so fresh installs can remap newly created entities
+1. resolves MQTT broker settings
+2. installs or updates the managed dashboards when enabled
+3. initializes the iSolarCloud session and connects to MQTT
+4. publishes entity discovery and state updates
+5. reconciles the managed dashboard again shortly after MQTT startup, so fresh installs can remap newly created entities
 
 No Home Assistant restart is required for the managed dashboards.
 
@@ -106,9 +107,16 @@ Non-administrator users can inspect the selected sources but cannot modify them.
 - The managed dashboard state is stored in `/data/.GoSungrow/dashboard_state.json`.
 - If no entities appear, verify MQTT first.
 - The app uses the standard iSolarCloud host unless `gosungrow_host` selects a supported regional gateway. Indian accounts can select `https://gateway.isolarcloud.in`.
-- MQTT uses the custom broker settings when `mqtt_host` is set, otherwise it falls back to the Home Assistant MQTT service.
 - Managed dashboard text follows Home Assistant language when available (fallback: English).
 - If you are updating from an older version with more options, open the app configuration once and save it to clear legacy fields.
+
+## Troubleshooting MQTT Startup
+
+With `mqtt_host` empty, GoSungrow gets the broker address and credentials from the Home Assistant Supervisor MQTT service. It waits up to two minutes for registration or a temporary Supervisor failure to clear. When `mqtt_host` is set, GoSungrow uses the custom broker settings from the options file Home Assistant prepares at startup, even if the Supervisor options API is unavailable.
+
+If registration is still unavailable when startup stops, check the Mosquitto broker log for successful service registration with Supervisor, then start GoSungrow again. For an external broker, enter its host, port, and any required credentials in the app configuration. If the GoSungrow log reports access denial or invalid service data, check Supervisor access or the settings published by the broker app.
+
+For support, include the GoSungrow, Supervisor, and broker logs from the same boot. Redact credentials and tokens before sharing.
 
 ## Troubleshooting DNS Errors
 

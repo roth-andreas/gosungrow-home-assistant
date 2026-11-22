@@ -87,7 +87,7 @@ The app documentation is in `addon/gosungrow/DOCS.md`.
 
 ## Notes
 
-- This is not a native Home Assistant integration. MQTT must be working before the app starts.
+- GoSungrow needs a working MQTT broker. With `mqtt_host` empty, it waits up to two minutes at startup for the Home Assistant Supervisor MQTT service. Set `mqtt_host` to use a custom broker directly.
 - Temporary iSolarCloud login or gateway failures recover automatically on later sync attempts. GoSungrow retains the last successful gateway and MQTT values, authenticates again when required, and refreshes device discovery before publishing resumes.
 - The app manages its own dashboard automatically.
 - Daily values with unverified automatic sources are withheld, including their history and tooltips. Otherwise usable unverified manual selections keep a persistent warning; proven incompatible values remain withheld. Selections stay available in **Data Sources** for review. Adopting a verified replacement uses its own history and leaves recorder data untouched.

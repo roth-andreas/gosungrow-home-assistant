@@ -12,7 +12,7 @@ GoSungrow is primarily a Home Assistant app. It authenticates to Sungrow iSolarC
 - **REQ-PROD-001** — The supported deployment MUST be the Home Assistant app on `aarch64` and `amd64`; the standalone CLI remains supported for local operation and diagnostics.
 - **REQ-PROD-002** — The main runtime pipeline MUST be `app configuration → iSolarCloud session → plant/device/point discovery → normalized data → MQTT discovery/state → managed dashboard`.
 - **REQ-PROD-003** — MQTT MUST be a prerequisite. The product is not a native Home Assistant integration and MUST NOT claim to operate without a broker and Home Assistant MQTT integration.
-- **REQ-PROD-004** — Dashboard installation failure MUST NOT prevent MQTT startup. Missing credentials or MQTT host MUST prevent startup.
+- **REQ-PROD-004** — Dashboard installation failure MUST NOT prevent MQTT startup. Missing required credentials or an unresolved MQTT host after the applicable broker-resolution policy MUST prevent runtime startup. Supervisor MQTT service discovery follows `REQ-ADDON-001` and `REQ-ADDON-015`.
 - **REQ-PROD-005** — The app MUST keep MQTT connected during recoverable iSolarCloud outages after MQTT initialization and MUST resume normal synchronization automatically.
 - **REQ-PROD-006** — Managed dashboard overrides MUST affect only the managed GoSungrow dashboard; they MUST NOT alter MQTT entities, automations, Home Assistant Energy configuration, or unrelated dashboards.
 - **REQ-PROD-007** — Multiple plants and multiple selected targets MUST remain isolated by stable Sungrow identifiers.

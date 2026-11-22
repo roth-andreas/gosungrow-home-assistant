@@ -9,37 +9,9 @@ readonly DEFAULT_DASHBOARD_TITLE="GoSungrow Flow"
 source /usr/local/lib/gosungrow/recovery_policy.sh
 source /usr/local/lib/gosungrow/configuration.sh
 
-optional_config() {
-  local value
-  value="$(bashio::config "$1")"
-  if [ "$value" = "null" ] || [ "$value" = "~" ]; then
-    value=""
-  fi
-  printf '%s' "$value"
-}
-
-GOSUNGROW_USER="$(bashio::config 'gosungrow_user')"
-GOSUNGROW_PASSWORD="$(bashio::config 'gosungrow_password')"
-CUSTOM_GOSUNGROW_HOST="$(optional_config 'gosungrow_host')"
-CUSTOM_MQTT_HOST="$(optional_config 'mqtt_host')"
-CUSTOM_MQTT_PORT="$(optional_config 'mqtt_port')"
-CUSTOM_MQTT_USER="$(optional_config 'mqtt_username')"
-CUSTOM_MQTT_PASSWORD="$(optional_config 'mqtt_password')"
-SUPERVISOR_MQTT_HOST="$(bashio::services mqtt 'host' 2>/dev/null || true)"
-SUPERVISOR_MQTT_PORT="$(bashio::services mqtt 'port' 2>/dev/null || true)"
-SUPERVISOR_MQTT_USER="$(bashio::services mqtt 'username' 2>/dev/null || true)"
-SUPERVISOR_MQTT_PASSWORD="$(bashio::services mqtt 'password' 2>/dev/null || true)"
-
-if [ -n "$CUSTOM_MQTT_HOST" ]; then
-  GOSUNGROW_MQTT_HOST="$CUSTOM_MQTT_HOST"
-  GOSUNGROW_MQTT_PORT="${CUSTOM_MQTT_PORT:-1883}"
-  GOSUNGROW_MQTT_USER="$CUSTOM_MQTT_USER"
-  GOSUNGROW_MQTT_PASSWORD="$CUSTOM_MQTT_PASSWORD"
-else
-  GOSUNGROW_MQTT_HOST="$SUPERVISOR_MQTT_HOST"
-  GOSUNGROW_MQTT_PORT="$SUPERVISOR_MQTT_PORT"
-  GOSUNGROW_MQTT_USER="$SUPERVISOR_MQTT_USER"
-  GOSUNGROW_MQTT_PASSWORD="$SUPERVISOR_MQTT_PASSWORD"
+if ! gosungrow_read_app_options /data/options.json; then
+  bashio::log.fatal 'Could not read valid app options from /data/options.json. Check the GoSungrow app configuration.'
+  exit 1
 fi
 
 if [ -z "$GOSUNGROW_USER" ]; then
@@ -52,20 +24,16 @@ if [ -z "$GOSUNGROW_PASSWORD" ]; then
   exit 1
 fi
 
-if ! GOSUNGROW_HOST="$(gosungrow_resolve_host "$CUSTOM_GOSUNGROW_HOST" "$DEFAULT_HOST")"; then
+if ! GOSUNGROW_HOST="$(gosungrow_resolve_host "$GOSUNGROW_HOST" "$DEFAULT_HOST")"; then
   bashio::log.fatal 'Unsupported gosungrow_host. Select a canonical iSolarCloud gateway.'
   exit 1
 fi
 
-if [ -z "$GOSUNGROW_MQTT_HOST" ]; then
-  bashio::log.fatal 'No MQTT broker configured. Set mqtt_host in the app config or install/start the Home Assistant Mosquitto broker app.'
-  exit 1
-fi
-
-if [ -n "$CUSTOM_MQTT_HOST" ]; then
+if [ -n "$GOSUNGROW_MQTT_HOST" ]; then
   bashio::log.info 'Using custom MQTT broker settings.'
 else
   bashio::log.info 'Using Home Assistant MQTT service settings.'
+  gosungrow_discover_supervisor_mqtt || exit 1
 fi
 
 export GOSUNGROW_USER
@@ -73,20 +41,14 @@ export GOSUNGROW_PASSWORD
 export GOSUNGROW_HOST
 export GOSUNGROW_APPKEY="$DEFAULT_APPKEY"
 export GOSUNGROW_MQTT_HOST
-export GOSUNGROW_MQTT_PORT="${GOSUNGROW_MQTT_PORT:-1883}"
+export GOSUNGROW_MQTT_PORT
 export GOSUNGROW_MQTT_USER
 export GOSUNGROW_MQTT_PASSWORD
-export GOSUNGROW_DEBUG="$(bashio::config 'debug')"
+export GOSUNGROW_DEBUG
 export GOSUNGROW_ASSET_DIR="${GOSUNGROW_ASSET_DIR:-/opt/gosungrow/assets}"
-export GOSUNGROW_DASHBOARD_LANGUAGE="$(bashio::config 'dashboard_language')"
-export GOSUNGROW_DASHBOARD_ENABLED=false
-export GOSUNGROW_DASHBOARD_FORCE_UPDATE=false
-if bashio::config.true 'install_dashboard'; then
-  GOSUNGROW_DASHBOARD_ENABLED=true
-fi
-if bashio::config.true 'dashboard_force_update'; then
-  GOSUNGROW_DASHBOARD_FORCE_UPDATE=true
-fi
+export GOSUNGROW_DASHBOARD_LANGUAGE
+export GOSUNGROW_DASHBOARD_ENABLED
+export GOSUNGROW_DASHBOARD_FORCE_UPDATE
 
 mkdir -p "$(dirname "$GOSUNGROW_CONFIG")"
 
@@ -117,7 +79,7 @@ install_managed_dashboard() {
     "--diagnostic-context=${action}"
   )
 
-  if bashio::config.true 'dashboard_force_update'; then
+  if [ "$GOSUNGROW_DASHBOARD_FORCE_UPDATE" = true ]; then
     dashboard_args+=("--force-update")
   fi
 
@@ -140,7 +102,7 @@ install_managed_dashboard() {
   rm -f "$dashboard_log"
 }
 
-if bashio::config.true 'install_dashboard'; then
+if [ "$GOSUNGROW_DASHBOARD_ENABLED" = true ]; then
   install_managed_dashboard "Installing" || true
 fi
 
@@ -158,7 +120,7 @@ run_mqtt_with_login_retry() {
   mqtt_args=(
     mqtt run
     "--mqtt-host=$GOSUNGROW_MQTT_HOST"
-    "--mqtt-port=${GOSUNGROW_MQTT_PORT:-1883}"
+    "--mqtt-port=$GOSUNGROW_MQTT_PORT"
     "--mqtt-user=$GOSUNGROW_MQTT_USER"
     "--mqtt-password=$GOSUNGROW_MQTT_PASSWORD"
     "--dashboard-enabled=$GOSUNGROW_DASHBOARD_ENABLED"
