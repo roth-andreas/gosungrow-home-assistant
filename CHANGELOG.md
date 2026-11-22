@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 3.3.10
 
 - Publish temperature sensors with Home Assistant’s standard Celsius and Fahrenheit units so existing sensors can continue collecting long-term statistics.
 
