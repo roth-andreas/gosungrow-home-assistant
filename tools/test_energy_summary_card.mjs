@@ -338,7 +338,7 @@ test("issue 15 discharge and charging retain battery identity in both layouts", 
     card._hass.states["sensor.battery_to_load_power"].state = "0";
     card.hass = card._hass;
     html = card.shadowRoot.innerHTML;
-    assert.match(html, /aria-label="Battery power: -1\.80 kW; Charging"/);
+    assert.match(html, /aria-label="Battery power: -1\.80 kW; Battery charging"/);
     assert.doesNotMatch(html, /class="route-pill pill-solar-battery"/);
     assert.match(html, /edge-active edge-solar-battery[^>]*opacity:0\.96/);
   }
@@ -347,8 +347,8 @@ test("issue 15 discharge and charging retain battery identity in both layouts", 
 test("battery direction covers boundaries, simultaneous flows, and invalid live inputs", () => {
   const cases = [
     [0, 0, "Idle"], [0.01, 0, "Idle"], [0, 0.01, "Idle"], [0.01, 0.01, "Idle"],
-    [0, 0.011, "Discharging"], [0.011, 0, "Charging"],
-    [1, 2, "Discharging"], [2, 1, "Charging"], [1, 1, "Balanced flows"],
+    [0, 0.011, "Discharging"], [0.011, 0, "Battery charging"],
+    [1, 2, "Discharging"], [2, 1, "Battery charging"], [1, 1, "Balanced flows"],
     [1, 1.005, "Balanced flows"], [null, 0, "Direction unavailable"],
     [0, null, "Direction unavailable"], ["unknown", 0, "Direction unavailable"],
     [0, "unavailable", "Direction unavailable"], ["NaN", 0, "Direction unavailable"],
@@ -418,6 +418,38 @@ test("battery caption and direction localize, fall back, and escape custom text"
   card.hass = card._hass;
   assert.match(card.shadowRoot.innerHTML, /&lt;Custom battery&gt;/);
   assert.match(card.shadowRoot.innerHTML, /Custom discharge/);
+});
+
+test("Live Flow renders localized battery charging, discharge, and explicit labels", () => {
+  const labels = [
+    ["en-US", "Battery charging", "Discharging"],
+    ["de-DE", "Akku wird geladen", "Entlädt"],
+    ["sv-SE", "Batteriet laddas", "Urladdar"],
+    ["es-ES", "Cargando la batería", "Descargando"],
+    ["fr-FR", "Battery charging", "Discharging"],
+  ];
+  for (const compact of [false, true]) {
+    for (const [locale, charging, discharging] of labels) {
+      const card = createBatteryFlowCard(compact, { pv_to_battery_power: 1.8, battery_to_load_power: 0 });
+      card._hass.locale.language = locale;
+      const assertStatus = (status) => {
+        const html = card.shadowRoot.innerHTML;
+        assert.ok(html.includes(`>${status}</text>`), `${locale} visible status: ${status}`);
+        const accessibleName = html.match(/data-node="battery"[^>]* aria-label="([^"]+)"/)?.[1];
+        assert.ok(accessibleName?.endsWith(`; ${status}`), `${locale} accessible status: ${status}`);
+      };
+      card.hass = card._hass;
+      assertStatus(charging);
+
+      card.setConfig({ ...card._config, labels: { battery_status_charging: "Custom battery status" } });
+      assertStatus("Custom battery status");
+
+      card._hass.states["sensor.pv_to_battery_power"].state = "0";
+      card._hass.states["sensor.battery_to_load_power"].state = "1.8";
+      card.hass = card._hass;
+      assertStatus(discharging);
+    }
+  }
 });
 
 test("source mapping card renders automatic and manual status without changing defaults", () => {

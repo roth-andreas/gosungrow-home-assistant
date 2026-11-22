@@ -117,7 +117,7 @@ flow_card:
   node_home: Casa
   node_battery: Batería
   battery_power_caption: "Potencia de batería"
-  battery_status_charging: "Cargando"
+  battery_status_charging: "Cargando la batería"
   battery_status_discharging: "Descargando"
   battery_status_idle: "Inactiva"
   battery_status_balanced: "Flujos equilibrados"

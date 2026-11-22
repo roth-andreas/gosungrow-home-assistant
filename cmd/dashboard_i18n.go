@@ -128,7 +128,7 @@ var defaultDashboardLocaleBundle = dashboardLocaleBundle{
 		"node_home":                  "Home",
 		"node_battery":               "Battery",
 		"battery_power_caption":      "Battery power",
-		"battery_status_charging":    "Charging",
+		"battery_status_charging":    "Battery charging",
 		"battery_status_discharging": "Discharging",
 		"battery_status_idle":        "Idle",
 		"battery_status_balanced":    "Balanced flows",

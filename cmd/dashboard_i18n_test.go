@@ -38,6 +38,39 @@ func TestLocalizedDashboardBundleSwedish(t *testing.T) {
 	}
 }
 
+func TestDashboardInjectsLocalizedBatteryChargingLabel(t *testing.T) {
+	assetDir := filepath.Join("..", "addon", "gosungrow", "assets")
+	emptyAssetDir := t.TempDir()
+	tests := []struct {
+		name, language, dir, locale, label string
+	}{
+		{"English", "en-US", assetDir, "en", "Battery charging"},
+		{"German", "de-DE", assetDir, "de", "Akku wird geladen"},
+		{"Swedish", "sv-SE", assetDir, "sv", "Batteriet laddas"},
+		{"Spanish", "es-ES", assetDir, "es", "Cargando la batería"},
+		{"unsupported locale", "fr-FR", assetDir, "en", "Battery charging"},
+		{"missing locale files", "fr-FR", emptyAssetDir, "en", "Battery charging"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			bundle, locale, err := localizedDashboardBundle(test.dir, test.language)
+			if err != nil {
+				t.Fatalf("localizedDashboardBundle: %v", err)
+			}
+			if locale != test.locale {
+				t.Fatalf("locale = %q, want %q", locale, test.locale)
+			}
+
+			flowCard := map[string]any{"type": "custom:gosungrow-energy-flow-card-v2"}
+			generated := injectFlowCardLabels(flowCard, bundle.FlowCard).(map[string]any)
+			labels := generated["labels"].(map[string]string)
+			if got := labels["battery_status_charging"]; got != test.label {
+				t.Fatalf("generated battery charging label = %q, want %q", got, test.label)
+			}
+		})
+	}
+}
+
 func TestDashboardLocaleParity(t *testing.T) {
 	assetDir := filepath.Join("..", "addon", "gosungrow", "assets", dashboardLocaleDir)
 	entries, err := os.ReadDir(assetDir)

@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.3.12
+
+- Clarify the Live Flow charging status in English, German, Swedish, and Spanish by naming the battery in the label.
+
 ## 3.3.11
 
 - Restore the five MQTT runtime controls under a dedicated GoSungrow options device while preserving entity IDs and MQTT topics.

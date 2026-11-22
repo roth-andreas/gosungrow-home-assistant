@@ -143,10 +143,10 @@ Artifact ownership identifies executable evidence; validation results must be re
 | `cmd/dashboard_semantic_matcher_test.go` | `REQ-RES-007`, `010`–`015`, `019`–`020`; `REQ-DOM-005`; `REQ-ACC-013`, `042` |
 | `cmd/dashboard_capability_pruner_test.go` | `REQ-DASH-011`–`013`; `REQ-ACC-014` |
 | `cmd/dashboard_source_mapping_test.go` | `REQ-SRC-001`–`016`, `026`, `REQ-DASH-027`; `REQ-ACC-015`–`017`, `019`, `031`, `042` |
-| `cmd/dashboard_i18n_test.go` | `REQ-DASH-014`–`016`; `REQ-ACC-018` |
+| `cmd/dashboard_i18n_test.go` | `REQ-DASH-014`–`016`; `REQ-CARD-020`; `REQ-ACC-018`, `059`. Generated charging labels in all four locales and English fallback |
 | `tools/preview/gosungrow-source-mapping-card.test.cjs` | `REQ-SRC-017`–`025`; `REQ-CARD-001`–`002` |
 | `tools/test_energy_summary_card.mjs` | `REQ-CARD-003`–`020`; `REQ-ACC-020`–`022`, `058`–`059`: battery direction, route suppression, manual values, unavailable inputs, transitions, localization, and accessible identity |
-| Live Flow battery layout review (wide and compact) | `REQ-CARD-019`; `REQ-ACC-058`–`059`: browser review of caption, power, direction status, SOC, and active route labels without overlap, including all supported locales |
+| Live Flow battery layout review (wide and compact) | `REQ-CARD-019`; `REQ-ACC-058`–`059`: browser review of caption, power, direction status, SOC, and active route labels without overlap, including all supported locales. The pinned browser smoke checks charging labels and English fallback in both layouts |
 | `tools/ha-e2e/dashboard_resource_smoke.mjs`, `tools/ha-e2e/local_route_bootstrap.mjs`, `tools/ha-e2e/local_route_bootstrap.sh` | `REQ-CARD-018`; `REQ-DASH-037`; `REQ-REL-011`, `013`; `REQ-ACC-033`, `036`, `038` |
 | `addon/gosungrow/recovery_policy_test.sh` | `REQ-ADDON-008`–`012`; `REQ-XCUT-019`, `021`; `REQ-ACC-028`, `038` |
 | `addon/gosungrow/configuration_test.sh` | `REQ-ADDON-001`–`002`, `013`; `REQ-CFG-003`; `REQ-ACC-023` |

@@ -117,7 +117,7 @@ flow_card:
   node_home: Hem
   node_battery: Batteri
   battery_power_caption: "Batterieffekt"
-  battery_status_charging: "Laddar"
+  battery_status_charging: "Batteriet laddas"
   battery_status_discharging: "Urladdar"
   battery_status_idle: "Inaktiv"
   battery_status_balanced: "Balanserade flöden"

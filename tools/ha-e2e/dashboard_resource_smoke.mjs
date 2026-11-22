@@ -175,6 +175,61 @@ async function verifyBrowser() {
       "gosungrow-source-mapping-card-v1",
     ]);
     assert.deepEqual(result.errors, [], `Home Assistant rendered configuration errors: ${result.errors.join(" | ")}`);
+    const originalViewport = page.viewportSize();
+    for (const width of [940, 480]) {
+      await page.setViewportSize({ width, height: originalViewport.height });
+      await page.evaluate(async (width) => {
+        await document.fonts.ready;
+        const chargingLabels = [
+          ["en-US", "Battery charging"],
+          ["de-DE", "Akku wird geladen"],
+          ["sv-SE", "Batteriet laddas"],
+          ["es-ES", "Cargando la batería"],
+          ["fr-FR", "Battery charging"],
+        ];
+        const entities = { pv_to_battery_power: "sensor.smoke_charge", battery_to_load_power: "sensor.smoke_discharge", battery_soc: "sensor.smoke_soc" };
+        const states = {
+          [entities.pv_to_battery_power]: { state: "1.80", attributes: { unit_of_measurement: "kW" } },
+          [entities.battery_to_load_power]: { state: "0", attributes: { unit_of_measurement: "kW" } },
+          [entities.battery_soc]: { state: "81", attributes: { unit_of_measurement: "%" } },
+        };
+        const card = document.createElement("gosungrow-energy-flow-card-v2");
+        Object.assign(card.style, { position: "fixed", top: "0", left: "0", width: `${width}px` });
+        document.body.append(card);
+        try {
+          const fixtures = chargingLabels.flatMap(([language, charging]) => [
+            { language, charging, labels: undefined },
+            { language, charging, labels: { battery_status_charging: charging } },
+          ]);
+          for (const { language, charging, labels } of fixtures) {
+            card.setConfig({ entities, labels });
+            card.hass = { locale: { language }, states };
+            const root = card.shadowRoot;
+            await root.querySelector("ha-card").updateComplete;
+            const layout = `${width}px, ${labels ? "configured" : "built-in"} ${language} labels`;
+            if (root.querySelector(".shell").classList.contains("compact") !== (width < 700)) {
+              throw new Error(`Unexpected Live Flow layout at ${layout}`);
+            }
+            const status = [...root.querySelectorAll("svg text")].find((text) => text.textContent === charging);
+            const battery = root.querySelector('.node-button[data-node="battery"]');
+            if (!status || !battery.getAttribute("aria-label").endsWith(charging)) {
+              throw new Error(`Missing visible or accessible battery charging status at ${layout}`);
+            }
+            const bounds = status.getBoundingClientRect();
+            const canvas = status.ownerSVGElement.getBoundingClientRect();
+            const power = root.querySelector('[data-node="battery"][data-chip="power"]').getBoundingClientRect();
+            const icon = battery.querySelector(".node-ring").getBoundingClientRect();
+            if (bounds.width <= 0 || bounds.left < canvas.left || bounds.bottom > canvas.bottom ||
+                bounds.right > icon.left || bounds.top < power.bottom) {
+              throw new Error(`Battery charging status clips or overlaps at ${layout} ${JSON.stringify({ bounds, canvas, power, icon })}`);
+            }
+          }
+        } finally {
+          card.remove();
+        }
+      }, width);
+    }
+    await page.setViewportSize(originalViewport);
     const policyChecks = await page.evaluate(async () => {
       const hass = document.querySelector("home-assistant").hass;
       const findDeep = (root, selector) => {

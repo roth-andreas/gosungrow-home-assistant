@@ -555,7 +555,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         charge.numericValue <= 0.01 && discharge.numericValue <= 0.01 ? "idle" : "balanced";
     }
     return this._label(`battery_status_${status}`, {
-      charging: "Charging", discharging: "Discharging", idle: "Idle",
+      charging: "Battery charging", discharging: "Discharging", idle: "Idle",
       balanced: "Balanced flows", unavailable: "Direction unavailable",
     }[status]);
   }
@@ -848,7 +848,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         node_home: "Home",
         node_battery: "Battery",
         battery_power_caption: "Battery power",
-        battery_status_charging: "Charging",
+        battery_status_charging: "Battery charging",
         battery_status_discharging: "Discharging",
         battery_status_idle: "Idle",
         battery_status_balanced: "Balanced flows",
@@ -860,7 +860,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         node_home: "Hem",
         node_battery: "Batteri",
         battery_power_caption: "Batterieffekt",
-        battery_status_charging: "Laddar",
+        battery_status_charging: "Batteriet laddas",
         battery_status_discharging: "Urladdar",
         battery_status_idle: "Inaktiv",
         battery_status_balanced: "Balanserade flöden",
@@ -872,7 +872,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         node_home: "Haus",
         node_battery: "Batterie",
         battery_power_caption: "Batterieleistung",
-        battery_status_charging: "Lädt",
+        battery_status_charging: "Akku wird geladen",
         battery_status_discharging: "Entlädt",
         battery_status_idle: "Inaktiv",
         battery_status_balanced: "Ausgeglichene Flüsse",
@@ -884,7 +884,7 @@ class GoSungrowEnergyFlowCard extends HTMLElement {
         node_home: "Casa",
         node_battery: "Batería",
         battery_power_caption: "Potencia de batería",
-        battery_status_charging: "Cargando",
+        battery_status_charging: "Cargando la batería",
         battery_status_discharging: "Descargando",
         battery_status_idle: "Inactiva",
         battery_status_balanced: "Flujos equilibrados",
