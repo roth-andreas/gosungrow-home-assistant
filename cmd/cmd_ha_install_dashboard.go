@@ -325,6 +325,11 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 // Runtime reconciliation uses an immutable discovery snapshot. HA transitions
 // never cause iSolarCloud login or discovery on the observer goroutine.
 func reconcileManagedDashboard(parent context.Context, targets []haDashboardTarget, opts haDashboardInstallOptions) error {
+	assetRoots := uniqueNonEmptyStrings([]string{opts.HomeAssistantDir, "/homeassistant", "/config"})
+	return reconcileManagedDashboardWithAssetRoots(parent, targets, opts, assetRoots)
+}
+
+func reconcileManagedDashboardWithAssetRoots(parent context.Context, targets []haDashboardTarget, opts haDashboardInstallOptions, assetRoots []string) error {
 	if strings.TrimSpace(opts.SupervisorToken) == "" {
 		return fmt.Errorf("SUPERVISOR_TOKEN is not set; configure Home Assistant access for managed dashboards")
 	}
@@ -452,7 +457,7 @@ func reconcileManagedDashboard(parent context.Context, targets []haDashboardTarg
 
 	// Ownership and the complete desired dashboard are established before any
 	// filesystem, resource-registry, or dashboard mutation.
-	resourceURL, assetHash, err := installDashboardCardAsset(opts.AssetDir, opts.HomeAssistantDir)
+	resourceURL, assetHash, err := installDashboardCardAsset(opts.AssetDir, assetRoots)
 	if err != nil {
 		fmt.Printf("Dashboard asset lifecycle: phase=stage-failed hash=none url=none http_route=unknown http_status=0 mime=unknown resource_action=none dashboard_mode=unknown rollback=not-required cleanup=not-run error=%q\n", err.Error())
 		return err
@@ -464,7 +469,7 @@ func reconcileManagedDashboard(parent context.Context, targets []haDashboardTarg
 		}
 		if state != nil && strings.EqualFold(state.AssetHash, assetHash) {
 			diagnostics.CleanupResult = "retained active version"
-		} else if cleanupErr := removeDashboardAssetVersion(opts.HomeAssistantDir, assetHash); cleanupErr != nil {
+		} else if cleanupErr := removeDashboardAssetVersion(assetRoots, assetHash); cleanupErr != nil {
 			diagnostics.CleanupResult = "failed: " + cleanupErr.Error()
 		} else {
 			diagnostics.CleanupResult = "failed activation cleaned"
@@ -499,13 +504,6 @@ func reconcileManagedDashboard(parent context.Context, targets []haDashboardTarg
 		resourceChange, activationErr = client.ActivateManagedResource(ctx, resourceURL)
 		if resourceChange != nil {
 			diagnostics.ResourceAction = resourceChange.Action
-		}
-		if activationErr == nil && resourceChange.Action != "unchanged" {
-			var reloadRequested bool
-			reloadRequested, activationErr = client.ReloadResourcesIfSupported(ctx)
-			if activationErr == nil && reloadRequested {
-				diagnostics.ResourceAction += "+reload-requested"
-			}
 		}
 		if activationErr == nil {
 			diagnostics.AssetPhase = "resource-verified"
@@ -625,7 +623,7 @@ func reconcileManagedDashboard(parent context.Context, targets []haDashboardTarg
 	}
 	diagnostics.AssetPhase = "committed"
 	diagnostics.RollbackResult = dashboardDiagnosticDefault(diagnostics.RollbackResult, "not required")
-	if err := cleanupDashboardAssetFiles(opts.HomeAssistantDir, activeHash, previousAssetHash); err != nil {
+	if err := cleanupDashboardAssetFiles(assetRoots, activeHash, previousAssetHash); err != nil {
 		diagnostics.CleanupResult = "failed: " + err.Error()
 		return err
 	}
@@ -884,20 +882,19 @@ func renderDashboardConfig(templatePath string, dashboardTitle string, targets [
 	return localizedTemplate, nil
 }
 
-func installDashboardCardAsset(assetDir string, homeAssistantDir string) (string, string, error) {
+func installDashboardCardAsset(assetDir string, assetRoots []string) (string, string, error) {
 	sourcePath := filepath.Join(assetDir, dashboardCardSourceFile)
 	data, err := os.ReadFile(sourcePath)
 	if err != nil {
 		return "", "", err
 	}
 
-	candidates := uniqueNonEmptyStrings([]string{homeAssistantDir, "/homeassistant", "/config"})
 	sum := sha256.Sum256(data)
 	fullHash := hex.EncodeToString(sum[:])
 	fileName := dashboardCardFilePrefix + fullHash[:12] + ".js"
 	var lastErr error
 	var wrote bool
-	for _, dir := range candidates {
+	for _, dir := range assetRoots {
 		targetDir := filepath.Join(dir, "www", dashboardCardResourceDir)
 		if err := os.MkdirAll(targetDir, 0755); err != nil {
 			lastErr = err

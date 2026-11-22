@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.3.14
+
+- Fix managed dashboard installation and upgrades on Home Assistant Core 2026.11 by skipping the YAML-only reload action after verifying the registered dashboard module (#34).
+
 ## 3.3.12
 
 - Clarify the Live Flow charging status in English, German, Swedish, and Spanish by naming the battery in the label.

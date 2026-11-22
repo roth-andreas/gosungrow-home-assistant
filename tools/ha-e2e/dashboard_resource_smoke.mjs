@@ -100,10 +100,6 @@ async function provisionDashboard(token) {
     await socket.call({ type: "lovelace/resources/create", url: resourceURL, res_type: "module" });
     const resources = await socket.call({ type: "lovelace/resources/list" });
     assert(resources.some((resource) => resource.url === resourceURL && (resource.type || resource.res_type) === "module"), "Home Assistant must re-read the exact registered module");
-    const services = await socket.call({ type: "get_services" });
-    if (services.lovelace?.reload_resources) {
-      await socket.call({ type: "call_service", domain: "lovelace", service: "reload_resources" });
-    }
     await socket.call({
       type: "lovelace/dashboards/create",
       url_path: "gosungrow-flow",

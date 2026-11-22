@@ -395,30 +395,7 @@ func (c *haWSClient) DeleteResource(_ context.Context, resourceID any) error {
 	return c.call(map[string]any{"type": "lovelace/resources/delete", "resource_id": resourceID}, nil)
 }
 
-func (c *haWSClient) ReloadResourcesIfSupported(_ context.Context) (bool, error) {
-	var services map[string]map[string]json.RawMessage
-	if err := c.call(map[string]any{"type": "get_services"}, &services); err != nil {
-		return false, err
-	}
-	if !dashboardReloadServiceSupported(services) {
-		return false, nil
-	}
-	if err := c.call(map[string]any{
-		"type":    "call_service",
-		"domain":  "lovelace",
-		"service": "reload_resources",
-	}, nil); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-func dashboardReloadServiceSupported(services map[string]map[string]json.RawMessage) bool {
-	_, supported := services["lovelace"]["reload_resources"]
-	return supported
-}
-
-func cleanupDashboardAssetFiles(homeAssistantDir string, keepHashes ...string) error {
+func cleanupDashboardAssetFiles(assetRoots []string, keepHashes ...string) error {
 	keep := make(map[string]struct{}, len(keepHashes))
 	for _, hash := range keepHashes {
 		if len(hash) >= 12 {
@@ -426,7 +403,7 @@ func cleanupDashboardAssetFiles(homeAssistantDir string, keepHashes ...string) e
 		}
 	}
 	var failures []string
-	for _, root := range uniqueNonEmptyStrings([]string{homeAssistantDir, "/homeassistant", "/config"}) {
+	for _, root := range assetRoots {
 		dir := filepath.Join(root, "www", dashboardCardResourceDir)
 		entries, err := os.ReadDir(dir)
 		if os.IsNotExist(err) {
@@ -461,13 +438,13 @@ func cleanupDashboardAssetFiles(homeAssistantDir string, keepHashes ...string) e
 	return nil
 }
 
-func removeDashboardAssetVersion(homeAssistantDir, hash string) error {
+func removeDashboardAssetVersion(assetRoots []string, hash string) error {
 	if len(hash) < 12 {
 		return nil
 	}
 	name := dashboardCardFilePrefix + strings.ToLower(hash[:12]) + ".js"
 	var failures []string
-	for _, root := range uniqueNonEmptyStrings([]string{homeAssistantDir, "/homeassistant", "/config"}) {
+	for _, root := range assetRoots {
 		path := filepath.Join(root, "www", dashboardCardResourceDir, name)
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			failures = append(failures, err.Error())

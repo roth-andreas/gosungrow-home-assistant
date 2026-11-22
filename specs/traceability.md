@@ -137,7 +137,7 @@ Artifact ownership identifies executable evidence; validation results must be re
 | `cmd/cmd_mqtt_options_e2e_test.go`, `tools/ha-e2e/mqtt_options_smoke.sh` | `REQ-HA-022`; `REQ-ACC-077`–`079`. Pinned Home Assistant Core and Mosquitto verify fresh registration and command/state round trip, retained discovery replacement, and registry identity preservation |
 | `cmdHassio/struct_entity_test.go` | `REQ-HA-008`–`014`, `019`–`020`; `REQ-ACC-011`, `030`, `042` |
 | `cmd/cmd_mqtt_test.go` | `REQ-MQTT-005`–`024`; `REQ-DATA-018`–`026`; `REQ-API-032`; `REQ-ACC-009`–`010`, `032`, `039`–`044`, `011`, `076`; `REQ-HA-013`, `021` (temperature discovery and state publication, retained discovery refresh, and text readings with irradiance units) |
-| `cmd/cmd_ha_install_dashboard_test.go` | `REQ-DASH-001`–`037`; `REQ-RES-019`; `REQ-REL-004`, `012`–`013`; `REQ-XCUT-021`; `REQ-ACC-012`, `018`–`019`, `033`–`035`, `037`–`038`, `042` |
+| `cmd/cmd_ha_install_dashboard_test.go` | `REQ-DASH-001`–`037`; `REQ-RES-019`; `REQ-REL-004`, `012`–`013`; `REQ-XCUT-021`; `REQ-ACC-012`, `018`–`019`, `033`–`035`, `037`–`038`, `042`. Covers fresh registration and replacement with the YAML-only reload action advertised. |
 | `cmd/dashboard_test_helpers_test.go` | shared fixtures for `REQ-DASH-*`, `REQ-RES-*`, and `REQ-SRC-*` tests |
 | `cmd/dashboard_entity_resolver_test.go` | `REQ-RES-001`–`009`, `016`–`020`; `REQ-DOM-005`, `017`; `REQ-ACC-013`, `031`, `042` |
 | `cmd/dashboard_semantic_matcher_test.go` | `REQ-RES-007`, `010`–`015`, `019`–`020`; `REQ-DOM-005`; `REQ-ACC-013`, `042` |
@@ -147,7 +147,7 @@ Artifact ownership identifies executable evidence; validation results must be re
 | `tools/preview/gosungrow-source-mapping-card.test.cjs` | `REQ-SRC-017`–`025`; `REQ-CARD-001`–`002` |
 | `tools/test_energy_summary_card.mjs` | `REQ-CARD-003`–`020`; `REQ-ACC-020`–`022`, `058`–`059`: battery direction, route suppression, manual values, unavailable inputs, transitions, localization, and accessible identity |
 | Live Flow battery layout review (wide and compact) | `REQ-CARD-019`; `REQ-ACC-058`–`059`: browser review of caption, power, direction status, SOC, and active route labels without overlap, including all supported locales. The pinned browser smoke checks charging labels and English fallback in both layouts |
-| `tools/ha-e2e/dashboard_resource_smoke.mjs`, `tools/ha-e2e/local_route_bootstrap.mjs`, `tools/ha-e2e/local_route_bootstrap.sh` | `REQ-CARD-018`; `REQ-DASH-037`; `REQ-REL-011`, `013`; `REQ-ACC-033`, `036`, `038` |
+| `tools/ha-e2e/dashboard_resource_smoke.mjs`, `tools/ha-e2e/local_route_bootstrap.mjs`, `tools/ha-e2e/local_route_bootstrap.sh` | `REQ-CARD-018`; `REQ-DASH-033`, `037`; `REQ-REL-011`, `013`; `REQ-ACC-033`, `036`, `038`. Chromium verifies that storage registration and read-back load the module without a YAML reload. |
 | `addon/gosungrow/recovery_policy_test.sh` | `REQ-ADDON-008`–`012`; `REQ-XCUT-019`, `021`; `REQ-ACC-028`, `038` |
 | `addon/gosungrow/configuration_test.sh` | `REQ-ADDON-001`–`002`, `013`, `015`–`016`; `REQ-CFG-003`; `REQ-PROD-004`; `REQ-XCUT-004`, `009`, `017`; `REQ-ACC-023`, `080`–`083` |
 | Home Assistant OS MQTT cold-boot check | `REQ-ADDON-015`–`016`; `REQ-ACC-084`. Real Supervisor registration and first retained publication during the original app invocation |

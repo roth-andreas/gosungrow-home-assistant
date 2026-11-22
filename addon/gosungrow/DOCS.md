@@ -141,6 +141,8 @@ Do not configure a fixed iSolarCloud IP address. The HTTPS certificate and Sungr
 
 ## Troubleshooting Dashboard Cards
 
+GoSungrow verifies stored dashboard resources by reading back the exact JavaScript module registration. An already-open browser may need one ordinary refresh.
+
 Dashboard lifecycle logs report the asset phase, short canonical URL, verification route, Supervisor metadata outcome and discovered port/TLS setting, response status and MIME type, resource action, dashboard mode, rollback, and cleanup result. `supervisor-core-info` is expected for the Home Assistant app; `websocket-origin` is expected for standalone CLI connections. If the dashboard remains in native fallback mode, check the metadata outcome and confirm that Home Assistant can serve `/local/gosungrow/` JavaScript with status 200 and a JavaScript content type. Do not add a CDN or data-URL resource manually; GoSungrow will retry discovery and activation during reconciliation.
 
 On a first installation, Home Assistant may have started before its `www` directory existed and may return HTTP 404 even though GoSungrow staged the asset correctly. When diagnostics show `static_route=home-assistant-static-route-unavailable` and failure class `operator_action_required`, restart **Home Assistant Core** once. Restarting only the GoSungrow app is insufficient. GoSungrow keeps MQTT running, preserves the existing dashboard or native fallback, and retries enhanced-card activation automatically.

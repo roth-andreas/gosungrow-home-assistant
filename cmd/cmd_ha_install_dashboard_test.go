@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 
@@ -294,7 +295,7 @@ func TestInstallDashboardCardAssetWritesVersionedResource(t *testing.T) {
 		t.Fatalf("write card source: %v", err)
 	}
 
-	resourceURL, version, err := installDashboardCardAsset(assetDir, configDir)
+	resourceURL, version, err := installDashboardCardAsset(assetDir, []string{configDir})
 	if err != nil {
 		t.Fatalf("installDashboardCardAsset: %v", err)
 	}
@@ -636,7 +637,7 @@ func TestCleanupDashboardAssetFilesRetainsActiveAndPrevious(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := cleanupDashboardAssetFiles(root, active, previous); err != nil {
+	if err := cleanupDashboardAssetFiles([]string{root}, active, previous); err != nil {
 		t.Fatalf("cleanupDashboardAssetFiles: %v", err)
 	}
 	for _, name := range []string{"gosungrow-dashboard-cards." + active[:12] + ".js", "gosungrow-dashboard-cards." + previous[:12] + ".js", "unrelated.js"} {
@@ -651,10 +652,143 @@ func TestCleanupDashboardAssetFilesRetainsActiveAndPrevious(t *testing.T) {
 	}
 }
 
+func TestDashboardStorageActivationSkipsYAMLReload(t *testing.T) {
+	assets, root := t.TempDir(), t.TempDir()
+	t.Setenv("GOSUNGROW_CONFIG", filepath.Join(root, "config.json"))
+	template := []byte("views:\n  - cards:\n      - type: markdown\n        content: GoSungrow Test\n")
+	if err := os.WriteFile(filepath.Join(assets, dashboardTemplateFile), template, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	upgrader := websocket.Upgrader{}
+	var mu sync.Mutex
+	var savedConfig any
+	var resource *haResourceMetadata
+	var resourceReadBack bool
+	reloadCalls := make(chan struct{}, 1)
+	static := http.StripPrefix("/local/", http.FileServer(http.Dir(filepath.Join(root, "www"))))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/local/") {
+			w.Header().Set("Content-Type", "text/javascript")
+			static.ServeHTTP(w, r)
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Errorf("upgrade websocket: %v", err)
+			return
+		}
+		defer conn.Close()
+		var auth map[string]any
+		if conn.WriteJSON(map[string]any{"type": "auth_required"}) != nil ||
+			conn.ReadJSON(&auth) != nil ||
+			conn.WriteJSON(map[string]any{"type": "auth_ok"}) != nil {
+			t.Error("could not authenticate the dashboard websocket")
+			return
+		}
+
+		for {
+			var request map[string]any
+			if conn.ReadJSON(&request) != nil {
+				return
+			}
+			response := map[string]any{"id": request["id"], "type": "result", "success": true}
+			switch request["type"] {
+			case "get_services":
+				response["result"] = map[string]any{"lovelace": map[string]any{"reload_resources": map[string]any{}}}
+			case "call_service":
+				select {
+				case reloadCalls <- struct{}{}:
+				default:
+				}
+				response["success"] = false
+				response["error"] = map[string]any{"code": "service_validation_error", "message": "Dashboard resources can only be reloaded when they are configured in YAML"}
+			case "get_states", "config/entity_registry/list":
+				response["result"] = []any{}
+			case "lovelace/dashboards/list":
+				dashboards := []haDashboardMetadata{}
+				if savedConfig != nil {
+					dashboards = append(dashboards, haDashboardMetadata{ID: "dashboard", URLPath: defaultDashboardURLPath})
+				}
+				response["result"] = dashboards
+			case "lovelace/resources/list":
+				resources := []haResourceMetadata{}
+				if resource != nil {
+					resources = append(resources, *resource)
+					resourceReadBack = true
+				}
+				response["result"] = resources
+			case "lovelace/resources/create", "lovelace/resources/update":
+				isUpdate := request["type"] == "lovelace/resources/update"
+				if isUpdate != (resource != nil) || (isUpdate && request["resource_id"] != resource.ID) {
+					t.Errorf("unexpected resource mutation: %#v", request)
+				}
+				resource = &haResourceMetadata{ID: "module", URL: fmt.Sprint(request["url"]), ResourceType: fmt.Sprint(request["res_type"])}
+				resourceReadBack = false
+			case "lovelace/resources/delete":
+				resource = nil
+			case "lovelace/config":
+				if savedConfig == nil {
+					response["success"] = false
+					response["error"] = map[string]any{"code": "config_not_found", "message": "No dashboard config"}
+				} else {
+					response["result"] = savedConfig
+				}
+			case "lovelace/config/save":
+				if !resourceReadBack {
+					t.Error("dashboard saved before resource read-back")
+				}
+				savedConfig = request["config"]
+			case "lovelace/dashboards/create", "lovelace/dashboards/update":
+			default:
+				t.Errorf("unexpected websocket request: %#v", request)
+			}
+			if conn.WriteJSON(response) != nil {
+				return
+			}
+		}
+	}))
+	defer server.Close()
+
+	opts := haDashboardInstallOptions{
+		AssetDir: assets, HomeAssistantWSURL: "ws" + strings.TrimPrefix(server.URL, "http"),
+		SupervisorToken: "fixture-token", Language: "en", DashboardURLPath: defaultDashboardURLPath,
+	}
+	targets := []haDashboardTarget{{PsID: "plant", PsKey: "device", ViewTitle: "Overview", ViewPath: "overview"}}
+	previousURL := ""
+	for _, title := range []string{"Fresh dashboard", "Upgraded dashboard"} {
+		opts.DashboardTitle = title
+		bundle := []byte("/* " + title + " */")
+		if err := os.WriteFile(filepath.Join(assets, dashboardCardSourceFile), bundle, 0600); err != nil {
+			t.Fatal(err)
+		}
+		err := reconcileManagedDashboardWithAssetRoots(context.Background(), targets, opts, []string{root})
+		select {
+		case <-reloadCalls:
+			t.Fatalf("%s: GoSungrow called the advertised YAML reload action in storage mode", title)
+		default:
+		}
+		if err != nil {
+			t.Fatalf("%s: %v", title, err)
+		}
+		state, err := loadDashboardState(dashboardStatePath())
+		if err != nil {
+			t.Fatal(err)
+		}
+		hash := fmt.Sprintf("%x", sha256.Sum256(bundle))
+		wantURL := "/local/gosungrow/gosungrow-dashboard-cards." + hash[:12] + ".js"
+		if state == nil || state.AssetMode != dashboardAssetModeEnhanced || state.AssetURL != wantURL || state.PreviousAssetURL != previousURL {
+			t.Fatalf("%s: unexpected persisted dashboard state: %+v", title, state)
+		}
+		previousURL = wantURL
+	}
+}
+
 func TestHAWSClientDashboardCalls(t *testing.T) {
 	upgrader := websocket.Upgrader{}
 	sawResourceUpdate := false
-	sawResourceReload := false
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer supervisor-token" {
@@ -723,12 +857,6 @@ func TestHAWSClientDashboardCalls(t *testing.T) {
 					"title": "GoSungrow Flow",
 					"views": []any{},
 				}
-			case "get_services":
-				response["result"] = map[string]any{"lovelace": map[string]any{"reload_resources": map[string]any{}}}
-			case "call_service":
-				if request["domain"] == "lovelace" && request["service"] == "reload_resources" {
-					sawResourceReload = true
-				}
 			default:
 				response["result"] = map[string]any{}
 			}
@@ -783,19 +911,6 @@ func TestHAWSClientDashboardCalls(t *testing.T) {
 	}
 	if !sawResourceUpdate {
 		t.Fatal("expected EnsureResource to update the existing managed dashboard card resource")
-	}
-	reloaded, err := client.ReloadResourcesIfSupported(ctx)
-	if err != nil || !reloaded || !sawResourceReload {
-		t.Fatalf("expected supported resource reload request, reloaded=%t saw=%t err=%v", reloaded, sawResourceReload, err)
-	}
-}
-
-func TestDashboardReloadServiceSupportIsModeAware(t *testing.T) {
-	if dashboardReloadServiceSupported(map[string]map[string]json.RawMessage{"lovelace": {}}) {
-		t.Fatal("storage mode without a reload service must not request the YAML-only action")
-	}
-	if !dashboardReloadServiceSupported(map[string]map[string]json.RawMessage{"lovelace": {"reload_resources": json.RawMessage(`{}`)}}) {
-		t.Fatal("exposed reload service was not detected")
 	}
 }
 
