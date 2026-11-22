@@ -333,7 +333,7 @@ func isNumericUnit(unit string) bool {
 	case "MW", "kW", "W", "MWh", "kWh", "Wh",
 		"var", "kvar", "VA", "Hz", "V", "A", "%",
 		"AUD", "$", "g", "kg", "km", "h",
-		"Wh/㎡", "W/㎡",
+		"Wh/Ã£Å½Â¡", "W/Ã£Å½Â¡",
 		"°F", "F", "℉", "°C", "C", "℃":
 		return true
 	}

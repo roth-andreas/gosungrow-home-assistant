@@ -134,7 +134,7 @@ Artifact ownership identifies executable evidence; validation results must be re
 | `iSolarCloud/api/GoStruct/output/file_test.go` | `REQ-XCUT-005`–`007` |
 | `cmdHassio/options_test.go` | `REQ-MQTT-019`–`020` |
 | `cmdHassio/struct_entity_test.go` | `REQ-HA-008`–`014`, `019`–`020`; `REQ-ACC-011`, `030`, `042` |
-| `cmd/cmd_mqtt_test.go` | `REQ-MQTT-005`–`024`; `REQ-DATA-018`–`026`; `REQ-API-032`; `REQ-ACC-009`–`010`, `032`, `039`–`044` |
+| `cmd/cmd_mqtt_test.go` | `REQ-MQTT-005`–`024`; `REQ-DATA-018`–`026`; `REQ-API-032`; `REQ-ACC-009`–`010`, `032`, `039`–`044`, `011`, `076`; `REQ-HA-013`, `021` (temperature discovery and state publication, retained discovery refresh, and text readings with irradiance units) |
 | `cmd/cmd_ha_install_dashboard_test.go` | `REQ-DASH-001`–`037`; `REQ-RES-019`; `REQ-REL-004`, `012`–`013`; `REQ-XCUT-021`; `REQ-ACC-012`, `018`–`019`, `033`–`035`, `037`–`038`, `042` |
 | `cmd/dashboard_test_helpers_test.go` | shared fixtures for `REQ-DASH-*`, `REQ-RES-*`, and `REQ-SRC-*` tests |
 | `cmd/dashboard_entity_resolver_test.go` | `REQ-RES-001`–`009`, `016`–`020`; `REQ-DOM-005`, `017`; `REQ-ACC-013`, `031`, `042` |

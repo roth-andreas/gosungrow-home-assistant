@@ -17,6 +17,7 @@ import (
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/getDeviceList"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/valueTypes"
 )
 
@@ -453,6 +454,98 @@ func TestRefreshPlantTopologiesKeepsFailureNonfatal(t *testing.T) {
 	topology, ok := c.plantTopologies["100"]
 	if !ok || topology.Complete || topology.Reason != "plant topology unavailable" {
 		t.Fatalf("topology after nonfatal failure = %#v", topology)
+	}
+}
+
+func TestMQTTSensorDiscoveryUnits(t *testing.T) {
+	const endpoint = "virtual.100.p13019"
+	tests := []struct {
+		unit, reading, wantUnit string
+		frequency               string
+	}{
+		{unit: "C", reading: "21.5", wantUnit: "°C"},
+		{unit: "°C", reading: "21.5", wantUnit: "°C"},
+		{unit: "℃", reading: "21.5", wantUnit: "°C"},
+		{unit: "F", reading: "21.5", wantUnit: "°F"},
+		{unit: "°F", reading: "21.5", wantUnit: "°F"},
+		{unit: "℉", reading: "21.5", wantUnit: "°F"},
+		{unit: "W/㎡", reading: "offline"},
+		{unit: "Wh/㎡", reading: "offline", frequency: GoStruct.UpdateFreqDay},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.unit, func(t *testing.T) {
+			broker := &pvTestTransport{}
+			command := pvCommand(t, broker)
+			value := valueTypes.SetUnitValueString(tc.unit, "", tc.reading)
+			frequency := tc.frequency
+			if frequency == "" {
+				frequency = GoStruct.UpdateFreqInstant
+			}
+			point := &api.Point{Id: "p13019", Unit: tc.unit, UpdateFreq: frequency, Valid: true}
+			data := api.NewDataMap()
+			data.Map[endpoint] = &api.DataEntries{Entries: []api.DataEntry{{
+				Current:  &GoStruct.Reflect{FieldPath: GoStruct.NewEndPointPath("queryDeviceList")},
+				EndPoint: endpoint,
+				Point:    point,
+				Parent:   api.NewParentDevice("100"),
+				Value:    value,
+			}}}
+
+			if tc.unit == "℃" {
+				// Seed the retained discovery left by an older process.
+				if err := command.Client.SensorPublishConfig(cmdHassio.EntityConfig{
+					FullId: endpoint, ParentName: "100", ParentId: endpoint,
+					Units: tc.unit, StateClass: "measurement", Value: &value, Point: point,
+				}); err != nil {
+					t.Fatal(err)
+				}
+				if len(broker.publications) != 1 || !broker.publications[0].retained ||
+					broker.publications[0].payload["unit_of_measurement"] != "℃" {
+					t.Fatalf("legacy discovery was not retained: %#v", broker.publications)
+				}
+			}
+
+			start := len(broker.publications)
+			if err := command.Update("queryDeviceList", data, false); err != nil {
+				t.Fatal(err)
+			}
+			published := broker.publications[start:]
+			if len(published) != 2 {
+				t.Fatalf("expected retained discovery and state, got %#v", published)
+			}
+			discovery, state := published[0], published[1]
+			if !discovery.retained || !state.retained || discovery.payload["state_topic"] != state.topic {
+				t.Fatalf("discovery and state must be retained with matching state topics: %#v", published)
+			}
+			if state.payload["value"] != tc.reading {
+				t.Fatalf("state = %#v, want %q", state.payload, tc.reading)
+			}
+
+			if tc.wantUnit == "" {
+				for _, field := range []string{"unit_of_measurement", "state_class", "last_reset_value_template"} {
+					if _, present := discovery.payload[field]; present {
+						t.Errorf("text discovery includes %s: %#v", field, discovery.payload)
+					}
+				}
+			} else if discovery.payload["unit_of_measurement"] != tc.wantUnit ||
+				discovery.payload["device_class"] != "temperature" ||
+				discovery.payload["state_class"] != "measurement" {
+				t.Errorf("discovery = %#v, want %q, temperature, measurement", discovery.payload, tc.wantUnit)
+			}
+
+			if start != 0 {
+				legacy := broker.publications[0]
+				if discovery.topic != legacy.topic {
+					t.Errorf("discovery topic changed from %q to %q", legacy.topic, discovery.topic)
+				}
+				for _, field := range []string{"object_id", "unique_id", "state_topic"} {
+					if legacy.payload[field] == nil || discovery.payload[field] != legacy.payload[field] {
+						t.Errorf("%s changed from %v to %v", field, legacy.payload[field], discovery.payload[field])
+					}
+				}
+			}
+		})
 	}
 }
 
