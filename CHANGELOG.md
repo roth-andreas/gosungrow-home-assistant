@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.3.11
+
+- Restore the five MQTT runtime controls under a dedicated GoSungrow options device while preserving entity IDs and MQTT topics.
+- If existing controls stay under the service after upgrading, reload the MQTT integration once to move them to the options device.
+
 ## 3.3.10
 
 - Publish temperature sensors with Home Assistant’s standard Celsius and Fahrenheit units so existing sensors can continue collecting long-term statistics.

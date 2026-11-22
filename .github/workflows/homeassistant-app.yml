@@ -164,6 +164,11 @@ jobs:
           HA_CORE_IMAGE: ghcr.io/home-assistant/home-assistant:2026.9.3
         run: bash tools/ha-e2e/local_route_bootstrap.sh
 
+      - name: Verify MQTT runtime select discovery and upgrade
+        shell: bash
+        timeout-minutes: 12
+        run: bash tools/ha-e2e/mqtt_options_smoke.sh
+
       - name: Validate app startup script
         shell: bash
         run: |

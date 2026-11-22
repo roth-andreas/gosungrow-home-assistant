@@ -21,6 +21,20 @@ type Option struct {
 	Values  []string
 }
 
+const optionsDeviceKey = "options"
+
+func (m *Mqtt) registerOptionsDevice() {
+	m.MqttDevices[optionsDeviceKey] = Device{
+		Identifiers:   []string{JoinStringsForId(m.EntityPrefix, optionsDeviceKey)},
+		Manufacturer:  m.DeviceName,
+		Model:         m.DeviceName,
+		Name:          JoinStrings(m.EntityPrefix, optionsDeviceKey, "-", "Options"),
+		SuggestedArea: m.DeviceName,
+		SwVersion:     projectSoftwareVersion(m.DeviceName),
+		ViaDevice:     m.DeviceName,
+	}
+}
+
 func (m *Mqtt) CreateOption(id string, name string, fn mqtt.MessageHandler, options ...string) error {
 	for range Only.Once {
 		m.err = m.UserOptions.Create(id, name, fn, options...)
@@ -91,7 +105,7 @@ func (m *Options) Create(id string, name string, handler mqtt.MessageHandler, va
 				// ValueTemplate: `{"value": "{{ value }}"}`,
 				ValueTemplate: `{{ value }}`,
 				Units:         LabelSelect,
-				ParentName:    "options",
+				ParentName:    optionsDeviceKey,
 				Options:       values,
 			},
 			Handler: handler,

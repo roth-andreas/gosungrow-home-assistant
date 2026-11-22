@@ -133,6 +133,8 @@ Artifact ownership identifies executable evidence; validation results must be re
 | `iSolarCloud/api/GoStruct/valueTypes/float_test.go` | `REQ-DATA-002`; `REQ-ACC-041`; JSON parser fuzzing |
 | `iSolarCloud/api/GoStruct/output/file_test.go` | `REQ-XCUT-005`–`007` |
 | `cmdHassio/options_test.go` | `REQ-MQTT-019`–`020` |
+| `cmdHassio/options_test.go` (discovery serialization) | `REQ-MQTT-004`, `020`; `REQ-HA-017`, `022`; `REQ-ACC-077`. Five startup payloads, stable IDs and topics, retained discovery, and shared device fields |
+| `cmd/cmd_mqtt_options_e2e_test.go`, `tools/ha-e2e/mqtt_options_smoke.sh` | `REQ-HA-022`; `REQ-ACC-077`–`079`. Pinned Home Assistant Core and Mosquitto verify fresh registration and command/state round trip, retained discovery replacement, and registry identity preservation |
 | `cmdHassio/struct_entity_test.go` | `REQ-HA-008`–`014`, `019`–`020`; `REQ-ACC-011`, `030`, `042` |
 | `cmd/cmd_mqtt_test.go` | `REQ-MQTT-005`–`024`; `REQ-DATA-018`–`026`; `REQ-API-032`; `REQ-ACC-009`–`010`, `032`, `039`–`044`, `011`, `076`; `REQ-HA-013`, `021` (temperature discovery and state publication, retained discovery refresh, and text readings with irradiance units) |
 | `cmd/cmd_ha_install_dashboard_test.go` | `REQ-DASH-001`–`037`; `REQ-RES-019`; `REQ-REL-004`, `012`–`013`; `REQ-XCUT-021`; `REQ-ACC-012`, `018`–`019`, `033`–`035`, `037`–`038`, `042` |

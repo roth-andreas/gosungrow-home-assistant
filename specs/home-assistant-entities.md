@@ -57,6 +57,7 @@ Scope: MQTT discovery payloads, IDs, device hierarchy, metadata, and state paylo
 
 - **REQ-HA-017** — Select discovery MUST publish allowed options, retained state, a retained command topic, `{{ value }}` command/value templates, and subscribe at QoS 0.
 - **REQ-HA-018** — Non-admin MQTT consumers MAY send commands; input validation is limited to parsing/canonicalization and MUST NOT be represented as an authorization boundary.
+- **REQ-HA-022** — All runtime selects MUST share one options device with `device.identifiers` set to `["GoSungrow-options"]` and `device.via_device` set to `"GoSungrow"`. They MUST identify the options device exclusively by its identifier and omit `device.connections`. For each option ID in the runtime selects table in [mqtt.md](mqtt.md), discovery MUST use `GoSungrow-option-<id>` for both `object_id` and `unique_id`. The base topic MUST be `homeassistant/select/GoSungrow/GoSungrow-option-<id>`, with `/config` for discovery, `/state` for state, and `/cmd` for commands. On startup, GoSungrow MUST replace any older retained select discovery in place by publishing the current retained payloads to the same `/config` topics.
 
 ## Prohibited behavior
 

@@ -58,6 +58,12 @@ The dashboard cards are served locally from a content-addressed `/local/gosungro
 
 If the enhanced card module cannot be activated on a fresh installation, GoSungrow installs a native Home Assistant dashboard automatically. Live MQTT-backed metrics remain usable while flow visualization and source editing are temporarily reduced. A later reconciliation promotes the dashboard to enhanced mode without a Home Assistant restart.
 
+## Runtime Controls
+
+The MQTT integration lists the five GoSungrow runtime controls on the **GoSungrow options - Options** device, linked to the GoSungrow service. On upgrade, starting the app replaces the older discovery messages on the same MQTT topics.
+
+If the controls were already registered and still appear under the service device after the app starts, go to **Settings > Devices & services > MQTT** and reload the MQTT integration once. The controls move to the options device and keep their existing entity IDs, including IDs you renamed.
+
 ## Correcting Dashboard Data Sources
 
 GoSungrow continues to choose dashboard sensors automatically. If a Sungrow model exposes different point names or meanings, a Home Assistant administrator can open the managed dashboard's **Data Sources** view and override an individual dashboard metric.

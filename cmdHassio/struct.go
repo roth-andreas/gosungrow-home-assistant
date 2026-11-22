@@ -235,14 +235,7 @@ func (m *Mqtt) Connect() error {
 			break
 		}
 
-		_, m.err = m.SetDeviceConfig(
-			m.DeviceName, m.DeviceName,
-			"options", "Options", "", m.DeviceName,
-			m.DeviceName,
-		)
-		if m.err != nil {
-			break
-		}
+		m.registerOptionsDevice()
 
 		m.err = m.CreateOption(OptionLogLevel, "Mqtt LogLevel", m.funcMqttLogLevel,
 			cmdLog.LogLevelErrorStr, cmdLog.LogLevelWarningStr, cmdLog.LogLevelInfoStr, cmdLog.LogLevelDebugStr)

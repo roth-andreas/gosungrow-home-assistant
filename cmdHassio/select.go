@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/MickMake/GoUnify/Only"
+	"github.com/MickMake/GoUnify/cmdLog"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
@@ -16,8 +17,9 @@ func (m *Mqtt) SelectPublishConfig(config EntityConfig, fn mqtt.MessageHandler) 
 			break
 		}
 
-		ok, newDevice := m.NewDevice(config)
+		device, ok := m.MqttDevices[config.ParentName]
 		if !ok {
+			cmdLog.LogPrintDate("Unknown parentDevice: %s - will ignore.\n", config.ParentName)
 			break
 		}
 
@@ -25,7 +27,7 @@ func (m *Mqtt) SelectPublishConfig(config EntityConfig, fn mqtt.MessageHandler) 
 		cmdTopic := JoinStringsForTopic(m.Prefix, LabelSelect, m.ClientId, id, "cmd")
 
 		payload := Select{
-			Device:     newDevice,
+			Device:     device,
 			Name:       String(JoinStrings(m.DeviceName, config.Name)),
 			StateTopic: String(JoinStringsForTopic(m.Prefix, LabelSelect, m.ClientId, id, "state")),
 			// CommandTemplate:  Template(fmt.Sprintf(`"%s":"{{ value }}"`, config.FullId)),
