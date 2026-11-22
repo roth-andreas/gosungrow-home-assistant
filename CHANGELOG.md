@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.3.10
+
+- Publish temperature sensors with Home Assistant’s standard Celsius and Fahrenheit units so existing sensors can continue collecting long-term statistics.
+
 ## 3.3.8
 
 - Place live battery power beside the battery icon with an explicit caption and localized charging, discharging, idle, balanced, or unavailable direction status.

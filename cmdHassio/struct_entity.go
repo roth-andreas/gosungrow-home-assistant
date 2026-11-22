@@ -159,22 +159,22 @@ func (config *EntityConfig) FixConfig() {
 			config.DeviceClass = SetDefault(config.DeviceClass, "current")
 			config.Icon = SetDefault(config.Icon, "mdi:current-ac")
 
-		case config.Units == "Â°F":
+		case config.Units == "°F":
 			fallthrough
 		case config.Units == "F":
 			fallthrough
-		case config.Units == "â„‰":
+		case config.Units == "℉":
 			config.DeviceClass = SetDefault(config.DeviceClass, "temperature")
-			config.Units = "â„‰"
+			config.Units = "°F"
 			config.Icon = SetDefault(config.Icon, "mdi:thermometer")
 
-		case config.Units == "Â°C":
+		case config.Units == "°C":
 			fallthrough
 		case config.Units == "C":
 			fallthrough
-		case config.Units == "â„ƒ":
+		case config.Units == "℃":
 			config.DeviceClass = SetDefault(config.DeviceClass, "temperature")
-			config.Units = "Â°C"
+			config.Units = "°C"
 			config.Icon = SetDefault(config.Icon, "mdi:thermometer")
 
 		case config.Icon == "mdi:home-battery-outline":
@@ -334,7 +334,7 @@ func isNumericUnit(unit string) bool {
 		"var", "kvar", "VA", "Hz", "V", "A", "%",
 		"AUD", "$", "g", "kg", "km", "h",
 		"Wh/Ã£Å½Â¡", "W/Ã£Å½Â¡",
-		"Ã‚Â°F", "F", "Ã¢â€žâ€°", "Ã‚Â°C", "C", "Ã¢â€žÆ’":
+		"°F", "F", "℉", "°C", "C", "℃":
 		return true
 	}
 	return false
