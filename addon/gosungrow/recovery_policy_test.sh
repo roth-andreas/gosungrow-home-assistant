@@ -46,7 +46,11 @@ assert_equal 'stop' "$(gosungrow_retry_policy unclassified)" 'unclassified polic
 missing_log="$test_dir/missing.log"
 printf '%s\n' 'ERROR: API httpResponse is 500 Internal Server Error' >"$missing_log"
 assert_equal 'unclassified' "$(gosungrow_failure_class_from_log "$missing_log")" 'missing classification'
-assert_equal 'stop' "$(gosungrow_retry_policy non_recoverable)" 'non-recoverable policy'
+forbidden_log="$test_dir/forbidden.log"
+printf '%s\n' 'iSolarCloud HTTP denial: status=403' 'GoSungrow-Failure-Class: non_recoverable' >"$forbidden_log"
+forbidden_class="$(gosungrow_failure_class_from_log "$forbidden_log")"
+assert_equal 'non_recoverable' "$forbidden_class" 'stable HTTP 403 classification'
+assert_equal 'stop' "$(gosungrow_retry_policy "$forbidden_class")" 'HTTP 403 stops without login or restart'
 
 action_log="$test_dir/action.log"
 printf '%s\n' 'GoSungrow-Failure-Class: operator_action_required' >"$action_log"

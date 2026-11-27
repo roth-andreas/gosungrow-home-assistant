@@ -400,6 +400,9 @@ func (sg *SunGrow) AuthenticateSession(auth login.SunGrowAuth, runtime bool, per
 			candidate.configuredHost, candidate.configuredKey = sg.configuredHost, sg.configuredKey
 			candidate.persistSession = persist
 			candidate.validationResponse = nil
+			if candidate.sessionOrigin == api.SessionCandidate {
+				candidate.sessionOrigin = api.SessionFresh
+			}
 			*sg = *candidate
 			return nil
 		}

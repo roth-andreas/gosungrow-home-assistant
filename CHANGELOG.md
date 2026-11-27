@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.3.15
+
+- Add a sanitized iSolarCloud HTTP 403 record with the exact request, gateway, operation, and session origin during startup and live sync (#37).
+
 ## 3.3.14
 
 - Fix managed dashboard installation and upgrades on Home Assistant Core 2026.11 by skipping the YAML-only reload action after verifying the registered dashboard module (#34).

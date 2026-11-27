@@ -38,7 +38,8 @@ type CmdApi struct {
 	ApiToken     string
 	ApiTokenFile string
 
-	SunGrow *iSolarCloud.SunGrow
+	SunGrow      *iSolarCloud.SunGrow
+	cloudDenials *cloudDenialLog
 }
 
 func NewCmdApi() *CmdApi {
@@ -143,6 +144,11 @@ func (ca *Cmds) SunGrowArgs(cmd *cobra.Command, args []string) error {
 			break
 		}
 
+		ca.Api.cloudDenials = &cloudDenialLog{
+			command:   cmd.CommandPath(),
+			operation: cloudLogin,
+		}
+		ca.Api.SunGrow.ApiRoot = ca.Api.SunGrow.ApiRoot.WithForbiddenResponseHandler(ca.Api.cloudDenials.report)
 		ca.Error = ca.Api.SunGrow.Init()
 		if ca.Error != nil {
 			break

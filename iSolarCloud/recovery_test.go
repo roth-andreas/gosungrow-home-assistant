@@ -7,6 +7,7 @@ import (
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/getPsDetail"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/getPsList"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/login"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/output"
 	"io"
 	"net/http"
@@ -505,5 +506,94 @@ func TestEndpointReplayPreservesOpaqueRequestAndTimeoutWithPromotedSession(t *te
 	rebuilt := getPsDetail.Assert(replay)
 	if replay.GetError() != nil || replay.GetRequestJson() != endpoint.GetRequestJson() || replay.GetCacheTimeout() != 37*time.Second || rebuilt.Request.Token != "new" || rebuilt.ApiRoot.ServerUrl.String() != DefaultHost {
 		t.Fatal("replay lost request, timeout, or promoted session")
+	}
+}
+
+func TestForbiddenCandidateValidationPreservesActiveAndPersistedSession(t *testing.T) {
+	var denied []api.ForbiddenResponse
+	var requests []string
+	loginCalls := 0
+	sg, auth, path := recoveryClient(t, recoveryTransport(func(r *http.Request) (*http.Response, error) {
+		requests = append(requests, r.URL.Path)
+		if strings.HasSuffix(r.URL.Path, "/login") {
+			loginCalls++
+			if loginCalls == 1 {
+				return recoveryResponse(recoveryLoginResponse("retained_token")), nil
+			}
+			return recoveryResponse(recoveryLoginResponse("private_candidate_token")), nil
+		}
+		if loginCalls == 2 {
+			response := recoveryResponse("private candidate token must not be surfaced")
+			response.StatusCode, response.Status = http.StatusForbidden, "403 Forbidden"
+			return response, nil
+		}
+		return recoveryResponse(`{"req_serial_num":"synthetic","result_code":"1","result_msg":"success","result_data":[]}`), nil
+	}))
+	sg.ApiRoot = sg.ApiRoot.WithForbiddenResponseHandler(func(event api.ForbiddenResponse) {
+		denied = append(denied, event)
+	})
+	if err := sg.AuthenticateSession(auth, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requests = nil
+	err = sg.AuthenticateSession(auth, true, nil)
+	if ClassifyFailure(err) != FailureClassNonRecoverable {
+		t.Fatalf("candidate validation = %v", err)
+	}
+	wantRequests := []string{"/v1/userService/login", "/v1/userService/getUserList"}
+	if !reflect.DeepEqual(requests, wantRequests) {
+		t.Fatalf("requests = %v, want %v", requests, wantRequests)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sg.GetToken() != "retained_token" || string(before) != string(after) {
+		t.Fatal("denied candidate changed the active or persisted session")
+	}
+	if len(denied) != 1 || denied[0].SessionOrigin != api.SessionCandidate || !denied[0].Authentication ||
+		denied[0].Endpoint != "AppService.getUserList" || strings.Contains(fmt.Sprint(denied), "private") {
+		t.Fatalf("unexpected candidate denial: %+v", denied)
+	}
+}
+
+func TestForbiddenRequestUsesPersistedSessionOrigin(t *testing.T) {
+	var events []api.ForbiddenResponse
+	transport := recoveryTransport(func(r *http.Request) (*http.Response, error) {
+		switch r.URL.Path {
+		case "/v1/userService/login":
+			return recoveryResponse(recoveryLoginResponse("cached_token")), nil
+		case "/v1/userService/getUserList":
+			return recoveryResponse(`{"req_serial_num":"synthetic","result_code":"1","result_msg":"success","result_data":[]}`), nil
+		case "/v1/powerStationService/getPsList":
+			response := recoveryResponse("")
+			response.StatusCode, response.Status = http.StatusForbidden, "403 Forbidden"
+			return response, nil
+		default:
+			t.Fatalf("unexpected request to %s", r.URL.Path)
+			return nil, nil
+		}
+	})
+	sg, auth, _ := recoveryClient(t, transport)
+	if err := sg.AuthenticateSession(auth, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	next := NewSunGro(sg.ApiRoot.ServerUrl.String(), sg.ApiRoot.GetCacheDir())
+	next.ApiRoot = next.ApiRoot.WithTransport(transport).WithForbiddenResponseHandler(func(event api.ForbiddenResponse) {
+		events = append(events, event)
+	})
+	auth.Force = false
+	if err := next.AuthenticateSession(auth, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := next.GetPsIds(); ClassifyFailure(err) != FailureClassNonRecoverable {
+		t.Fatalf("GetPsIds = %v", err)
+	}
+	if len(events) != 1 || events[0].SessionOrigin != api.SessionCached {
+		t.Fatalf("unexpected denial for persisted session: %+v", events)
 	}
 }

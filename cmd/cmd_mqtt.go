@@ -251,6 +251,7 @@ func (c *CmdMqtt) MqttArgs(_ *cobra.Command, _ []string) error {
 			break
 		}
 
+		cmds.Api.setCloudOperation(cloudStartupDevices, 0)
 		c.log.Info("Connecting to SunGrow...\n")
 		c.Error = c.retryStartupRecoverable("device discovery", func() error {
 			var err error
@@ -492,6 +493,7 @@ func (c *CmdMqtt) Cron() error {
 	}
 	started := c.now()
 	c.syncCycle++
+	cmds.Api.setCloudOperation(cloudLogin, c.syncCycle)
 	c.log.Info("Starting iSolarCloud sync cycle %d.\n", c.syncCycle)
 	c.currentSyncEndpoint = "authentication"
 	c.Error = c.syncAttempt(c.Client.IsNewDay())
@@ -558,6 +560,7 @@ func (c *CmdMqtt) syncAttempt(newDay bool) error {
 }
 
 func (c *CmdMqtt) rediscover() error {
+	cmds.Api.setCloudOperation(cloudRediscovery, c.syncCycle)
 	c.currentSyncEndpoint = "device rediscovery"
 	devices, err := mqttLoadDevices()
 	if err != nil {
@@ -615,11 +618,13 @@ func (c *CmdMqtt) collectAndPublishBatch(batch mqttEndpointBatch, newDay bool, c
 	data := cmds.Api.SunGrow.NewSunGrowData()
 	data.SetCacheTimeout(c.optionFetchSchedule)
 
+	cmds.Api.setCloudOperation(cloudLivePlantLookup, c.syncCycle)
 	data.SetPsIds()
 	if data.Error != nil {
 		return data.Error
 	}
 
+	cmds.Api.setCloudOperation(cloudLiveCollection, c.syncCycle)
 	data.SetArgs(batch.Args...)
 	data.SetEndpoints(batch.Endpoints...)
 	if err := data.GetData(); err != nil {
@@ -651,6 +656,9 @@ func (c *CmdMqtt) collectAndPublishBatch(batch mqttEndpointBatch, newDay bool, c
 }
 
 func (c *CmdMqtt) refreshPlantTopologies() {
+	if c.syncCycle == 0 {
+		cmds.Api.setCloudOperation(cloudTopology, 0)
+	}
 	trees, err := mqttLoadPlantTrees()
 	if err == nil {
 		if targets, targetErr := discoverDashboardTargetsFromTrees(trees); targetErr == nil {
@@ -681,6 +689,9 @@ func (c *CmdMqtt) refreshPlantTopologies() {
 }
 
 func (c *CmdMqtt) refreshPlantInventories() error {
+	if c.syncCycle == 0 {
+		cmds.Api.setCloudOperation(cloudPointMetadata, 0)
+	}
 	byDevice, err := mqttLoadDevicePoints()
 	if err != nil {
 		return err

@@ -148,6 +148,11 @@ func (e *EndPoint) Authenticate(auth *SunGrowAuth) error {
 	return e.Error
 }
 
+// HasFreshResponse reports whether the token came from this candidate's network login.
+func (e *EndPoint) HasFreshResponse() bool {
+	return e.fresh
+}
+
 // Persist is called only after the complete candidate has been validated.
 func (e *EndPoint) Persist() error {
 	if !e.fresh {

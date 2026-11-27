@@ -312,6 +312,7 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 		return err
 	}
 
+	cmds.Api.setCloudOperation(cloudDashboardDiscovery, 0)
 	targets, err := c.discoverDashboardTargets(args)
 	if err != nil {
 		return err

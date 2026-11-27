@@ -40,6 +40,7 @@ type SunGrow struct {
 	configuredKey      string
 	persistSession     func(*SunGrow) error
 	validationResponse api.EndPoint
+	sessionOrigin      api.SessionOrigin
 
 	Directory  string
 	OutputType output.OutputType
@@ -154,7 +155,7 @@ func (sg *SunGrow) GetEndpoint(ae string) api.EndPoint {
 				Token:     sg.GetToken(),
 				UserId:    sg.GetUserId(),
 				ValidFlag: "1,3",
-			})
+			}.WithSessionEvidence(sg.sessionOrigin, sg.recovering))
 		}
 	}
 
@@ -361,6 +362,10 @@ func (sg *SunGrow) authenticate(auth login.SunGrowAuth) error {
 				break
 			}
 
+			sg.sessionOrigin = api.SessionCached
+			if sg.Auth.HasFreshResponse() {
+				sg.sessionOrigin = api.SessionCandidate
+			}
 			sg.validationResponse = sg.GetByStruct(getUserList.EndPointName, nil, DefaultCacheTimeout)
 			if !sg.IsLoggedOut() {
 				break

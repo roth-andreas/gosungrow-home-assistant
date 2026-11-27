@@ -103,6 +103,14 @@ The issue #26 requirements are derived into isolated authentication candidates, 
 
 Client ownership is `iSolarCloud/struct.go`, `recovery.go`, `data.go`, `api/web.go`, and `AppService/login/{auth,struct}.go`; orchestration ownership is `cmd/cmd_api.go` and `cmd/cmd_mqtt.go`. No new configuration or persisted recovery-state format is introduced. Bootstrap ordering, wire protocol, entity identity, opaque IDs, dashboard behavior, startup retry limits, and release metadata retain their existing contracts. Validation results are reported separately for the current working tree.
 
+## iSolarCloud HTTP 403 diagnostics
+
+| Verification | Governing requirements |
+|---|---|
+| Transport and session-origin check in `iSolarCloud/api/web_request_metadata_test.go` and `iSolarCloud/recovery_test.go` | `REQ-API-035`; `REQ-XCUT-024`; `REQ-ACC-087`. Request identity, gateway, session origin including a denied candidate before activation, one record per response, and redaction. |
+| Startup and live sync checks in `cmd/cmd_mqtt_test.go` | `REQ-API-035`; `REQ-XCUT-024`; `REQ-ACC-085`–`088`. Phase attribution, logical and wire endpoint identity, successful publication, and bounded recovery. |
+| App wrapper checks in `addon/gosungrow/recovery_policy_test.sh` and `addon/gosungrow/configuration_test.sh` | `REQ-API-035`; `REQ-XCUT-024`; `REQ-ACC-088`. Non-recoverable stop and dashboard failure tolerance. |
+
 ## Behavioral tests
 
 Artifact ownership identifies executable evidence; validation results must be reported separately for each working tree.

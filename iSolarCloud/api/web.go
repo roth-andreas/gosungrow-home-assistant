@@ -24,14 +24,15 @@ type Web struct {
 	Body      []byte
 	Error     error
 
-	cacheDir     string
-	cacheTimeout time.Duration
-	retry        int
-	timeOffset   time.Duration
-	client       http.Client
-	httpRequest  *http.Request
-	httpResponse *http.Response
-	uncached     bool
+	cacheDir          string
+	cacheTimeout      time.Duration
+	retry             int
+	timeOffset        time.Duration
+	client            http.Client
+	httpRequest       *http.Request
+	httpResponse      *http.Response
+	uncached          bool
+	forbiddenResponse func(ForbiddenResponse)
 }
 
 // WithTransport preserves production defaults while allowing isolated clients.
@@ -393,6 +394,12 @@ func (w *Web) getApi(endpoint EndPoint) ([]byte, error) {
 		//goland:noinspection GoUnhandledErrorResult,GoDeferInLoop
 		defer w.httpResponse.Body.Close()
 		if w.Error != nil {
+			break
+		}
+
+		if w.httpResponse.StatusCode == http.StatusForbidden {
+			w.reportForbidden(endpoint, httpReq, tokenPlain != "")
+			w.Error = errors.New("API httpResponse is 403 Forbidden")
 			break
 		}
 

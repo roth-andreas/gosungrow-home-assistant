@@ -118,6 +118,10 @@ If registration is still unavailable when startup stops, check the Mosquitto bro
 
 For support, include the GoSungrow, Supervisor, and broker logs from the same boot. Redact credentials and tokens before sharing.
 
+## Troubleshooting iSolarCloud HTTP 403
+
+If an iSolarCloud request returns HTTP 403, share the `iSolarCloud HTTP denial:` line from the normal GoSungrow app log. It identifies the version, UTC time, operation, endpoint and request path, gateway, and session origin. Live sync records also identify the cycle. A `candidate` session was issued by iSolarCloud and was still being validated. A `fresh` session had already become active in the running process. Keep HTTP tracing disabled for this capture.
+
 ## Troubleshooting DNS Errors
 
 Temporary login and regional-gateway failures after MQTT initialization do not require restarting GoSungrow. Each permitted retry makes a new attempt, beginning authentication at the last successfully authenticated gateway when authentication is pending. Failed alternative gateways leave the retained session intact. Collection resumes after fresh authentication and device rediscovery succeed; failed attempts do not advance the last successful refresh time or replace retained MQTT values. Local authentication-file or configuration-write failures are reported as errors and prevent the candidate session from becoming active.

@@ -2,6 +2,9 @@ package api
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -40,5 +43,60 @@ func TestCurrentGMTHeaderUsesCompatibilityFormat(t *testing.T) {
 	}
 	if got := currentGMTHeader(); got != want {
 		t.Fatalf("currentGMTHeader()=%q, want %q", got, want)
+	}
+}
+
+type denialTestEndpoint struct {
+	EndPoint
+	request RequestCommon
+}
+
+func (e denialTestEndpoint) GetArea() AreaName     { return "AppService" }
+func (e denialTestEndpoint) GetName() EndPointName { return "getPsList" }
+func (e denialTestEndpoint) GetUrl() EndPointUrl {
+	return SetUrl("/v1/powerStationService/getPsList?private_query=private_value")
+}
+func (e denialTestEndpoint) IsRequestValid() error   { return nil }
+func (e denialTestEndpoint) RequestRef() interface{} { return e.request }
+
+func TestHTTP403EvidenceContainsOnlySafeTransportMetadata(t *testing.T) {
+	t.Setenv("GOSUNGROW_TRACE_HTTP", "")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-Request-ID", "private_request_id")
+		http.Error(w, "private_response_body", http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	tests := []struct {
+		name    string
+		request RequestCommon
+		want    SessionOrigin
+	}{
+		{"no session", RequestCommon{}, SessionNone},
+		{"unknown session", RequestCommon{Token: "private_token"}, SessionUnknown},
+		{"cached session", RequestCommon{Token: "private_token"}.WithSessionEvidence(SessionCached, false), SessionCached},
+		{"fresh session", RequestCommon{Token: "private_token"}.WithSessionEvidence(SessionFresh, false), SessionFresh},
+		{"candidate session", RequestCommon{Token: "private_token"}.WithSessionEvidence(SessionCandidate, true), SessionCandidate},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var records []ForbiddenResponse
+			web := Web{}.WithForbiddenResponseHandler(func(record ForbiddenResponse) { records = append(records, record) })
+			if err := web.SetUrl(server.URL); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := web.getApi(denialTestEndpoint{request: test.request}); err == nil {
+				t.Fatal("HTTP 403 returned no error")
+			}
+			if len(records) != 1 {
+				t.Fatalf("got %d denial records, want one", len(records))
+			}
+			record := records[0]
+			if record.Gateway != "custom" || record.Path != "/v1/powerStationService/getPsList" ||
+				record.Endpoint != "AppService.getPsList" || record.Status != 403 || record.At.Location() != time.UTC ||
+				record.SessionOrigin != test.want || strings.Contains(fmt.Sprint(record), "private_") {
+				t.Fatalf("unexpected denial record: %+v", record)
+			}
+		})
 	}
 }

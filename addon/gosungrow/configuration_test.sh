@@ -124,9 +124,12 @@ bashio::log.info() { printf '%s\n' "$*"; }
 bashio::log.warning() { printf '%s\n' "$*"; }
 GoSungrow() {
   printf '%s\n' "$*" >> "$startup_case/commands"
-  if [ "$startup_scenario:$1 $2" = 'dashboard_failure:ha install-dashboard' ]; then
-    return 1
-  fi
+  case "$startup_scenario:$1 $2" in
+    'dashboard_failure:ha install-dashboard'|'cloud_denial:mqtt run')
+      printf '%s\n' 'iSolarCloud HTTP denial: status=403' 'GoSungrow-Failure-Class: non_recoverable'
+      return 1
+      ;;
+  esac
 }
 export -f bashio::log.fatal bashio::log.info bashio::log.warning
 export -f GoSungrow curl sleep advance_startup_clock
@@ -275,6 +278,10 @@ for scenario in missing_options invalid_options missing_user missing_password in
         printf '%s\n' "$startup_scenario installed a dashboard while disabled" >&2
         exit 1
       fi
+      if [ "$startup_scenario" = dashboard_failure ]; then
+        assert_log 'iSolarCloud HTTP denial: status=403'
+        assert_log 'Managed dashboard Installing failed'
+      fi
       if [ "$expected_enabled" = true ] && ! grep -Fq 'ha install-dashboard' "$startup_calls"; then
         printf '%s\n' "$startup_scenario omitted the initial install before MQTT" >&2
         exit 1
@@ -309,5 +316,17 @@ for scenario in cancel_request cancel_wait; do
   fi
   assert_log 'discovery stopped (shutdown'
 done
+
+prepare_startup cloud_denial
+startup_rc=0
+SUPERVISOR_TOKEN="sentinel-supervisor-token" GOSUNGROW_CONFIG="$startup_case/config/config.json" \
+  bash "$startup_dir/run.sh" > "$startup_case/log" 2>&1 || startup_rc=$?
+assert_equal 1 "$startup_rc" 'iSolarCloud HTTP 403 propagates the MQTT exit code'
+assert_log 'iSolarCloud HTTP denial: status=403'
+assert_equal 1 "$(grep -c '^mqtt run ' "$startup_case/commands")" 'iSolarCloud HTTP 403 stops after one MQTT invocation'
+if grep -Fq 'api login' "$startup_case/commands"; then
+  printf '%s\n' 'iSolarCloud HTTP 403 triggered login' >&2
+  exit 1
+fi
 
 printf '%s\n' 'Configuration policy and wrapper startup tests passed.'

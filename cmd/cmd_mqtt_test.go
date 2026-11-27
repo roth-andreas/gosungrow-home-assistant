@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,6 +28,8 @@ func (f mqttRecoveryTransport) RoundTrip(r *http.Request) (*http.Response, error
 
 type mqttRecoveryFixture struct {
 	command                                      *CmdMqtt
+	denialOutput                                 bytes.Buffer
+	denyRequest                                  func(*http.Request) bool
 	broker                                       *pvTestTransport
 	requests                                     []string
 	loginCalls, collectionCalls, configWrites    int
@@ -60,6 +63,12 @@ func newMQTTRecoveryFixture(t *testing.T) *mqttRecoveryFixture {
 	sg := iSolarCloud.NewSunGro("https://gateway.isolarcloud.eu", dir)
 	sg.ApiRoot = sg.ApiRoot.WithTransport(mqttRecoveryTransport(func(r *http.Request) (*http.Response, error) {
 		f.requests = append(f.requests, r.URL.Host+r.URL.Path)
+		if f.denyRequest != nil && f.denyRequest(r) {
+			response := mqttFixtureResponse("PRIVATE-BODY")
+			response.StatusCode, response.Status = http.StatusForbidden, "403 gateway timeout PRIVATE-REASON"
+			response.Header.Set("X-Request-ID", "PRIVATE-REQUEST-ID")
+			return response, nil
+		}
 		isLogin := strings.HasSuffix(r.URL.Path, "/login")
 		if isLogin {
 			f.loginCalls++
@@ -114,11 +123,13 @@ func newMQTTRecoveryFixture(t *testing.T) *mqttRecoveryFixture {
 		}
 		return mqttFixtureResponse(`{"req_serial_num":"synthetic","result_code":"1","result_msg":"success","result_data":` + result + `}`), nil
 	}))
+	denials := &cloudDenialLog{command: "GoSungrow mqtt run", operation: cloudLogin, output: &f.denialOutput}
+	sg.ApiRoot = sg.ApiRoot.WithForbiddenResponseHandler(denials.report)
 	if err := sg.Init(); err != nil {
 		t.Fatal(err)
 	}
 	sg.AuthDetails = &login.SunGrowAuth{TokenPath: func() string { return tokenPath }}
-	cmds.Api = &CmdApi{SunGrow: sg, Url: sg.ApiRoot.ServerUrl.String(), AppKey: iSolarCloud.DefaultApiAppKey, Username: "synthetic", Password: "synthetic-secret"}
+	cmds.Api = &CmdApi{SunGrow: sg, Url: sg.ApiRoot.ServerUrl.String(), AppKey: iSolarCloud.DefaultApiAppKey, Username: "synthetic", Password: "synthetic-secret", cloudDenials: denials}
 	apiWriteConfig = func() error { f.configWrites++; return nil }
 	if err := cmds.Api.ApiLogin(false); err != nil {
 		t.Fatal(err)
@@ -1008,4 +1019,172 @@ func testDeviceListDevice(psID string, psKey string, deviceType int64) getDevice
 	device.PsKey.SetValue(psKey)
 	device.DeviceType.SetValue(deviceType)
 	return device
+}
+
+func TestMQTTStartupReportsActualDeniedMetadataRequest(t *testing.T) {
+	t.Setenv("GOSUNGROW_TRACE_HTTP", "")
+	for _, endpoint := range []string{"getPsList", "getPsTreeMenu", "getDevicePointAttrs"} {
+		t.Run(endpoint, func(t *testing.T) {
+			f := newMQTTRecoveryFixture(t)
+			f.command.syncCycle = 0
+			f.denyRequest = func(r *http.Request) bool {
+				return strings.HasSuffix(r.URL.Path, "/"+endpoint)
+			}
+			err := f.command.retryStartupRecoverable("device point discovery", f.command.refreshPlantInventories)
+			if iSolarCloud.ClassifyFailure(err) != iSolarCloud.FailureClassNonRecoverable || f.loginCalls != 1 {
+				t.Fatalf("metadata discovery = %v, login count = %d", err, f.loginCalls)
+			}
+			service := "devService"
+			if endpoint == "getPsList" {
+				service = "powerStationService"
+			}
+			assertCloudDenialLog(t, f.denialOutput.String(), "operation=point_metadata", "."+endpoint+" ",
+				"path=/v1/"+service+"/"+endpoint, "session_origin=fresh")
+			if strings.Contains(f.denialOutput.String(), "sync_cycle=") {
+				t.Fatal("startup diagnostic contains a sync cycle")
+			}
+		})
+	}
+}
+
+func TestMQTTStartupKeepsSeparateTopologyAndTerminalDenials(t *testing.T) {
+	f := newMQTTRecoveryFixture(t)
+	f.command.syncCycle = 0
+	trees := 0
+	f.denyRequest = func(r *http.Request) bool {
+		if strings.HasSuffix(r.URL.Path, "/getPsTreeMenu") {
+			trees++
+			return trees == 1
+		}
+		return strings.HasSuffix(r.URL.Path, "/getDevicePointAttrs")
+	}
+	f.command.refreshPlantTopologies()
+	err := f.command.retryStartupRecoverable("device point discovery", f.command.refreshPlantInventories)
+	if iSolarCloud.ClassifyFailure(err) != iSolarCloud.FailureClassNonRecoverable || f.loginCalls != 1 {
+		t.Fatalf("metadata discovery = %v, login count = %d", err, f.loginCalls)
+	}
+	lines := strings.Split(strings.TrimSpace(f.denialOutput.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("got %d denial records, want 2", len(lines))
+	}
+	assertCloudDenialLog(t, lines[0], "operation=topology", "endpoint=WebIscmAppService.getPsTreeMenu")
+	assertCloudDenialLog(t, lines[1], "operation=point_metadata", "endpoint=WebAppService.getDevicePointAttrs")
+}
+
+func TestMQTTLive403DistinguishesLookupFromCollection(t *testing.T) {
+	tests := []struct {
+		name, wirePath, logicalName, operation string
+		realtime                               bool
+	}{
+		{"plant lookup", "/v1/powerStationService/getPsList", "AppService.getPsList", cloudLivePlantLookup, false},
+		{"ordinary telemetry", "/v1/devService/queryDeviceList", "AppService.queryDeviceList", cloudLiveCollection, false},
+		{"realtime telemetry", "/v1/devService/queryDeviceList", "AppService.queryDeviceRealTimeDataByPsKeys", cloudLiveCollection, true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			for _, level := range []string{"info", "debug"} {
+				t.Run(level, func(t *testing.T) {
+					t.Setenv("GOSUNGROW_TRACE_HTTP", "")
+					f := newMQTTRecoveryFixture(t)
+					f.command.syncCycle = 0
+					if err := f.command.Cron(); err != nil {
+						t.Fatal(err)
+					}
+					if f.denialOutput.Len() != 0 || f.loginCalls != 1 || len(f.broker.publications) == 0 {
+						t.Fatal("healthy sync did not preserve successful publication and normal login behavior")
+					}
+					if test.realtime {
+						f.command.endpoints = MqttEndPoints{realtimeEndpointName: {}}
+					}
+					sg := cmds.Api.SunGrow
+					sg.ApiRoot = sg.ApiRoot.WithoutCache()
+					if err := sg.Init(); err != nil {
+						t.Fatal(err)
+					}
+					hits := 0
+					f.denyRequest = func(r *http.Request) bool {
+						if r.URL.Path == test.wirePath {
+							hits++
+							return true
+						}
+						return false
+					}
+					f.command.log.SetLogLevel(level)
+					before := len(f.broker.publications)
+					lastRefresh := f.command.Client.LastRefresh
+					err := f.command.Cron()
+					if iSolarCloud.ClassifyFailure(err) != iSolarCloud.FailureClassNonRecoverable || hits != 1 || f.loginCalls != 1 {
+						t.Fatalf("sync = %v, denied requests = %d, logins = %d", err, hits, f.loginCalls)
+					}
+					if len(f.broker.publications) != before || f.command.Client.LastRefresh != lastRefresh {
+						t.Fatal("denied sync changed retained publication or last refresh")
+					}
+					assertCloudDenialLog(t, f.denialOutput.String(), "sync_cycle=2", "operation="+test.operation,
+						"endpoint="+test.logicalName+" ", "path="+test.wirePath, "session_origin=fresh")
+				})
+			}
+		})
+	}
+}
+
+func assertCloudDenialLog(t *testing.T, line string, fields ...string) {
+	t.Helper()
+	if strings.Count(line, "iSolarCloud HTTP denial:") != 1 {
+		t.Fatalf("got %q, want one denial record", line)
+	}
+	for _, field := range append(fields, "status=403", "gateway=gateway.isolarcloud.eu", `command="GoSungrow mqtt run"`, "version=") {
+		if !strings.Contains(line, field) {
+			t.Errorf("record %q omitted %q", line, field)
+		}
+	}
+	for _, field := range strings.Fields(line) {
+		if strings.HasPrefix(field, "at=") {
+			at, err := time.Parse(time.RFC3339Nano, strings.TrimPrefix(field, "at="))
+			if err != nil || at.Location() != time.UTC {
+				t.Errorf("invalid UTC time field: %q", field)
+			}
+		}
+	}
+	for _, secret := range []string{"PRIVATE-", "fresh_1", "synthetic-secret", "100_55_1_1", "ps_id", "ps_key"} {
+		if strings.Contains(line, secret) {
+			t.Errorf("denial record contains %q", secret)
+		}
+	}
+}
+
+func TestMQTTStartupDeviceDiscovery403StopsBeforeConnecting(t *testing.T) {
+	f := newMQTTRecoveryFixture(t)
+	f.command.syncCycle = 0
+	f.command.Host = "127.0.0.1"
+	f.denyRequest = func(r *http.Request) bool {
+		return strings.HasSuffix(r.URL.Path, "/getDeviceList")
+	}
+	err := f.command.MqttArgs(nil, nil)
+	if iSolarCloud.ClassifyFailure(err) != iSolarCloud.FailureClassNonRecoverable || f.loginCalls != 1 {
+		t.Fatalf("startup device discovery = %v, login count = %d", err, f.loginCalls)
+	}
+	assertCloudDenialLog(t, f.denialOutput.String(), "operation=startup_device_discovery",
+		"endpoint=AppService.getDeviceList", "session_origin=fresh")
+}
+
+func TestDashboardTargetDiscoveryReports403AfterLogin(t *testing.T) {
+	f := newMQTTRecoveryFixture(t)
+	cmds.Api.cloudDenials.command = "GoSungrow ha install-dashboard"
+	f.denyRequest = func(r *http.Request) bool {
+		return strings.HasSuffix(r.URL.Path, "/getPsTreeMenu")
+	}
+	err := (&CmdHa{}).installManagedDashboard(nil, haDashboardInstallOptions{SupervisorToken: "private-supervisor-token"})
+	if iSolarCloud.ClassifyFailure(err) != iSolarCloud.FailureClassNonRecoverable || f.loginCalls != 2 {
+		t.Fatalf("dashboard discovery = %v, login count = %d", err, f.loginCalls)
+	}
+	line := f.denialOutput.String()
+	for _, field := range []string{`command="GoSungrow ha install-dashboard"`, "operation=dashboard_discovery",
+		"endpoint=WebIscmAppService.getPsTreeMenu", "status=403", "session_origin=fresh"} {
+		if !strings.Contains(line, field) {
+			t.Errorf("dashboard denial record omitted %q", field)
+		}
+	}
+	if strings.Count(line, "iSolarCloud HTTP denial:") != 1 || strings.Contains(line, "private-supervisor-token") {
+		t.Fatalf("unexpected dashboard denial record: %q", line)
+	}
 }
