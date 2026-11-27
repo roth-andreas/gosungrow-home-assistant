@@ -1,7 +1,11 @@
 package getDeviceList
 
 import (
+	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
+
 	"github.com/MickMake/GoUnify/Only"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct"
@@ -33,7 +37,9 @@ type ResultData struct {
 }
 
 type Device struct {
-	GoStruct GoStruct.GoStruct `json:"-" PointDeviceFrom:"PsKey" PointIdFrom:"PsKey" PointIdReplace:"true"`
+	GoStruct         GoStruct.GoStruct `json:"-" PointDeviceFrom:"PsKey" PointIdFrom:"PsKey" PointIdReplace:"true"`
+	RequestedPlantID string            `json:"-"`
+	dashboardType    int64
 
 	PsKey      valueTypes.PsKey   `json:"ps_key"`
 	PsId       valueTypes.PsId    `json:"ps_id"`
@@ -85,6 +91,41 @@ type Device struct {
 	TypeName                valueTypes.String  `json:"type_name"`
 	UUID                    valueTypes.Integer `json:"uuid"`
 }
+
+// UnmarshalJSON retains device-type evidence for dashboard inventory verification.
+func (d *Device) UnmarshalJSON(raw []byte) error {
+	type fields Device
+	wire := struct {
+		*fields
+		DeviceType json.RawMessage `json:"device_type"`
+	}{fields: (*fields)(d)}
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return err
+	}
+	d.dashboardType = 0
+	if len(wire.DeviceType) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(wire.DeviceType, &d.DeviceType); err != nil {
+		return err
+	}
+	lexeme := string(wire.DeviceType)
+	if wire.DeviceType[0] == '"' {
+		if err := json.Unmarshal(wire.DeviceType, &lexeme); err != nil {
+			return err
+		}
+		lexeme = strings.TrimSpace(lexeme)
+	}
+	if strings.IndexFunc(lexeme, func(r rune) bool { return r < '0' || r > '9' }) == -1 {
+		if value, err := strconv.ParseInt(lexeme, 10, 64); err == nil {
+			d.dashboardType = value
+		}
+	}
+	return nil
+}
+
+// DashboardDeviceType returns the verified positive wire value or zero if invalid.
+func (d Device) DashboardDeviceType() int64 { return d.dashboardType }
 
 func (e *ResultData) IsValid() error {
 	var err error

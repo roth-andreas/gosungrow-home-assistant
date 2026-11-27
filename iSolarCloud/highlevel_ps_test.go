@@ -1,12 +1,23 @@
 package iSolarCloud
 
 import (
+	"encoding/json"
 	"net/http"
 	"path"
 	"testing"
 
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/WebIscmAppService/getPsTreeMenu"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/valueTypes"
 )
+
+func TestPlantRequestsPreserveOpaqueIDSpelling(t *testing.T) {
+	for input, want := range map[string]string{"100": "100", "00100": "\"00100\"", "100_101": "\"100_101\""} {
+		got, err := json.Marshal(plantRequestID(valueTypes.SetPsIdString(input)))
+		if err != nil || string(got) != want {
+			t.Errorf("plant request ID %q: got %s, want %s (err=%v)", input, got, want, err)
+		}
+	}
+}
 
 func TestPlantTreeDiscoveryKeepsDenialDistinctFromAnEmptyTree(t *testing.T) {
 	const deniedID, healthyID = "100_101", "200"

@@ -55,6 +55,8 @@ type haDashboardInstallOptions struct {
 	RequireAdmin       bool
 	ForceUpdate        bool
 	AvailabilityDriven bool
+	discovery          *dashboardDiscovery
+	onTargetsVerified  func([]haDashboardTarget)
 }
 
 type haDashboardTarget struct {
@@ -74,6 +76,7 @@ type haDashboardState struct {
 	DashboardHash          string                       `json:"dashboard_hash"`
 	DashboardStructureHash string                       `json:"dashboard_structure_hash,omitempty"`
 	TargetPsKeys           []string                     `json:"target_ps_keys,omitempty"`
+	InventoryTargetPlants  []string                     `json:"inventory_target_plants,omitempty"`
 	SourceOverrides        map[string]map[string]string `json:"source_overrides,omitempty"`
 	AssetMode              string                       `json:"asset_mode,omitempty"`
 	AssetURL               string                       `json:"asset_url,omitempty"`
@@ -313,14 +316,18 @@ func (c *CmdHa) installManagedDashboard(args []string, opts haDashboardInstallOp
 	}
 
 	cmds.Api.setCloudOperation(cloudDashboardDiscovery, 0)
-	targets, err := c.discoverDashboardTargets(args)
+	discovery, err := dashboardDiscoveryFromCloud(cmds.Api.SunGrow, args)
 	if err != nil {
+		if discovery != nil {
+			selection := discovery.selectTargets(nil)
+			selection.reason = dashboardCoverageIncomplete
+			discovery.logSummary(selection)
+			return fmt.Errorf("%s: %w", selection.reason, err)
+		}
 		return err
 	}
-	if len(targets) == 0 {
-		return fmt.Errorf("no Sungrow ESS devices were discovered")
-	}
-	return reconcileManagedDashboard(context.Background(), targets, opts)
+	opts.discovery = discovery
+	return reconcileManagedDashboard(context.Background(), nil, opts)
 }
 
 // Runtime reconciliation uses an immutable discovery snapshot. HA transitions
@@ -334,14 +341,48 @@ func reconcileManagedDashboardWithAssetRoots(parent context.Context, targets []h
 	if strings.TrimSpace(opts.SupervisorToken) == "" {
 		return fmt.Errorf("SUPERVISOR_TOKEN is not set; configure Home Assistant access for managed dashboards")
 	}
-	if len(targets) == 0 {
+	if len(targets) == 0 && opts.discovery == nil {
 		return fmt.Errorf("no discovered dashboard targets are available yet")
 	}
 
 	statePath := dashboardStatePath()
 	state, err := loadDashboardState(statePath)
 	if err != nil {
+		if opts.discovery != nil {
+			selection := opts.discovery.selectTargets(nil)
+			if selection.reason == "" {
+				selection.reason = dashboardContinuityUnverified
+			}
+			opts.discovery.logSummary(selection)
+		}
 		return err
+	}
+	var selection dashboardDiscoverySelection
+	awaitingSavedViews := false
+	var managedState *haDashboardState
+	if state != nil && state.DashboardURLPath == opts.DashboardURLPath {
+		managedState = state
+	}
+	if opts.discovery != nil {
+		selection = opts.discovery.selectTargets(managedState)
+		awaitingSavedViews = selection.keepViews
+		defer func() {
+			if awaitingSavedViews && selection.reason == "" {
+				selection.reason = dashboardContinuityUnverified
+			}
+			opts.discovery.logSummary(selection)
+		}()
+		if selection.reason == dashboardCoverageIncomplete {
+			return fmt.Errorf("%s", selection.reason)
+		}
+		targets = selection.targets
+		if len(targets) == 0 {
+			return fmt.Errorf("no Sungrow devices with a valid ps_key were discovered")
+		}
+		if selection.protected && dashboardTargetIdentityConflict(targets, dashboardSourceMappingID) {
+			selection.reason = dashboardIdentityConflict
+			return fmt.Errorf("%s", selection.reason)
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(parent, 45*time.Second)
@@ -375,6 +416,23 @@ func reconcileManagedDashboardWithAssetRoots(parent context.Context, targets []h
 	config, err := renderDashboardConfig(templatePath, opts.DashboardTitle, targets, localeBundle)
 	if err != nil {
 		return err
+	}
+	if opts.discovery != nil {
+		viewsVerified := !selection.keepViews || preserveDashboardViews(config, currentConfig, managedState, targets)
+		awaitingSavedViews = false
+		if !viewsVerified {
+			selection.reason = dashboardContinuityUnverified
+		}
+		if selection.protected && viewsVerified && dashboardViewPathConflict(config) {
+			selection.reason = dashboardIdentityConflict
+		}
+		opts.discovery.logSummary(selection)
+		if selection.reason != "" {
+			return fmt.Errorf("%s", selection.reason)
+		}
+		if opts.onTargetsVerified != nil {
+			opts.onTargetsVerified(targets)
+		}
 	}
 
 	diagnostics := dashboardInstallDiagnostics{
@@ -612,6 +670,7 @@ func reconcileManagedDashboardWithAssetRoots(parent context.Context, targets []h
 		DashboardHash:          desiredHash,
 		DashboardStructureHash: desiredStructureHash,
 		TargetPsKeys:           targetPSKeys(targets),
+		InventoryTargetPlants:  selection.inventoryPlants,
 		SourceOverrides:        sourceOverrides,
 		AssetMode:              diagnostics.DashboardMode,
 		AssetURL:               activeURL,
@@ -684,15 +743,11 @@ func dashboardDiagnosticDefault(value, fallback string) string {
 	return value
 }
 
-func (c *CmdHa) discoverDashboardTargets(args []string) ([]haDashboardTarget, error) {
-	trees, err := cmds.Api.SunGrow.PsTreeMenu(args...)
-	if err != nil {
-		return nil, err
-	}
-	return discoverDashboardTargetsFromTrees(trees)
+func discoverDashboardTargetsFromTrees(trees map[string]iSolarCloud.PsTree) ([]haDashboardTarget, error) {
+	return selectDashboardTargetsFromTrees(trees, nil)
 }
 
-func discoverDashboardTargetsFromTrees(trees map[string]iSolarCloud.PsTree) ([]haDashboardTarget, error) {
+func selectDashboardTargetsFromTrees(trees iSolarCloud.PsTrees, inventory map[string]bool) ([]haDashboardTarget, error) {
 	psIDs := make([]string, 0, len(trees))
 	for psID := range trees {
 		psIDs = append(psIDs, psID)
@@ -773,11 +828,20 @@ func discoverDashboardTargetsFromTrees(trees map[string]iSolarCloud.PsTree) ([]h
 	}
 
 	titleCounts := make(map[string]int)
+	inventoryLabelCounts := make(map[string]map[string]int)
+	for _, target := range collected {
+		if inventory[target.psID] {
+			if inventoryLabelCounts[target.psID] == nil {
+				inventoryLabelCounts[target.psID] = make(map[string]int)
+			}
+			inventoryLabelCounts[target.psID][target.deviceName]++
+		}
+	}
 	titles := make([]string, len(collected))
 	for i, target := range collected {
 		title := target.plantName
 		if perPlantCounts[target.psID] > 1 {
-			if target.deviceName != "" && target.deviceName != target.plantName {
+			if target.deviceName != "" && target.deviceName != target.plantName && inventoryLabelCounts[target.psID][target.deviceName] <= 1 {
 				title = fmt.Sprintf("%s (%s)", target.plantName, target.deviceName)
 			} else {
 				title = fmt.Sprintf("%s (%s)", target.plantName, target.psKey)

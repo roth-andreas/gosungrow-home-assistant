@@ -120,6 +120,16 @@ Client ownership is `iSolarCloud/struct.go`, `recovery.go`, `data.go`, `api/web.
 | App wrapper regression checks in `addon/gosungrow/configuration_test.sh` and `addon/gosungrow/recovery_policy_test.sh` | `REQ-API-035`; `REQ-MQTT-027`; `REQ-ACC-088`, `092`. Existing dashboard failure tolerance and terminal handling of other denials. |
 | Affected Home Assistant installation release check (planned) | `REQ-REL-014`; `REQ-ACC-093`. Cold add-on startup and scheduled sync publish fresh MQTT-backed values while the tree is denied. |
 
+## Dashboard target fallback after plant-tree denial
+
+| Verification | Governing requirements |
+|---|---|
+| `cmd/dashboard_target_discovery_test.go`, `iSolarCloud/AppService/getDeviceList/data_test.go` | `REQ-API-037`; `REQ-ACC-095`, `101`. Endpoint and HTTP status gating, per-plant scope and request counts, device-type wire-value validation for live, cached, and reused inventory, and opaque identities. |
+| `cmd/dashboard_target_discovery_test.go`, `cmd/dashboard_runtime_test.go`, `cmd/cmd_mqtt_test.go` | `REQ-DASH-002`, `023`, `043`–`046`; `REQ-ACC-094`–`097`, `100`–`101`. Target coverage and selection, preserved views, restart and recovery, zero writes on conflict or invalid inventory, safe diagnostics, and MQTT continuity. |
+| `cmd/dashboard_source_mapping_test.go` | `REQ-SRC-001`; `REQ-ACC-099`. Released mapping identity across enhanced and native projections, fallback, restart, and tree recovery, with pinned defaults and accepted overrides preserved. |
+| `tools/ha-e2e/dashboard_resource_smoke.mjs`, `TestDashboardFallbackHomeAssistantFixture` | `REQ-DASH-043`; `REQ-ACC-094`. Fresh verified dashboard installation and browser verification against pinned Home Assistant Core under an injected HTTP 403. |
+| Affected Home Assistant installation release check (planned) | `REQ-REL-015`; `REQ-ACC-098`. Fresh verified dashboard installation and browser evidence under tree denial. |
+
 ## Behavioral tests
 
 Artifact ownership identifies executable evidence; validation results must be reported separately for each working tree.

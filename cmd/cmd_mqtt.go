@@ -96,6 +96,7 @@ type CmdMqtt struct {
 	DashboardEnabled     bool
 	DashboardForceUpdate bool
 	dashboardTargets     []haDashboardTarget
+	dashboardDiscovery   *dashboardDiscovery
 	dashboardRuntime     *dashboardCoordinator
 	runContext           context.Context
 
@@ -599,8 +600,9 @@ func (c *CmdMqtt) rediscover() error {
 	c.plantInventories, c.points, c.plantTopologies = staged.plantInventories, staged.points, staged.plantTopologies
 	c.treeDiscovery, c.deniedTreeParents = staged.treeDiscovery, staged.deniedTreeParents
 	c.dashboardTargets = staged.dashboardTargets
+	c.dashboardDiscovery = staged.dashboardDiscovery
 	if c.dashboardRuntime != nil {
-		c.dashboardRuntime.updateTargets(c.dashboardTargets)
+		c.dashboardRuntime.updateDiscovery(c.dashboardDiscovery)
 	}
 	c.rediscoveryPending = false
 	return nil
@@ -675,6 +677,17 @@ func (c *CmdMqtt) refreshPlantTopologies(devices getDeviceList.Devices) {
 		cmds.Api.setCloudOperation(cloudTopology, 0)
 	}
 	trees, err := mqttLoadPlantTrees(&c.treeDiscovery)
+	if c.DashboardEnabled {
+		names := dashboardPlantNames(c.treeDiscovery.Plants())
+		ids := make([]string, 0, len(names))
+		for id := range names {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		if err == nil || c.treeDiscovery.HasDenials() {
+			c.dashboardDiscovery = collectDashboardDiscovery(ids, names, trees, c.treeDiscovery, devices)
+		}
+	}
 	// An incomplete tree discovery must not replace the dashboard's target set.
 	if err == nil && !c.treeDiscovery.HasDenials() {
 		if targets, targetErr := discoverDashboardTargetsFromTrees(trees); targetErr == nil {

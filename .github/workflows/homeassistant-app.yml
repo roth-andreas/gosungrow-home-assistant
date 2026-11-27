@@ -135,7 +135,6 @@ jobs:
           asset="addon/gosungrow/assets/gosungrow-energy-flow-card-v2.js"
           asset_hash="$(sha256sum "$asset" | awk '{print $1}')"
           asset_name="gosungrow-dashboard-cards.${asset_hash:0:12}.js"
-          cp "$asset" "$fixture/www/gosungrow/$asset_name"
           docker run -d --name gosungrow-ha-e2e \
             -p 8123:8123 \
             -v "$fixture:/config" \
@@ -155,6 +154,7 @@ jobs:
           }
           trap cleanup EXIT
           HA_E2E_URL=http://127.0.0.1:8123 \
+          HA_E2E_CONFIG_DIR="$fixture" \
           HA_E2E_RESOURCE_URL="/local/gosungrow/$asset_name" \
           HA_E2E_RESOURCE_HASH="$asset_hash" \
             node tools/ha-e2e/dashboard_resource_smoke.mjs

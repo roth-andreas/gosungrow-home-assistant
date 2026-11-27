@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { chromium } from "playwright";
 
 const baseURL = (process.env.HA_E2E_URL || "http://127.0.0.1:8123").replace(/\/$/, "");
 const resourceURL = process.env.HA_E2E_RESOURCE_URL;
 const expectedHash = process.env.HA_E2E_RESOURCE_HASH;
+const fallbackFixture = Boolean(process.env.HA_E2E_CONFIG_DIR);
 const clientID = `${baseURL}/`;
 
 assert(resourceURL, "HA_E2E_RESOURCE_URL is required");
@@ -171,6 +173,27 @@ async function verifyBrowser() {
       "gosungrow-source-mapping-card-v1",
     ]);
     assert.deepEqual(result.errors, [], `Home Assistant rendered configuration errors: ${result.errors.join(" | ")}`);
+    if (fallbackFixture) {
+      const displays = await page.waitForFunction(() => {
+        const visit = (root) => {
+          const card = root.querySelector("gosungrow-energy-flow-card-v2");
+          if (card) return card;
+          for (const element of root.querySelectorAll("*")) {
+            if (element.shadowRoot) {
+              const found = visit(element.shadowRoot);
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+        const flow = visit(document);
+        if (!flow || !flow._hass) return false;
+        return flow._nodeDisplays(flow._flowDisplays());
+      }, undefined, { timeout: 30_000 });
+      const readings = await displays.jsonValue();
+      assert.equal(readings.home.numericValue, 2.75, "eligible load reading must appear in the installed dashboard");
+      assert.equal(readings.solar.available, false, "unverified solar reading must remain unavailable");
+    }
     const originalViewport = page.viewportSize();
     for (const width of [940, 480]) {
       await page.setViewportSize({ width, height: originalViewport.height });
@@ -303,11 +326,24 @@ async function verifyBrowser() {
 }
 
 await waitForHomeAssistant();
-await verifyResource();
 const token = await finishOnboarding();
 for (const [entity, state, unit] of [["sensor.gosungrow_e2e_total_energy", "9.92", "MWh"], ["sensor.gosungrow_e2e_daily_consumption", "7.5", "kWh"], ["sensor.gosungrow_e2e_daily_production", "4", "kWh"]]) {
   await request(`/api/states/${entity}`, { token, body: { state, attributes: { unit_of_measurement: unit, state_class: "total_increasing" } } });
 }
-await provisionDashboard(token);
+if (fallbackFixture) {
+  for (const [entity, state] of [["100_14_1_1_load_power", "2.75"], ["100_pv_power", "9.99"]]) {
+    await request("/api/states/sensor.gosungrow_virtual_" + entity, {
+      token, body: { state, attributes: { unit_of_measurement: "kW", device_class: "power", state_class: "measurement" } },
+    });
+  }
+  execFileSync("go", ["test", "./cmd", "-run", "^TestDashboardFallbackHomeAssistantFixture$", "-count=1", "-v"], {
+    env: { ...process.env, HA_E2E_TOKEN: token, HA_E2E_WS_URL: baseURL.replace(/^http/, "ws") + "/api/websocket" },
+    stdio: "inherit",
+    timeout: 90_000,
+  });
+} else {
+  await provisionDashboard(token);
+}
+await verifyResource();
 await verifyBrowser();
 console.log("Home Assistant managed-dashboard browser smoke passed");

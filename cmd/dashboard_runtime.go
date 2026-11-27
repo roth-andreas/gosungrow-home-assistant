@@ -14,10 +14,11 @@ import (
 )
 
 type dashboardCoordinator struct {
-	mu      sync.RWMutex
-	targets []haDashboardTarget
-	updates chan struct{}
-	changes chan struct{}
+	mu        sync.RWMutex
+	targets   []haDashboardTarget
+	discovery *dashboardDiscovery
+	updates   chan struct{}
+	changes   chan struct{}
 }
 
 type dashboardRuntimeTimer struct {
@@ -59,6 +60,41 @@ func (c *dashboardCoordinator) snapshotTargets() []haDashboardTarget {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return copyDashboardTargets(c.targets)
+}
+
+func (c *dashboardCoordinator) updateDiscovery(discovery *dashboardDiscovery) {
+	c.mu.Lock()
+	previous := c.discovery
+	c.discovery = discovery
+	c.mu.Unlock()
+	if previous == discovery {
+		return
+	}
+	// Rediscovery can establish targets even when the observer has none to match.
+	select {
+	case c.changes <- struct{}{}:
+	default:
+	}
+}
+
+func (c *dashboardCoordinator) snapshotDiscovery() *dashboardDiscovery {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.discovery
+}
+
+func (c *dashboardCoordinator) acceptDiscovery(discovery *dashboardDiscovery, targets []haDashboardTarget) {
+	c.mu.Lock()
+	if c.discovery != discovery {
+		c.mu.Unlock()
+		return
+	}
+	c.targets = copyDashboardTargets(targets)
+	c.mu.Unlock()
+	select {
+	case c.updates <- struct{}{}:
+	default:
+	}
 }
 
 func dashboardRuntimeOptions(force bool) haDashboardInstallOptions {
@@ -109,7 +145,10 @@ func (c *CmdMqtt) startDashboardRuntime(ctx context.Context) func() {
 		c.log.Info("Managed dashboard configuration: %s. MQTT will continue.\n", err)
 		return func() {}
 	}
-	runtime := &dashboardCoordinator{targets: copyDashboardTargets(c.dashboardTargets), updates: make(chan struct{}, 1), changes: make(chan struct{}, 1)}
+	runtime := &dashboardCoordinator{discovery: c.dashboardDiscovery, updates: make(chan struct{}, 1), changes: make(chan struct{}, 1)}
+	if c.dashboardDiscovery == nil {
+		runtime.targets = copyDashboardTargets(c.dashboardTargets)
+	}
 	c.dashboardRuntime = runtime
 	workerCtx, cancel := context.WithCancel(ctx)
 	var workers sync.WaitGroup
@@ -133,6 +172,9 @@ func (c *CmdMqtt) startDashboardRuntime(ctx context.Context) func() {
 		defer workers.Done()
 		runtime.run(workerCtx, delays, newDashboardRuntimeTimer, func(available bool) error {
 			attemptOptions := opts
+			discovery := runtime.snapshotDiscovery()
+			attemptOptions.discovery = discovery
+			attemptOptions.onTargetsVerified = func(targets []haDashboardTarget) { runtime.acceptDiscovery(discovery, targets) }
 			attemptOptions.AvailabilityDriven = available
 			if available {
 				attemptOptions.DiagnosticContext = "availability"

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud"
 )
 
 func sourceMappingTestConfig(psKey string) map[string]any {
@@ -277,6 +279,57 @@ func TestDashboardSourceMappingsPreserveAndApplyOverride(t *testing.T) {
 		if value, ok := getDashboardJSONPointer(result, raw.(string)); !ok || value != overrideEntity {
 			t.Fatalf("override binding was not updated: %v", raw)
 		}
+	}
+}
+
+func TestDashboardFallbackKeepsReleasedMappingAcrossProjections(t *testing.T) {
+	const (
+		psKey     = "100_14_1_1"
+		released  = "source-fee8a2cdfe22"
+		metric    = "p13116"
+		automatic = "sensor.gosungrow_virtual_100_14_1_1_p13116"
+		manual    = "sensor.gosungrow_inverter_100_14_1_1_p13116"
+	)
+	current := sourceMappingTestConfig(psKey)
+	card := findDashboardSourceMappingCard(current, psKey)
+	card["mapping_id"] = released
+	card["pinned_defaults"] = map[string]any{metric: automatic}
+	card["overrides"] = map[string]any{metric: manual}
+	states := []haState{
+		{EntityID: automatic, State: "52.6", Attributes: map[string]any{"unit_of_measurement": "kWh"}},
+		{EntityID: manual, State: "30.5", Attributes: map[string]any{"unit_of_measurement": "kWh"}},
+	}
+	traces := []dashboardMetricTrace{{Metric: metric, TargetPsKey: psKey, Resolved: automatic}}
+	trees := iSolarCloud.PsTrees{"100": dashboardTestTree("100", []string{psKey}, 14)}
+	fallback := &dashboardDiscovery{plants: []string{"100"}, denied: map[string]bool{"100": true}, inventories: trees}
+	recovery := &dashboardDiscovery{plants: []string{"100"}, trees: trees}
+	state := &haDashboardState{TargetPsKeys: []string{psKey}}
+	for _, attempt := range []*dashboardDiscovery{fallback, fallback, recovery} {
+		selection := attempt.selectTargets(state)
+		if selection.reason != "" || len(selection.targets) != 1 {
+			t.Fatalf("saved target unavailable: %+v", selection)
+		}
+		if got := dashboardSourceMappingID(selection.targets[0]); got != released {
+			t.Fatalf("mapping ID changed: got %s, want %s", got, released)
+		}
+		enhanced, overrides, err := applyDashboardSourceMappings(sourceMappingTestConfig(psKey), current,
+			state.SourceOverrides, selection.targets, states, traces, "gosungrow-flow", defaultDashboardLocaleBundle)
+		if err != nil {
+			t.Fatal(err)
+		}
+		native, err := nativeDashboardFallback(enhanced, defaultDashboardLocaleBundle)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, projection := range []map[string]any{enhanced, native} {
+			if extractDashboardSourceDefaults(projection)[released][metric] != automatic ||
+				extractDashboardSourceOverrides(projection)[released][metric] != manual {
+				t.Fatalf("projection lost source choices for %s", released)
+			}
+		}
+		current = native
+		state = &haDashboardState{TargetPsKeys: []string{psKey},
+			InventoryTargetPlants: selection.inventoryPlants, SourceOverrides: overrides}
 	}
 }
 

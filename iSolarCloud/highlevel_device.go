@@ -21,7 +21,7 @@ func (sg *SunGrow) GetDeviceList(psIds ...string) ([]getDeviceList.Device, error
 		for _, psID := range pids {
 			ep := sg.GetByStruct(
 				getDeviceList.EndPointName,
-				getDeviceList.RequestData{PsId: psID},
+				getDeviceList.RequestData{PsId: plantRequestID(psID)},
 				time.Hour*24,
 			)
 			if sg.IsError() {
@@ -29,7 +29,10 @@ func (sg *SunGrow) GetDeviceList(psIds ...string) ([]getDeviceList.Device, error
 			}
 
 			data := getDeviceList.Assert(ep)
-			ret = append(ret, data.Response.ResultData.PageList...)
+			for _, device := range data.Response.ResultData.PageList {
+				device.RequestedPlantID = psID.String()
+				ret = append(ret, device)
+			}
 		}
 	}
 
