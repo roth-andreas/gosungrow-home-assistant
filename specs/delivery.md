@@ -19,6 +19,8 @@ Scope: Binary/container build, Home Assistant manifest, validation, and publishi
 - **REQ-REL-012** — Validation MUST exercise the split app deployment topology in which Home Assistant API websocket traffic uses a Supervisor-compatible proxy, `/core/local/...` is unavailable, authenticated `/core/info` advertises the direct Home Assistant scheme and a deliberately arbitrary port, and static `/local/...` verification uses that advertised direct origin. The check MUST cover HTTP and HTTPS metadata, MUST NOT encode port 80 or 8123 as the only expected value, and MUST prove that activation succeeds without sending an authorization credential to the static origin.
 - **REQ-REL-013** — Validation MUST exercise a pinned real Home Assistant Core lifecycle that starts without a `www` directory, stages and locally verifies the asset only after Core is ready, proves `/local/...` returns HTTP 404 and is classified `operator_action_required` without resource or dashboard mutation, restarts Core, and proves the next reconciliation receives HTTP 200, validates MIME type and hash, activates the enhanced dashboard, and loads all three custom elements in headless Chromium. Validation MUST retain a separate immediate-success case where `www` exists before Core starts.
 
+- **REQ-REL-014** — Before promoting the plant-tree fallback under REQ-MQTT-027 to stable, verify REQ-ACC-093 on the affected Home Assistant installation. Record the app version, architecture, sanitized tree denial, and evidence that fresh MQTT-backed values reach Home Assistant. A `develop` build MAY be published for this verification after normal CI passes.
+
 ## Prohibited behavior
 
 - Publishing when validation fails.

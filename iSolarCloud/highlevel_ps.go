@@ -1,11 +1,13 @@
 package iSolarCloud
 
 import (
+	"errors"
 	"time"
 
 	"github.com/MickMake/GoUnify/Only"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/getPsList"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/WebIscmAppService/getPsTreeMenu"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/valueTypes"
 )
 
@@ -90,30 +92,57 @@ type PsTree struct {
 
 type PsTrees map[string]PsTree
 
+// PlantTreeDiscovery shares plant-specific denials across one MQTT discovery attempt.
+// Its zero value starts a new attempt.
+type PlantTreeDiscovery struct {
+	denied map[string]bool
+}
+
+// Denied reports whether the tree request for psID returned HTTP 403 in this attempt.
+func (d PlantTreeDiscovery) Denied(psID string) bool {
+	return d.denied[psID]
+}
+
+// HasDenials reports whether this attempt has any unavailable plant trees.
+func (d PlantTreeDiscovery) HasDenials() bool {
+	return len(d.denied) > 0
+}
+
+// Trees loads plant trees, skipping plants whose optional discovery was denied.
+func (d *PlantTreeDiscovery) Trees(sg *SunGrow) (PsTrees, error) {
+	return sg.psTreeMenu(d)
+}
+
 // PsTreeMenu - WebIscmAppService.getPsTreeMenu
 func (sg *SunGrow) PsTreeMenu(psIDs ...string) (PsTrees, error) {
+	return sg.psTreeMenu(nil, psIDs...)
+}
+
+func (sg *SunGrow) psTreeMenu(discovery *PlantTreeDiscovery, psIDs ...string) (PsTrees, error) {
 	ret := make(PsTrees)
-
-	for range Only.Once {
-		pids := sg.SetPsIds(psIDs...)
-		if sg.Error != nil {
-			break
-		}
-
-		for _, psID := range pids {
-			ep := sg.GetByStruct(
-				getPsTreeMenu.EndPointName,
-				getPsTreeMenu.RequestData{PsId: psID},
-				time.Hour,
-			)
-			if sg.IsError() {
-				break
-			}
-
-			data := getPsTreeMenu.Assert(ep)
-			ret[psID.String()] = PsTree{Devices: data.Response.ResultData.List}
-		}
+	pids := sg.SetPsIds(psIDs...)
+	if sg.Error != nil {
+		return ret, sg.Error
 	}
 
-	return ret, sg.Error
+	for _, psID := range pids {
+		key := psID.String()
+		if discovery != nil && discovery.Denied(key) {
+			continue
+		}
+		ep := sg.GetByStruct(getPsTreeMenu.EndPointName, getPsTreeMenu.RequestData{PsId: psID}, time.Hour)
+		if sg.IsError() {
+			if discovery != nil && errors.Is(sg.Error, api.ErrHTTPForbidden) {
+				if discovery.denied == nil {
+					discovery.denied = make(map[string]bool)
+				}
+				discovery.denied[key] = true
+				sg.Error = nil
+				continue
+			}
+			return ret, sg.Error
+		}
+		ret[key] = PsTree{Devices: getPsTreeMenu.Assert(ep).Response.ResultData.List}
+	}
+	return ret, nil
 }

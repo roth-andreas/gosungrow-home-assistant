@@ -88,7 +88,7 @@ func TestPVInventoryRediscoveryKeepsPriorMembershipOnFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.Client.SungrowDevices = discovered.PageList
-	mqttLoadDevicePoints = func() (map[string]getDevicePointAttrs.Points, error) {
+	mqttLoadDevicePoints = func(*iSolarCloud.PlantTreeDiscovery) (map[string]getDevicePointAttrs.Points, error) {
 		return nil, errors.New("synthetic discovery unavailable")
 	}
 	if c.refreshPlantInventories() == nil {
@@ -97,7 +97,7 @@ func TestPVInventoryRediscoveryKeepsPriorMembershipOnFailure(t *testing.T) {
 	if len(c.plantInventories["100"].Devices) != 9 {
 		t.Fatal("failed rediscovery changed expected membership")
 	}
-	mqttLoadDevicePoints = func() (map[string]getDevicePointAttrs.Points, error) {
+	mqttLoadDevicePoints = func(*iSolarCloud.PlantTreeDiscovery) (map[string]getDevicePointAttrs.Points, error) {
 		return map[string]getDevicePointAttrs.Points{}, nil
 	}
 	if err := c.refreshPlantInventories(); err != nil {
@@ -130,6 +130,10 @@ type pvTestTransport struct {
 	publications []pvPublication
 	failAt       int
 	timeout      bool
+}
+
+func (m *pvTestTransport) Subscribe(string, byte, mqtt.MessageHandler) mqtt.Token {
+	return pvPublishToken{complete: true}
 }
 
 func (m *pvTestTransport) Publish(topic string, qos byte, retained bool, payload interface{}) mqtt.Token {

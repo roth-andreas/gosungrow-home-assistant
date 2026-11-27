@@ -5,10 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/login"
-	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/WebAppService/getDevicePointAttrs"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,6 +16,9 @@ import (
 	"github.com/roth-andreas/gosungrow-home-assistant/cmdHassio"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/getDeviceList"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/AppService/login"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/WebAppService/getDevicePointAttrs"
+	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/WebIscmAppService/getPsTreeMenu"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct"
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/valueTypes"
@@ -30,6 +32,7 @@ type mqttRecoveryFixture struct {
 	command                                      *CmdMqtt
 	denialOutput                                 bytes.Buffer
 	denyRequest                                  func(*http.Request) bool
+	resultData                                   func(string, string) string
 	broker                                       *pvTestTransport
 	requests                                     []string
 	loginCalls, collectionCalls, configWrites    int
@@ -103,6 +106,7 @@ func newMQTTRecoveryFixture(t *testing.T) *mqttRecoveryFixture {
 			result = `{"list":[` + strings.Join(tree, ",") + `]}`
 		case strings.HasSuffix(r.URL.Path, "/getDevicePointAttrs"):
 			result = `[]`
+		case strings.HasSuffix(r.URL.Path, "/getPsDetail"):
 		case strings.HasSuffix(r.URL.Path, "/queryDeviceList"):
 			if f.remoteQueryFailures > 0 {
 				f.remoteQueryFailures--
@@ -120,6 +124,9 @@ func newMQTTRecoveryFixture(t *testing.T) *mqttRecoveryFixture {
 			result = `{"pageList":[` + strings.Join(rows, ",") + `]}`
 		default:
 			t.Errorf("unexpected API path %s", r.URL.Path)
+		}
+		if f.resultData != nil {
+			result = f.resultData(filepath.Base(r.URL.Path), result)
 		}
 		return mqttFixtureResponse(`{"req_serial_num":"synthetic","result_code":"1","result_msg":"success","result_data":` + result + `}`), nil
 	}))
@@ -397,7 +404,7 @@ func TestMQTTMetadataFailurePreservesInventoryAndRetriesDiscovery(t *testing.T) 
 	f.command.rediscoveryPending = true
 	f.command.plantInventories["100"] = f.command.plantTopologies["100"].Inventory
 	before, _ := json.Marshal(f.command.Client.SungrowDevices)
-	mqttLoadDevicePoints = func() (map[string]getDevicePointAttrs.Points, error) {
+	mqttLoadDevicePoints = func(*iSolarCloud.PlantTreeDiscovery) (map[string]getDevicePointAttrs.Points, error) {
 		return nil, errors.New("synthetic gateway timeout")
 	}
 	logins := f.loginCalls
@@ -421,7 +428,7 @@ func TestMQTTTopologyFailureDoesNotPoisonCollection(t *testing.T) {
 	f := newMQTTRecoveryFixture(t)
 	oldLoader := mqttLoadPlantTrees
 	t.Cleanup(func() { mqttLoadPlantTrees = oldLoader })
-	mqttLoadPlantTrees = func() (iSolarCloud.PsTrees, error) {
+	mqttLoadPlantTrees = func(*iSolarCloud.PlantTreeDiscovery) (iSolarCloud.PsTrees, error) {
 		cmds.Api.SunGrow.Error = errors.New("synthetic invalid topology")
 		return nil, cmds.Api.SunGrow.Error
 	}
@@ -452,7 +459,7 @@ func TestMQTTFatalSequenceClassificationOverridesEarlierTokenText(t *testing.T) 
 func TestRefreshPlantTopologiesKeepsFailureNonfatal(t *testing.T) {
 	originalLoader := mqttLoadPlantTrees
 	defer func() { mqttLoadPlantTrees = originalLoader }()
-	mqttLoadPlantTrees = func() (iSolarCloud.PsTrees, error) {
+	mqttLoadPlantTrees = func(*iSolarCloud.PlantTreeDiscovery) (iSolarCloud.PsTrees, error) {
 		return nil, errors.New("tree unavailable")
 	}
 
@@ -460,7 +467,7 @@ func TestRefreshPlantTopologiesKeepsFailureNonfatal(t *testing.T) {
 	c.Client = &cmdHassio.Mqtt{SungrowDevices: getDeviceList.Devices{
 		testDeviceListDevice("100", "100_55_1_1", 55),
 	}}
-	c.refreshPlantTopologies()
+	c.refreshPlantTopologies(c.Client.SungrowDevices)
 
 	topology, ok := c.plantTopologies["100"]
 	if !ok || topology.Complete || topology.Reason != "plant topology unavailable" {
@@ -1023,7 +1030,7 @@ func testDeviceListDevice(psID string, psKey string, deviceType int64) getDevice
 
 func TestMQTTStartupReportsActualDeniedMetadataRequest(t *testing.T) {
 	t.Setenv("GOSUNGROW_TRACE_HTTP", "")
-	for _, endpoint := range []string{"getPsList", "getPsTreeMenu", "getDevicePointAttrs"} {
+	for _, endpoint := range []string{"getPsList", "getDevicePointAttrs"} {
 		t.Run(endpoint, func(t *testing.T) {
 			f := newMQTTRecoveryFixture(t)
 			f.command.syncCycle = 0
@@ -1050,6 +1057,16 @@ func TestMQTTStartupReportsActualDeniedMetadataRequest(t *testing.T) {
 func TestMQTTStartupKeepsSeparateTopologyAndTerminalDenials(t *testing.T) {
 	f := newMQTTRecoveryFixture(t)
 	f.command.syncCycle = 0
+	f.resultData = func(endpoint, result string) string {
+		switch endpoint {
+		case "getPsList":
+			return `{"pageList":[{"ps_id":"100"},{"ps_id":"200"}]}`
+		case "getPsTreeMenu":
+			return `{"list":[{"ps_id":"200","ps_key":"200_55_1_1","device_type":55,"uuid":1}]}`
+		default:
+			return result
+		}
+	}
 	trees := 0
 	f.denyRequest = func(r *http.Request) bool {
 		if strings.HasSuffix(r.URL.Path, "/getPsTreeMenu") {
@@ -1058,10 +1075,13 @@ func TestMQTTStartupKeepsSeparateTopologyAndTerminalDenials(t *testing.T) {
 		}
 		return strings.HasSuffix(r.URL.Path, "/getDevicePointAttrs")
 	}
-	f.command.refreshPlantTopologies()
+	f.command.refreshPlantTopologies(f.command.Client.SungrowDevices)
 	err := f.command.retryStartupRecoverable("device point discovery", f.command.refreshPlantInventories)
 	if iSolarCloud.ClassifyFailure(err) != iSolarCloud.FailureClassNonRecoverable || f.loginCalls != 1 {
 		t.Fatalf("metadata discovery = %v, login count = %d", err, f.loginCalls)
+	}
+	if trees != 2 {
+		t.Fatalf("issued %d tree requests across two plants, want 2", trees)
 	}
 	lines := strings.Split(strings.TrimSpace(f.denialOutput.String()), "\n")
 	if len(lines) != 2 {
@@ -1069,6 +1089,214 @@ func TestMQTTStartupKeepsSeparateTopologyAndTerminalDenials(t *testing.T) {
 	}
 	assertCloudDenialLog(t, lines[0], "operation=topology", "endpoint=WebIscmAppService.getPsTreeMenu")
 	assertCloudDenialLog(t, lines[1], "operation=point_metadata", "endpoint=WebAppService.getDevicePointAttrs")
+}
+
+func TestMQTTTreeDenialPreservesVerifiedPublicationAcrossStartupAndScheduledSync(t *testing.T) {
+	f := newMQTTRecoveryFixture(t)
+	c := f.command
+	const deniedKey, healthyKey = "100_55_1_1", "200_55_1_1"
+	const healthyRow = `{"ps_id":"200","ps_key":"200_55_1_1","device_type":55,"uuid":2,"point_data":[{"point_id":"p24","point_name":"Active Power","value":0.2,"unit":"kW"},{"point_id":"fallback_missing","value":3}]}`
+	var treeCalls, deviceCalls, attrsCalls int
+	var scheduled bool
+	f.denyRequest = func(r *http.Request) bool {
+		if filepath.Base(r.URL.Path) == "getPsTreeMenu" {
+			treeCalls++
+			return treeCalls == 1
+		}
+		return false
+	}
+	f.resultData = func(endpoint, result string) string {
+		switch endpoint {
+		case "getPsList":
+			return `{"pageList":[{"ps_id":"100"},{"ps_id":"200"}]}`
+		case "getDeviceList":
+			deviceCalls++
+			if deviceCalls == 1 {
+				return `{"pageList":[{"ps_id":"100","ps_key":"100_55_1_1","device_type":55,"uuid":1}]}`
+			}
+			return `{"pageList":[` + healthyRow + `]}`
+		case "getPsTreeMenu":
+			return `{"list":[{"ps_id":"200","ps_key":"200_55_1_1","device_type":55,"uuid":2}]}`
+		case "getDevicePointAttrs":
+			attrsCalls++
+			return `[{"id":"fallback_missing","unit":"V"},{"id":"fallback_retained","unit":"V"}]`
+		case "queryDeviceList":
+			if f.collectionCalls%2 == 0 {
+				return `{"pageList":[` + healthyRow + `]}`
+			}
+			knownValue, knownUnit, retainedUnit, changedUnit := 2, "kW", `,"unit":"V"`, "V"
+			var native string
+			if scheduled {
+				knownValue, knownUnit, retainedUnit, changedUnit = 3000, "W", "", "A"
+			} else {
+				native = `,{"ps_id":"100","ps_key":"100","device_type":11,"point_data":[{"point_id":"p83076","value":6,"unit":"kW"}]}`
+			}
+			return fmt.Sprintf(`{"pageList":[{"ps_id":"100","ps_key":%q,"device_type":55,"alarm_count":2,"fault_count":null,"point_data":[
+				{"point_id":"p24","point_name":"Active Power","value":%d,"unit":%q},
+				{"point_id":"fallback_retained","value":1%s},
+				{"point_id":"fallback_changed_unit","value":1,"unit":%q},
+				{"point_id":"fallback_missing","value":3},
+				{"point_id":"fallback_blank","value":3,"unit":""},
+				{"point_id":"fallback_null","value":3,"unit":null},
+				{"point_id":"fallback_dash","value":3,"unit":"--"},
+				{"point_id":"fallback_unknown","value":3,"unit":"unrecognized"},
+				{"point_id":"fallback_invalid_value","value":"NaN","unit":"kW"}
+			]},{"ps_id":"100","ps_key":"100_55_1_9","device_type":55,"point_data":[{"point_id":"fallback_unknown_parent","value":4,"unit":"kW"}]}%s]}`, deniedKey, knownValue, knownUnit, retainedUnit, changedUnit, native)
+		default:
+			return result
+		}
+	}
+
+	oldConfigDir := cmds.ConfigDir
+	t.Cleanup(func() { cmds.ConfigDir = oldConfigDir })
+	cmds.ConfigDir = t.TempDir()
+	if err := os.WriteFile(filepath.Join(cmds.ConfigDir, "mqtt_endpoints.json"), []byte(`{"queryDeviceList":{"include":["virtual.*","queryDeviceList.*"]}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	c.syncCycle, c.Host, c.Port = 0, "127.0.0.1", "1883"
+	c.Username, c.Password = "synthetic", "synthetic"
+	if err := c.startMQTT(func(client *cmdHassio.Mqtt) error {
+		client.WithClient(f.broker)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	assertCloudDenialLog(t, f.denialOutput.String(), "operation=topology", "endpoint=WebIscmAppService.getPsTreeMenu")
+	denied := c.plantInventories["100"].Devices[deniedKey]
+	healthy := c.plantInventories["200"].Devices[healthyKey]
+	if treeCalls != 2 || attrsCalls != 1 || denied.PsKey != deniedKey || len(denied.Points) != 0 || len(healthy.Points) != 2 || c.plantTopologies["100"].Complete || !c.plantTopologies["200"].Complete {
+		t.Fatalf("discovery did not scope fallback to one plant: trees=%d attrs=%d denied=%+v healthy=%+v", treeCalls, attrsCalls, denied, healthy)
+	}
+	// Use the configured query endpoint without the additional realtime batches in this fixture.
+	delete(c.endpoints, realtimeEndpointName)
+	initialStart := len(f.broker.publications)
+	if err := c.Cron(); err != nil {
+		t.Fatal(err)
+	}
+	initial := f.broker.publications[initialStart:]
+	assertMQTTRetainedPoint(t, initial, "virtual-"+deniedKey+"-p24", "kW", "2")
+	assertMQTTRetainedPoint(t, initial, "queryDeviceList-100-devices-"+deniedKey+"-alarm_count", "", "2")
+	assertMQTTRetainedPoint(t, initial, "virtual-"+deniedKey+"-fallback_retained", "V", "1")
+	assertMQTTRetainedPoint(t, initial, "virtual-"+deniedKey+"-fallback_changed_unit", "V", "1")
+	assertMQTTRetainedPoint(t, initial, "virtual-"+healthyKey+"-fallback_missing", "V", "3")
+	assertMQTTRetainedPoint(t, initial, "virtual-100-pv_power", "kW", "6")
+	assertMQTTRetainedPoint(t, initial, "virtual-200-pv_power", "kW", "0.2")
+	for _, name := range []string{"fallback_missing", "fallback_blank", "fallback_null", "fallback_dash", "fallback_unknown", "fallback_invalid_value"} {
+		assertNoMQTTPointMessages(t, initial, "virtual-"+deniedKey+"-"+name+"/", "-"+deniedKey+"-data-"+name+"-value/")
+	}
+	assertNoMQTTPointMessages(t, initial, "queryDeviceList-100-devices-"+deniedKey+"-fault_count/", "virtual-100_55_1_9-fallback_unknown_parent/", "-100_55_1_9-data-fallback_unknown_parent-value/")
+	if !c.Client.LastRefresh.Equal(f.clock) {
+		t.Fatal("initial publication did not advance LastRefresh")
+	}
+
+	scheduled = true
+	f.clock = f.clock.Add(5 * time.Minute)
+	start := len(f.broker.publications)
+	if err := c.Cron(); err != nil {
+		t.Fatal(err)
+	}
+	updates := f.broker.publications[start:]
+	assertMQTTRetainedPoint(t, updates, "virtual-"+deniedKey+"-p24", "kW", "3")
+	assertMQTTRetainedPoint(t, updates, "virtual-"+deniedKey+"-fallback_changed_unit", "A", "1")
+	assertNoMQTTPointMessages(t, updates, "virtual-100-pv_power", deniedKey+"-fallback_retained")
+	if !c.Client.LastRefresh.Equal(f.clock) || f.loginCalls != 1 || treeCalls != 2 || attrsCalls != 1 || f.collectionCalls != 4 {
+		t.Fatalf("scheduled sync did not maintain fallback: refresh=%s login=%d tree=%d attrs=%d telemetry=%d", c.Client.LastRefresh, f.loginCalls, treeCalls, attrsCalls, f.collectionCalls)
+	}
+}
+
+func assertMQTTRetainedPoint(t *testing.T, publications []pvPublication, objectID, unit, value string) {
+	t.Helper()
+	var config, state bool
+	for _, message := range publications {
+		if !message.retained {
+			continue
+		}
+		if strings.HasSuffix(message.topic, objectID+"/config") {
+			publishedUnit, present := message.payload["unit_of_measurement"]
+			config = config || (!present && unit == "") || (present && publishedUnit == unit && unit != "")
+		}
+		if config && strings.HasSuffix(message.topic, objectID+"/state") && message.payload["value"] == value {
+			state = true
+		}
+	}
+	if !config || !state {
+		t.Errorf("%s retained config (%q)=%v, state (%q)=%v", objectID, unit, config, value, state)
+		for _, message := range publications {
+			if strings.Contains(message.topic, objectID) {
+				t.Logf("%s: %v", message.topic, message.payload)
+			}
+		}
+	}
+}
+
+func assertNoMQTTPointMessages(t *testing.T, publications []pvPublication, names ...string) {
+	t.Helper()
+	for _, publication := range publications {
+		for _, name := range names {
+			if strings.Contains(publication.topic, name) {
+				t.Errorf("unexpected publication on %s", publication.topic)
+			}
+		}
+	}
+}
+
+func TestMQTTTreeDenialAfterTokenRecoveryDiscardsAndRestoresMetadata(t *testing.T) {
+	f := newMQTTRecoveryFixture(t)
+	c := f.command
+	const key = "100_55_1_1"
+	f.resultData = func(endpoint, result string) string {
+		if endpoint == "getDevicePointAttrs" {
+			return `[{"id":"p24","unit":"kW"}]`
+		}
+		return result
+	}
+	c.refreshPlantTopologies(c.Client.SungrowDevices)
+	if err := c.refreshPlantInventories(); err != nil {
+		t.Fatal(err)
+	}
+	if !c.plantTopologies["100"].Complete || len(c.plantInventories["100"].Devices[key].Points) != 1 {
+		t.Fatal("expected baseline discovery to have usable topology and metadata")
+	}
+	cloud := cmds.Api.SunGrow
+	tree := cloud.GetEndpoint(getPsTreeMenu.EndPointName).SetRequest(getPsTreeMenu.RequestData{PsId: valueTypes.SetPsIdString("100")})
+	if err := cloud.ApiRoot.WebCacheRemove(tree); err != nil {
+		t.Fatal(err)
+	}
+	var deniedRequests, attributeRequests int
+	f.denyRequest = func(r *http.Request) bool {
+		switch filepath.Base(r.URL.Path) {
+		case "getPsTreeMenu":
+			deniedRequests++
+			return true
+		case "getDevicePointAttrs":
+			attributeRequests++
+		}
+		return false
+	}
+	f.tokenFailures = 1
+	if err := c.Cron(); err != nil {
+		t.Fatal(err)
+	}
+	inventory := c.plantInventories["100"]
+	if c.rediscoveryPending || !c.treeDiscovery.Denied("100") || c.plantTopologies["100"].Complete || len(c.points) != 0 || len(inventory.Devices[key].Points) != 0 || len(inventory.Devices) != 9 || c.Client.LastRefresh.IsZero() {
+		t.Fatalf("degraded rediscovery: pending=%v denied=%v complete=%v points=%d device points=%d devices=%d refresh=%s requests=%v", c.rediscoveryPending, c.treeDiscovery.Denied("100"), c.plantTopologies["100"].Complete, len(c.points), len(inventory.Devices[key].Points), len(inventory.Devices), c.Client.LastRefresh, f.requests)
+	}
+	assertNoMQTTPointMessages(t, f.broker.publications, "virtual-100-pv_power")
+	if f.loginCalls != 2 || deniedRequests != 1 || attributeRequests != 0 || f.collectionCalls != 2 {
+		t.Fatalf("degraded rediscovery retried unexpectedly: login=%d tree=%d attrs=%d telemetry=%d", f.loginCalls, deniedRequests, attributeRequests, f.collectionCalls)
+	}
+	assertCloudDenialLog(t, f.denialOutput.String(), "operation=runtime_rediscovery", "endpoint=WebIscmAppService.getPsTreeMenu")
+
+	f.denyRequest = nil
+	cmds.Api.SunGrow.RequireAuthentication()
+	f.clock = f.clock.Add(5 * time.Minute)
+	if err := c.Cron(); err != nil {
+		t.Fatal(err)
+	}
+	if c.rediscoveryPending || c.treeDiscovery.Denied("100") || !c.plantTopologies["100"].Complete || len(c.plantInventories["100"].Devices[key].Points) != 1 || !c.Client.LastRefresh.Equal(f.clock) {
+		t.Fatal("later permitted rediscovery did not restore normal topology and metadata")
+	}
+	assertMQTTRetainedPoint(t, f.broker.publications, "virtual-100-pv_power", "kW", "1.8")
 }
 
 func TestMQTTLive403DistinguishesLookupFromCollection(t *testing.T) {

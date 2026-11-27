@@ -210,6 +210,11 @@ func (w *Web) Get(endpoint EndPoint) EndPoint {
 	}
 
 	if w.Error != nil {
+		if errors.Is(w.Error, ErrHTTPForbidden) {
+			if endpoint, ok := endpoint.(interface{ WithTransportError(error) EndPoint }); ok {
+				return endpoint.WithTransportError(w.Error)
+			}
+		}
 		endpoint = endpoint.SetError("%s", w.Error)
 	}
 	return endpoint
@@ -399,7 +404,7 @@ func (w *Web) getApi(endpoint EndPoint) ([]byte, error) {
 
 		if w.httpResponse.StatusCode == http.StatusForbidden {
 			w.reportForbidden(endpoint, httpReq, tokenPlain != "")
-			w.Error = errors.New("API httpResponse is 403 Forbidden")
+			w.Error = ErrHTTPForbidden
 			break
 		}
 

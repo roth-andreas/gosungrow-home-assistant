@@ -11,11 +11,20 @@ import (
 // DevicePointAttrsByDevice retains the device scope discarded by the flat HA
 // metadata lookup. Discovery metadata is independent of live point values.
 func (sg *SunGrow) DevicePointAttrsByDevice() (map[string]getDevicePointAttrs.Points, error) {
-	points := make(map[string]getDevicePointAttrs.Points)
-	trees, err := sg.PsTreeMenu()
+	return sg.devicePointAttrsByDevice(nil)
+}
+
+// DevicePointAttrs loads metadata for the trees available in this discovery attempt.
+func (d *PlantTreeDiscovery) DevicePointAttrs(sg *SunGrow) (map[string]getDevicePointAttrs.Points, error) {
+	return sg.devicePointAttrsByDevice(d)
+}
+
+func (sg *SunGrow) devicePointAttrsByDevice(discovery *PlantTreeDiscovery) (map[string]getDevicePointAttrs.Points, error) {
+	trees, err := sg.psTreeMenu(discovery)
 	if err != nil {
 		return nil, err
 	}
+	points := make(map[string]getDevicePointAttrs.Points)
 	for _, tree := range trees {
 		for _, device := range tree.Devices {
 			ep := sg.GetByStruct(getDevicePointAttrs.EndPointName, getDevicePointAttrs.RequestData{

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -85,8 +86,8 @@ func TestHTTP403EvidenceContainsOnlySafeTransportMetadata(t *testing.T) {
 			if err := web.SetUrl(server.URL); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := web.getApi(denialTestEndpoint{request: test.request}); err == nil {
-				t.Fatal("HTTP 403 returned no error")
+			if _, err := web.getApi(denialTestEndpoint{request: test.request}); !errors.Is(err, ErrHTTPForbidden) {
+				t.Fatalf("HTTP 403 returned %v, want ErrHTTPForbidden", err)
 			}
 			if len(records) != 1 {
 				t.Fatalf("got %d denial records, want one", len(records))

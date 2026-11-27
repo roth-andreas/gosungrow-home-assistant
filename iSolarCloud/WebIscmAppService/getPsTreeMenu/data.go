@@ -12,6 +12,12 @@ const Url = "/v1/devService/getPsTreeMenu"
 const Disabled = false
 const EndPointName = "WebIscmAppService.getPsTreeMenu"
 
+// WithTransportError preserves the response status for plant-scoped discovery.
+func (e EndPoint) WithTransportError(err error) api.EndPoint {
+	e.Error = err
+	return e
+}
+
 type RequestData struct {
 	PsId valueTypes.PsId `json:"ps_id" required:"true"`
 }

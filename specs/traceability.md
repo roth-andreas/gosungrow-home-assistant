@@ -111,6 +111,15 @@ Client ownership is `iSolarCloud/struct.go`, `recovery.go`, `data.go`, `api/web.
 | Startup and live sync checks in `cmd/cmd_mqtt_test.go` | `REQ-API-035`; `REQ-XCUT-024`; `REQ-ACC-085`–`088`. Phase attribution, logical and wire endpoint identity, successful publication, and bounded recovery. |
 | App wrapper checks in `addon/gosungrow/recovery_policy_test.sh` and `addon/gosungrow/configuration_test.sh` | `REQ-API-035`; `REQ-XCUT-024`; `REQ-ACC-088`. Non-recoverable stop and dashboard failure tolerance. |
 
+## MQTT fallback after plant-tree denial
+
+| Verification | Governing requirements |
+|---|---|
+| Plant-scoped API discovery and transport checks in `iSolarCloud/highlevel_ps_test.go` and `iSolarCloud/api/web_request_metadata_test.go` | `REQ-API-023`, `031`–`032`, `035`–`036`; `REQ-ACC-085`, `089`–`092`. Exact endpoint and status, per-plant request counts, composite plant identity, successful empty trees, and existing failure classification. |
+| MQTT startup, rediscovery, and publication checks in `cmd/cmd_mqtt_test.go` and `cmd/cmd_mqtt_plant_pv_test.go` | `REQ-MQTT-004`–`005`, `012`, `016`, `021`–`022`, `025`, `027`; `REQ-HA-016`; `REQ-ACC-089`–`092`. Initial and scheduled publication, active inventory, decoded schema counts and recognized units, preservation of retained messages for points with unverifiable units, healthy-plant metadata, PV suppression and native publication, and later recovery. |
+| App wrapper regression checks in `addon/gosungrow/configuration_test.sh` and `addon/gosungrow/recovery_policy_test.sh` | `REQ-API-035`; `REQ-MQTT-027`; `REQ-ACC-088`, `092`. Existing dashboard failure tolerance and terminal handling of other denials. |
+| Affected Home Assistant installation release check (planned) | `REQ-REL-014`; `REQ-ACC-093`. Cold add-on startup and scheduled sync publish fresh MQTT-backed values while the tree is denied. |
+
 ## Behavioral tests
 
 Artifact ownership identifies executable evidence; validation results must be reported separately for each working tree.

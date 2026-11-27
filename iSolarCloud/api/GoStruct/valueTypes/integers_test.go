@@ -52,6 +52,16 @@ func TestCountSetStringRejectsNullPlaceholder(t *testing.T) {
 	}
 }
 
+func TestCountUnmarshalDistinguishesNullFromZero(t *testing.T) {
+	count := SetCountString("7")
+	if err := json.Unmarshal([]byte("null"), &count); err != nil || count.Valid {
+		t.Fatalf("null count = %+v, err = %v", count, err)
+	}
+	if err := json.Unmarshal([]byte("0"), &count); err != nil || !count.Valid || count.Value() != 0 {
+		t.Fatalf("zero count = %+v, err = %v", count, err)
+	}
+}
+
 func TestCountSetStringRejectsCompositePlaceholderWithoutError(t *testing.T) {
 	count := SetCountString("3109704_3109705")
 

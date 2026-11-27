@@ -340,6 +340,11 @@ func isNumericUnit(unit string) bool {
 	return false
 }
 
+// IsKnownMeasurementUnit reports whether existing normalization or entity metadata recognizes unit.
+func IsKnownMeasurementUnit(unit string) bool {
+	return valueTypes.UnitValueType(unit) != "" || isNumericUnit(unit)
+}
+
 func SetDefault(value string, def string) string {
 	if value == "" {
 		value = def

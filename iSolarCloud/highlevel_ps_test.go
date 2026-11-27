@@ -1,10 +1,85 @@
 package iSolarCloud
 
 import (
+	"net/http"
+	"path"
 	"testing"
 
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/WebIscmAppService/getPsTreeMenu"
 )
+
+func TestPlantTreeDiscoveryKeepsDenialDistinctFromAnEmptyTree(t *testing.T) {
+	const deniedID, healthyID = "100_101", "200"
+	treeCalls, attrsCalls := 0, 0
+	sg, auth, _ := recoveryClient(t, recoveryTransport(func(request *http.Request) (*http.Response, error) {
+		switch path.Base(request.URL.Path) {
+		case "login":
+			return recoveryResponse(recoveryLoginResponse("synthetic_token")), nil
+		case "getUserList":
+			return recoveryResponse(`{"req_serial_num":"synthetic","result_code":"1","result_msg":"success","result_data":[]}`), nil
+		case "getPsList":
+			return recoveryResponse(`{"req_serial_num":"synthetic","result_code":"1","result_msg":"success","result_data":{"pageList":[{"ps_id":"100_101"},{"ps_id":"200"}]}}`), nil
+		case "getPsTreeMenu":
+			treeCalls++
+			if treeCalls == 1 {
+				response := recoveryResponse("synthetic forbidden body")
+				response.StatusCode = http.StatusForbidden
+				return response, nil
+			}
+			return recoveryResponse(`{"req_serial_num":"synthetic","result_code":"1","result_msg":"success","result_data":{"list":[]}}`), nil
+		case "getDevicePointAttrs":
+			attrsCalls++
+			return recoveryResponse(`{"req_serial_num":"synthetic","result_code":"1","result_msg":"success","result_data":[]}`), nil
+		default:
+			t.Fatalf("unexpected endpoint %s", request.URL.Path)
+			return nil, nil
+		}
+	}))
+	if err := sg.AuthenticateSession(auth, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	var attempt PlantTreeDiscovery
+	trees, err := attempt.Trees(sg)
+	if err != nil || !attempt.Denied(deniedID) || attempt.Denied(healthyID) || len(trees) != 1 {
+		t.Fatalf("discovery of a denied and empty tree: trees=%v err=%v", trees, err)
+	}
+	if tree, ok := trees[healthyID]; !ok || len(tree.Devices) != 0 {
+		t.Fatalf("empty successful tree was lost: %+v", trees)
+	}
+	if _, err := attempt.DevicePointAttrs(sg); err != nil || treeCalls != 2 || attrsCalls != 0 {
+		t.Fatalf("metadata retried a denied tree: err=%v trees=%d attrs=%d", err, treeCalls, attrsCalls)
+	}
+	var next PlantTreeDiscovery
+	trees, err = next.Trees(sg)
+	if err != nil || next.HasDenials() || len(trees) != 2 || treeCalls != 3 {
+		t.Fatalf("later discovery did not retry the denied plant: err=%v trees=%v requests=%d", err, trees, treeCalls)
+	}
+}
+
+func TestPlantTreeDiscoveryRequiresAnActualHTTPForbiddenResponse(t *testing.T) {
+	sg, auth, _ := recoveryClient(t, recoveryTransport(func(request *http.Request) (*http.Response, error) {
+		switch path.Base(request.URL.Path) {
+		case "login":
+			return recoveryResponse(recoveryLoginResponse("synthetic_token")), nil
+		case "getUserList":
+			return recoveryResponse(`{"req_serial_num":"synthetic","result_code":"1","result_msg":"success","result_data":[]}`), nil
+		case "getPsList":
+			return recoveryResponse(`{"req_serial_num":"synthetic","result_code":"1","result_msg":"success","result_data":{"pageList":[{"ps_id":"100"}]}}`), nil
+		case "getPsTreeMenu":
+			return recoveryResponse(`{"req_serial_num":"synthetic","result_code":"-1","result_msg":"API httpResponse is 403 Forbidden","result_data":{}}`), nil
+		default:
+			t.Fatalf("unexpected endpoint %s", request.URL.Path)
+			return nil, nil
+		}
+	}))
+	if err := sg.AuthenticateSession(auth, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	var attempt PlantTreeDiscovery
+	if _, err := attempt.Trees(sg); ClassifyFailure(err) != FailureClassNonRecoverable || attempt.HasDenials() {
+		t.Fatalf("application error treated as an HTTP denial: err=%v denied=%v", err, attempt.HasDenials())
+	}
+}
 
 func TestBuildPlantTopologiesValidatesParentRelationships(t *testing.T) {
 	tests := []struct {

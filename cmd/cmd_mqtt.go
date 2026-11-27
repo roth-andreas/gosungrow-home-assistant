@@ -5,6 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"time"
+
 	"github.com/MickMake/GoUnify/Only"
 	"github.com/MickMake/GoUnify/cmdHelp"
 	"github.com/MickMake/GoUnify/cmdLog"
@@ -20,12 +28,6 @@ import (
 	"github.com/roth-andreas/gosungrow-home-assistant/iSolarCloud/api/GoStruct/valueTypes"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"os"
-	"path/filepath"
-	"regexp"
-	"sort"
-	"strings"
-	"time"
 )
 
 const (
@@ -63,18 +65,23 @@ type mqttEndpointBatch struct {
 	Args      []string
 }
 
+type mqttPublishedPoint struct {
+	value, unit string
+	degraded    bool
+}
+
 var mqttApiLogin = func(force bool) error {
 	return cmds.Api.ApiLogin(force)
 }
 
 var mqttLoadDevices = func() (getDeviceList.Devices, error) { return cmds.Api.SunGrow.GetDeviceList() }
 
-var mqttLoadPlantTrees = func() (iSolarCloud.PsTrees, error) {
-	return cmds.Api.SunGrow.PsTreeMenu()
+var mqttLoadPlantTrees = func(discovery *iSolarCloud.PlantTreeDiscovery) (iSolarCloud.PsTrees, error) {
+	return discovery.Trees(cmds.Api.SunGrow)
 }
 
-var mqttLoadDevicePoints = func() (map[string]getDevicePointAttrs.Points, error) {
-	return cmds.Api.SunGrow.DevicePointAttrsByDevice()
+var mqttLoadDevicePoints = func(discovery *iSolarCloud.PlantTreeDiscovery) (map[string]getDevicePointAttrs.Points, error) {
+	return discovery.DevicePointAttrs(cmds.Api.SunGrow)
 }
 
 //goland:noinspection GoNameStartsWithPackageName
@@ -95,7 +102,7 @@ type CmdMqtt struct {
 	Client    *cmdHassio.Mqtt
 	endpoints MqttEndPoints
 	points    getDevicePointAttrs.PointsMap
-	previous  map[string]*api.DataEntries
+	previous  map[string]mqttPublishedPoint
 
 	log                 cmdLog.Log
 	optionSleepDelay    time.Duration
@@ -109,6 +116,8 @@ type CmdMqtt struct {
 	currentSyncEndpoint string
 	plantTopologies     map[string]iSolarCloud.PlantTopology
 	plantInventories    map[string]iSolarCloud.PlantInventory
+	treeDiscovery       iSolarCloud.PlantTreeDiscovery
+	deniedTreeParents   map[string]bool
 	rediscoveryPending  bool
 }
 
@@ -130,7 +139,7 @@ func NewCmdMqtt(logLevel string) *CmdMqtt {
 			log:                 cmdLog.New(logLevel),
 			optionSleepDelay:    time.Second * 40, // Takes up to 40 seconds for data to come in.
 			optionFetchSchedule: time.Minute * 5,
-			previous:            make(map[string]*api.DataEntries, 0),
+			previous:            make(map[string]mqttPublishedPoint),
 			plantTopologies:     make(map[string]iSolarCloud.PlantTopology),
 			plantInventories:    make(map[string]iSolarCloud.PlantInventory),
 			now:                 time.Now,
@@ -236,6 +245,10 @@ func (c *CmdMqtt) AttachFlags(cmd *cobra.Command, viper *viper.Viper) {
 }
 
 func (c *CmdMqtt) MqttArgs(_ *cobra.Command, _ []string) error {
+	return c.startMQTT((*cmdHassio.Mqtt).Connect)
+}
+
+func (c *CmdMqtt) startMQTT(connect func(*cmdHassio.Mqtt) error) error {
 	for range Only.Once {
 		c.log.Info("Connecting to MQTT HASSIO Service...\n")
 		c.Client = cmdHassio.New(cmdHassio.Mqtt{
@@ -265,7 +278,8 @@ func (c *CmdMqtt) MqttArgs(_ *cobra.Command, _ []string) error {
 		c.log.Info("Found SunGrow %d devices\n", len(c.Client.SungrowDevices))
 		c.log.Info("SunGrow device types: %s\n", formatSungrowDeviceTypeSummary(c.Client.SungrowDevices))
 		c.logRealtimePsKeySelections(c.Client.SungrowDevices)
-		c.refreshPlantTopologies()
+		c.treeDiscovery = iSolarCloud.PlantTreeDiscovery{}
+		c.refreshPlantTopologies(c.Client.SungrowDevices)
 		c.Client.DeviceName = DefaultServiceName
 		_, c.Error = c.Client.SetDeviceConfig(
 			c.Client.DeviceName, c.Client.DeviceName,
@@ -313,7 +327,7 @@ func (c *CmdMqtt) MqttArgs(_ *cobra.Command, _ []string) error {
 			c.Client.SungrowPsIds[psId.PsId] = true
 		}
 
-		c.Error = c.Client.Connect()
+		c.Error = connect(c.Client)
 		if c.Error != nil {
 			break
 		}
@@ -567,22 +581,23 @@ func (c *CmdMqtt) rediscover() error {
 		return err
 	}
 	staged := *c
-	client := *c.Client
-	client.SungrowDevices = devices
-	staged.Client = &client
-	if err = staged.refreshPlantInventories(); err != nil {
+	staged.treeDiscovery = iSolarCloud.PlantTreeDiscovery{}
+	byDevice, err := staged.loadDevicePointMetadata()
+	if err != nil {
 		return err
 	}
 	c.currentSyncEndpoint = "plant topology refresh"
-	staged.refreshPlantTopologies()
+	staged.refreshPlantTopologies(devices)
 	if cmds.Api.SunGrow.NeedLogin {
 		if cmds.Api.SunGrow.Error != nil {
 			return cmds.Api.SunGrow.Error
 		}
 		return errors.New("need to login again")
 	}
+	staged.setPlantInventories(devices, byDevice)
 	c.Client.SungrowDevices = devices
 	c.plantInventories, c.points, c.plantTopologies = staged.plantInventories, staged.points, staged.plantTopologies
+	c.treeDiscovery, c.deniedTreeParents = staged.treeDiscovery, staged.deniedTreeParents
 	c.dashboardTargets = staged.dashboardTargets
 	if c.dashboardRuntime != nil {
 		c.dashboardRuntime.updateTargets(c.dashboardTargets)
@@ -655,12 +670,13 @@ func (c *CmdMqtt) collectAndPublishBatch(batch mqttEndpointBatch, newDay bool, c
 	return nil
 }
 
-func (c *CmdMqtt) refreshPlantTopologies() {
+func (c *CmdMqtt) refreshPlantTopologies(devices getDeviceList.Devices) {
 	if c.syncCycle == 0 {
 		cmds.Api.setCloudOperation(cloudTopology, 0)
 	}
-	trees, err := mqttLoadPlantTrees()
-	if err == nil {
+	trees, err := mqttLoadPlantTrees(&c.treeDiscovery)
+	// An incomplete tree discovery must not replace the dashboard's target set.
+	if err == nil && !c.treeDiscovery.HasDenials() {
 		if targets, targetErr := discoverDashboardTargetsFromTrees(trees); targetErr == nil {
 			c.dashboardTargets = targets
 		}
@@ -670,10 +686,13 @@ func (c *CmdMqtt) refreshPlantTopologies() {
 		cmds.Api.SunGrow.Error = nil
 	}
 	topologies := iSolarCloud.BuildPlantTopologies(trees)
-	plantIDs := mqttPlantIDs(c.Client.SungrowDevices)
+	plantIDs := mqttPlantIDs(devices)
 	for _, psID := range plantIDs {
 		topology, ok := topologies[psID]
-		if !ok {
+		if c.treeDiscovery.Denied(psID) {
+			topology = iSolarCloud.PlantTopology{PsID: psID, Reason: "plant tree denied"}
+			topologies[psID] = topology
+		} else if !ok {
 			topology = iSolarCloud.PlantTopology{PsID: psID, Complete: false, Reason: "plant topology unavailable"}
 			topologies[psID] = topology
 		}
@@ -688,20 +707,56 @@ func (c *CmdMqtt) refreshPlantTopologies() {
 	c.plantTopologies = topologies
 }
 
-func (c *CmdMqtt) refreshPlantInventories() error {
+func (c *CmdMqtt) loadDevicePointMetadata() (map[string]getDevicePointAttrs.Points, error) {
 	if c.syncCycle == 0 {
 		cmds.Api.setCloudOperation(cloudPointMetadata, 0)
 	}
-	byDevice, err := mqttLoadDevicePoints()
+	return mqttLoadDevicePoints(&c.treeDiscovery)
+}
+
+func (c *CmdMqtt) refreshPlantInventories() error {
+	byDevice, err := c.loadDevicePointMetadata()
 	if err != nil {
 		return err
 	}
-	inventories := iSolarCloud.BuildPlantInventories(c.Client.SungrowDevices, byDevice)
-	c.plantInventories = inventories
+	c.setPlantInventories(c.Client.SungrowDevices, byDevice)
+	if c.treeDiscovery.HasDenials() {
+		for _, psID := range mqttPlantIDs(c.Client.SungrowDevices) {
+			if !c.treeDiscovery.Denied(psID) {
+				continue
+			}
+			if c.plantTopologies[psID].Complete {
+				// The cache may have expired before the metadata step requested the tree again.
+				c.log.Info("Plant PV aggregation warning: ps_id=%s topology unavailable: plant tree denied\n", psID)
+			}
+			c.plantTopologies[psID] = iSolarCloud.PlantTopology{PsID: psID, Reason: "plant tree denied"}
+		}
+	}
+	return nil
+}
+
+func (c *CmdMqtt) setPlantInventories(devices getDeviceList.Devices, byDevice map[string]getDevicePointAttrs.Points) {
+	c.plantInventories = iSolarCloud.BuildPlantInventories(devices, byDevice)
+	c.deniedTreeParents = nil
+	if c.treeDiscovery.HasDenials() {
+		c.deniedTreeParents = make(map[string]bool)
+		for psID, inventory := range c.plantInventories {
+			if !c.treeDiscovery.Denied(psID) {
+				continue
+			}
+			for key, device := range inventory.Devices {
+				c.deniedTreeParents[key] = true
+				device.Points = nil
+				inventory.Devices[key] = device
+			}
+		}
+	}
 	c.points = make(getDevicePointAttrs.PointsMap)
 	keys := make([]string, 0, len(byDevice))
 	for key := range byDevice {
-		keys = append(keys, key)
+		if !c.deniedTreeParents[key] {
+			keys = append(keys, key)
+		}
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
@@ -710,7 +765,6 @@ func (c *CmdMqtt) refreshPlantInventories() error {
 			c.points[point.Id.String()] = &point
 		}
 	}
-	return nil
 }
 
 func mqttPlantIDs(devices getDeviceList.Devices) []string {
@@ -912,22 +966,13 @@ func (c *CmdMqtt) updateWithReceipt(endpoint string, data api.DataMap, newDay bo
 		c.log.Info("Syncing %d entries with HASSIO from %s.\n", len(data.Map), endpoint)
 
 		for _, o := range data.Sort() {
-			_, previouslySeen := c.previous[o]
-			refreshConfig := newDay || !previouslySeen
-
-			entries := data.Map[o]
-			r := entries.GetEntry(api.LastEntry) // Gets the last entry
+			previous, previouslySeen := c.previous[o]
+			r := data.Map[o].GetEntry(api.LastEntry)
+			refreshConfig := newDay || !previouslySeen || r.Value.String() != previous.value
 
 			// if strings.Contains(r.EndPoint, "active") {
 			// 	fmt.Printf("EMPTY[%s] -> %s\n", r.EndPoint, r.Value.String())
 			// }
-
-			if _, ok := c.previous[o]; ok {
-				previous := c.previous[o].GetEntry(api.LastEntry)
-				if r.Value.String() != previous.Value.String() {
-					refreshConfig = true
-				}
-			}
 
 			if !r.Point.Valid {
 				// Any point that shouldn't be passed through to MQTT is ignored
@@ -949,8 +994,18 @@ func (c *CmdMqtt) updateWithReceipt(endpoint string, data api.DataMap, newDay bo
 				continue
 			}
 
-			_ = c.UpdatePoint(r)
-			entityUnit := normalizeEntityMeasurement(r)
+			var entityUnit string
+			degraded := c.treeDiscovery.Denied(r.Current.Source.PsID) || c.treeDiscovery.Denied(r.Parent.Key) || c.deniedTreeParents[r.Parent.Key]
+			if degraded {
+				var eligible bool
+				entityUnit, eligible = c.degradedEntityUnit(r)
+				if !eligible {
+					continue
+				}
+			} else {
+				_ = c.UpdatePoint(r)
+				entityUnit = normalizeEntityMeasurement(r)
+			}
 
 			id := r.EndPoint
 			name := c.friendlyEntityName(r)
@@ -989,6 +1044,10 @@ func (c *CmdMqtt) updateWithReceipt(endpoint string, data api.DataMap, newDay bo
 			}
 
 			re.FixConfig()
+			if (degraded || previous.degraded) && re.Units != previous.unit {
+				// Publish verified metadata before a state could be interpreted with the old unit.
+				refreshConfig = true
+			}
 			if re.LastResetValueTemplate != "" {
 				re.LastReset = r.Point.WhenReset(r.Date)
 			}
@@ -1032,12 +1091,34 @@ func (c *CmdMqtt) updateWithReceipt(endpoint string, data api.DataMap, newDay bo
 			if c.Error != nil {
 				break
 			}
-			c.previous[o] = entries
+			c.previous[o] = mqttPublishedPoint{value: r.Value.String(), unit: re.Units, degraded: degraded}
 
 		}
 		c.log.PlainInfo("\n")
 	}
 	return c.Error
+}
+
+func (c *CmdMqtt) degradedEntityUnit(entry *api.DataEntry) (string, bool) {
+	if entry.EndPoint == "" || entry.Point.Id == "" {
+		return "", false
+	}
+	if _, known := c.Client.MqttDevices[entry.Parent.Key]; !known {
+		c.log.Info("Unknown parentDevice: %s - will ignore.\n", entry.Parent.Key)
+		return "", false
+	}
+	if count, ok := entry.Current.InterfaceValue.(valueTypes.Count); ok {
+		return "", count.Valid
+	}
+	unit := normalizeEntityMeasurement(entry)
+	if entry.Point.IsBool() || entry.Value.IsBool() || entry.Value.IsTypeDateTime() || !entry.Value.IsNumber() {
+		return unit, true
+	}
+	if value := entry.Value.Value(); math.IsNaN(value) || math.IsInf(value, 0) {
+		return "", false
+	}
+	unit = entry.Value.Unit()
+	return unit, cmdHassio.IsKnownMeasurementUnit(unit)
 }
 
 // normalizeEntityMeasurement keeps the published state and discovery metadata

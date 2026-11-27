@@ -1,10 +1,14 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
 )
+
+// ErrHTTPForbidden identifies an actual HTTP 403 response.
+var ErrHTTPForbidden = errors.New("API httpResponse is 403 Forbidden")
 
 // SessionOrigin describes how the session sent with a request was obtained.
 type SessionOrigin string

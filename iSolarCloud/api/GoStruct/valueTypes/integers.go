@@ -147,6 +147,10 @@ func (t *Count) UnmarshalJSON(data []byte) error {
 	for range Only.Once {
 		t.Valid = false
 
+		if string(data) == "null" {
+			t.SetString("")
+			break
+		}
 		if len(data) == 0 {
 			break
 		}
